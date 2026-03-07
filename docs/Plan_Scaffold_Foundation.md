@@ -36,7 +36,7 @@
 
 ### Phase 4: Verification (The Hard Gate)
 - [x] **Build Check:** รัน `npm run build` เพื่อให้มั่นใจว่าโครงสร้างเริ่มต้นสมบูรณ์
-- [x] **Sync Log:** บันทึกความเปลี่ยนแปลงลงใน [projects/fitnessLA/project_map.md](projects/fitnessLA/project_map.md)
+- [x] **Sync Log:** บันทึกความเปลี่ยนแปลงลงใน [project_map.md](../project_map.md)
 
 ---
 

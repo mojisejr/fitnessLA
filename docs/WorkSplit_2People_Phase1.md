@@ -340,6 +340,34 @@ Person B
 * Person A ห้ามเปลี่ยน response shape โดยไม่แจ้ง Person B
 * Person B ห้ามฝัง business logic การคำนวณเงินหรือ running number ที่ frontend
 * ทุก feature ต้อง merge พร้อม checklist ของตัวเอง
+
+---
+
+## 9. GitHub Workflow: Parallel Integration Protocol
+เพื่อให้ Agent A (Backend) และ Agent B (Frontend) ทำงานขนานกันได้โดยไม่ Block กัน ให้ปฏิบัติตามขั้นตอนนี้:
+
+### 🌿 Branch Strategy
+- **`main`**: "The Temple" - มีไว้สำหรับ Release ที่ผ่าน QA 100% เท่านั้น ห้าม Commit โดยตรง
+- **`staging`**: "The Integration" - กะละมังรวมงาน (Integration Branch) ใช้ทดสอบว่า Backend และ Frontend คุยกันรู้เรื่อง
+- **`feat/agent-[A|B]-[slug]`**: "The Workshop" - Branch ย่อยสำหรับพัฒนาฟีเจอร์ โดยต้องระบุชื่อ Agent ผู้ดูแลชัดเจน (เช่น `feat/agent-a-pos-engine` หรือ `feat/agent-b-pos-ui`)
+
+### 🚶‍♂️ Workflow Steps
+1. **Split (แตกกิ่ง):** ต่างคนต่างแตก Branch จาก `staging` ตามโครงสร้างชื่อ Agent:
+   - Agent A (Backend/Logic): `feat/agent-a-[feature-name]`
+   - Agent B (Frontend/Flow): `feat/agent-b-[feature-name]`
+2. **Mock & Logic (แยกกันทำงาน):**
+   - **Agent B:** เขียน UI โดยใช้ข้อมูล Mock ตาม [API_Contract.md](API_Contract.md) (ไม่ต้องรอ API จริง)
+   - **Agent A:** เขียน Logic/API ตามสัญญา และรัน Unit Test ของตัวเอง
+3. **Internal Gate (ตรวจสอบหน้าบ้าน):**
+   - ก่อน Merge เข้า `staging` ต้องรัน `npm run build` และ `npm run lint` ให้ผ่านเสมอ
+4. **Integration (รวมร่าง):** 
+   - เมื่อ Agent A และ B รวมงานเข้าใน `staging` แล้ว ให้ Agent B เปลี่ยนจาก **Mock Data** มาเรียก **API จริง** (Integration Test)
+   - หากผ่าน ให้สร้าง Pull Request จาก `staging` -> `main`
+
+### 🛡️ Guardrails (กฎทอง)
+- **Schema Ownership:** Person A เป็นคนเดียวที่รัน `npx prisma migrate dev` (B ห้ามรันแก้ไข DB เอง)
+- **Contract Locking:** ห้ามเปลี่ยน JSON Interface ใน [API_Contract.md](API_Contract.md) โดยไม่ผ่านการยินยอมจากทั้งสองฝ่าย
+- **Frequent Sync:** ให้ `git pull origin staging` เข้าหาตัวบ่อยๆ เพื่อให้ Code ในเครื่องทันสมัยอยู่เสมอ
 * ทุกวันก่อนจบงาน ต้องมี integration status 1 ครั้ง
 
 ---
