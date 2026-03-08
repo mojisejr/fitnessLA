@@ -1,0 +1,224 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// --- Better Auth Models ---
+
+model User {
+  id            String    @id
+  name          String
+  email         String
+  emailVerified Boolean
+  image         String?
+  createdAt     DateTime
+  updatedAt     DateTime
+  sessions      Session[]
+  accounts      Account[]
+
+  // Custom: Bio-Identity for fitnessLA
+  username  String  @unique
+  role      String  @default("STAFF") // ADMIN, OWNER, STAFF
+  isActive  Boolean @default(true)
+
+  @@map("user")
+}
+
+model Session {
+  id        String   @id
+  expiresAt DateTime
+  token     String
+  createdAt DateTime
+  updatedAt DateTime
+  ipAddress String?
+  userAgent String?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([token])
+  @@map("session")
+}
+
+model Account {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime
+  updatedAt             DateTime
+
+  @@map("account")
+}
+
+model Verification {
+  id         String    @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime?
+  updatedAt  DateTime?
+
+  @@map("verification")
+}
+
+// --- fitnessLA Business Models (Finance Core) ---
+
+model ChartOfAccount {
+  id            String        @id @default(cuid())
+  code          String        @unique // e.g., "1101"
+  name          String
+  type          String // ASSET, LIABILITY, EQUITY, REVENUE, EXPENSE
+  normalBalance String // DEBIT, CREDIT
+  journalLines  JournalLine[]
+  expenses      Expense[]
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@map("chart_of_accounts")
+}
+
+model JournalEntry {
+  id          String        @id @default(cuid())
+  date        DateTime      @default(now())
+  description String?
+  sourceType  String // SALE, EXPENSE, ADJUSTMENT, SHIFT_DIFF
+  sourceId    String? // Reference ID to Order or Shift
+  lines       JournalLine[]
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@map("journal_entries")
+}
+
+model JournalLine {
+  id               String         @id @default(cuid())
+  journalEntryId   String
+  journalEntry     JournalEntry   @relation(fields: [journalEntryId], references: [id], onDelete: Cascade)
+  chartOfAccountId String
+  chartOfAccount   ChartOfAccount @relation(fields: [chartOfAccountId], references: [id])
+  debit            Decimal        @default(0) @db.Decimal(12, 2)
+  credit           Decimal        @default(0) @db.Decimal(12, 2)
+
+  @@map("journal_lines")
+}
+
+model DocumentSequence {
+  id        String   @id @default(cuid())
+  type      String   @unique // e.g., "INVOICE", "RECEIPT", "EXPENSE"
+  prefix    String
+  currentNo Int      @default(0)
+  documents TaxDocument[]
+  updatedAt DateTime @updatedAt
+
+  @@map("document_sequences")
+}
+
+model Shift {
+  id           String    @id @default(cuid())
+  staffId      String
+  startTime    DateTime  @default(now())
+  endTime      DateTime?
+  startingCash Decimal   @db.Decimal(12, 2)
+  expectedCash Decimal?  @db.Decimal(12, 2)
+  actualCash   Decimal?  @db.Decimal(12, 2)
+  difference   Decimal?  @db.Decimal(12, 2)
+  status       String    @default("OPEN") // OPEN, CLOSED
+  orders       Order[]
+  expenses     Expense[]
+
+  @@map("shifts")
+}
+
+model Product {
+  id          String   @id @default(cuid())
+  sku         String   @unique
+  name        String
+  price       Decimal  @db.Decimal(12, 2)
+  productType String
+  isActive    Boolean  @default(true)
+  orderItems  OrderItem[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("products")
+}
+
+model Order {
+  id            String        @id @default(cuid())
+  orderNumber   String        @unique
+  shiftId       String
+  shift         Shift         @relation(fields: [shiftId], references: [id])
+  paymentMethod String // CASH, PROMPTPAY, CREDIT_CARD
+  totalAmount   Decimal       @db.Decimal(12, 2)
+  customerName  String?
+  customerTaxId String?
+  status        String        @default("COMPLETED")
+  items         OrderItem[]
+  taxDocuments  TaxDocument[]
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@map("orders")
+}
+
+model OrderItem {
+  id         String   @id @default(cuid())
+  orderId    String
+  order      Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId  String
+  product    Product  @relation(fields: [productId], references: [id])
+  quantity   Int
+  unitPrice  Decimal  @db.Decimal(12, 2)
+  totalPrice Decimal  @db.Decimal(12, 2)
+  createdAt  DateTime @default(now())
+
+  @@map("order_items")
+}
+
+model TaxDocument {
+  id              String            @id @default(cuid())
+  sequenceId      String
+  sequence        DocumentSequence  @relation(fields: [sequenceId], references: [id])
+  orderId         String
+  order           Order             @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  docType         String            @default("INVOICE")
+  docNumber       String            @unique
+  status          String            @default("ISSUED")
+  customerName    String?
+  customerTaxId   String?
+  issuedAt        DateTime          @default(now())
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  @@map("tax_documents")
+}
+
+model Expense {
+  id               String         @id @default(cuid())
+  shiftId          String
+  shift            Shift          @relation(fields: [shiftId], references: [id])
+  chartOfAccountId String
+  chartOfAccount   ChartOfAccount @relation(fields: [chartOfAccountId], references: [id])
+  amount           Decimal        @db.Decimal(12, 2)
+  description      String
+  receiptUrl       String?
+  status           String         @default("POSTED")
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  @@map("expenses")
+}

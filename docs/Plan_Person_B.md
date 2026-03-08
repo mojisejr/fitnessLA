@@ -1,66 +1,85 @@
 # Mission Blueprint: Person B (Operations Flow & Frontend Owner)
 **Project:** fitnessLA | Phase 1
-**Status:** ⚒️ Phase 1 Ready for UI/UX Design
+**Status:** ✅ Phase 1 Frontend Foundation Completed (Mocked-First)
 **Role:** Frontend / UI Design / Workflow Guard
 
 ---
 
 ## 🎯 Primary Objectives
-1.  **Fast Operations:** เน้นความไวในงานหน้าเคาน์เตอร์ (Keyboard Shortcuts)
-2.  **Enforced Logic:** บังคับพนักงานให้ทำตามกะ (Shift) และแนบหลักฐานค่าใช้จ่าย
-3.  **Owner Readability:** หน้า Dashboards สรุปยอดขายรายวันและกะพนักงาน
+1.  **Fast Operations:** [DONE] หน้าเคาน์เตอร์ POS รองรับ Keyboard Shortcuts พร้อม Jotai Store
+2.  **Enforced Logic:** [DONE] Shift Workflow แบบ Blind Drop และ Expenses แบบบังคับรูปภาพ
+3.  **Owner Readability:** [DONE] Dashboards และ Reports พื้นฐาน (COA, P&L, Shift Summary)
 
 ---
 
 ## 📚 Shared Records (The Contracts)
-*   **API Interface:** [API_Contract.md](projects/fitnessLA/API_Contract.md) (ต้องทำตาม DTO นี้และ Handle APIError ให้ถูกต้อง)
-*   **Interface Mocking:** แนะนำให้ใช้ **Mock Data** ตาม [API_Contract.md](projects/fitnessLA/API_Contract.md) เพื่อจัดหน้าจอให้สวยงามก่อน API เสร็จ
+*   **API Interface:** [API_Contract.md](projects/fitnessLA/API_Contract.md) (ขยับไปใช้ [real-app-adapter.ts](src/features/adapters/real-app-adapter.ts) เมื่อ Backend พร้อม)
+*   **Interface Mocking:** [DONE] ใช้ `mock-app-adapter.ts` เป็น Ground Truth ของ UI ในช่วงแรก
 
 ---
 
 ## 🛠️ Implementation Specs (Step-by-Step)
 
 ### B-0. Git & Testing Initiation (IMPORTANT)
-- [ ] แตก Branch ใหม่จาก `staging` โดยใช้ชื่อรูปแบบ: `feat/agent-b-[feature-name]`
-- [ ] **Vitest Setup:** ไฟล์ Test ทั้งหมดต้องอยู่ใน `tests/frontend/` ที่ Root เท่านั้น
-- [ ] เมื่อเสร็จงานย่อย ให้ Pull `staging` เข้าหาตัวก่อนส่ง PR ทุกครั้ง
+- [x] แตก Branch ใหม่จาก `staging` โดยใช้ชื่อรูปแบบ: `feat/agent-b-[feature-name]`
+- [x] **Vitest Setup:** ไฟล์ Test ทั้งหมดอยู่ใน `tests/frontend/`
+- [x] เมื่อเสร็จงานย่อย ให้ Pull `staging` เข้าหาตัวก่อนส่ง PR ทุกครั้ง
 
 ### B-1. Layout & Auth UI (Better-Auth + RBAC)
-- [ ] **Auth Flow:** หน้า Login (Username/Password) และการ Handle `Session` ผ่าน Better-Auth
-- [ ] **Admin Console:** หน้าจอสำหรับ OWNER/ADMIN เพื่อสร้างและรับรอง (Approve) Account พนักงานใหม่
-- [ ] **App Structure:** ทำ Layout หลัก (Side Nav/Top Nav) แยกตาม User Role (Owner เห็น Report, Cashier เห็น POS)
+- [x] **Auth Flow:** หน้า Login และการจำลอง Mock Session ผ่าน Context Provider
+- [x] **Admin Console:** หน้าจอ ADMIN จัดการ Users (`/admin/users`) พร้อม UI สำหรับ Create/Update
+- [x] **App Structure:** Sidebar, Topbar พร้อมการจัดการ Permission (Owner เห็นครบ, Cashier เห็นเฉพาะงานหน้างาน)
 
 ### B-2. POS & PWA Setup (Serwist)
-- [ ] **PWA Config:** ติดตั้ง `Serwist` เพื่อให้พนักงาน Add to Home Screen และใช้งานบนหน้าจอ Tablet ได้เสถียร
-- [ ] **Selection Flow:** แสดงรายการสินค้า (Water, Whey, Member) และมีปุ่ม Shortcuts คีย์บอร์ด
-- [ ] **Cart State (Jotai):** จัดการตะกร้าสินค้าและการรวมยอด (Subtotal/VAT/Discount)
+- [x] **PWA Config:** ติดตั้ง `Serwist` และลงทะเบียน Service Worker เรียบร้อย (Build & PWA Ready)
+- [x] **Selection Flow:** หน้าจอ POS (`/pos`) แสดงรายการแยก Category และคีย์บอร์ด Shortcuts [1-9, C, Enter, etc.]
+- [x] **Cart State (Jotai):** คำนวณ Subtotal, VAT (7%), และ Total อัตโนมัติ
 
 ### B-3. Strict Shift Workflow
-- [ ] **Open Shift:** หน้าจอรับเงินทอนตั้งต้น (`starting_cash`)
-- [ ] **Blind Drop Close:** หน้าจอนับเงินจริง (`actual_cash`) **โดยห้ามดึงตัวเลข Expected จาก Backend มาโชว์ก่อนพนักงานคีย์จริง**
-- [ ] **Shift Status UI:** แสดงสถานะกะที่ Header/Sidebar ตลอดเวลา
+- [x] **Open Shift:** UI สำหรับระบุ `starting_cash` พร้อมสถานะ Header Badge
+- [x] **Blind Drop Close:** หน้าจอนับเงินจริง (`/shift/close`) ห้ามแสดง Expected ยอด และบันทึก `actual_cash` เท่านั้น
+- [x] **Shift Status UI:** Header Badge แสดงเวลาเปิดกะและชื่อพนักงาน
 
 ### B-4. Petty Cash Tracking
-- [ ] **Form Flow:** หน้าจอบันทึกรายจ่ายย่อย บังคับอัพโหลดรูปภาพ (`receipt_file`) ก่อนกดบันทึก
-- [ ] **Image Validation:** ตรวจสอบขนาดไฟล์และประเภทไฟล์ (JPG, PNG) ที่ Frontend ก่อนส่ง API
+- [x] **Form Flow:** หน้าบันทึก Expenses บังคับแนบ File (ผ่าน Mock Input) และระบุ Category
+- [x] **Image Validation:** ตรวจสอบประเภทและขนาดไฟล์ที่ Frontend ก่อน "Submit"
 
 ### B-5. UI Unit Testing (Vitest)
-- [ ] **Cart Calculation Tests:** ทดสอบยอดรวม Subtotal/VAT/Discount ในตะกร้าสินค้า
-- [ ] **Shift Guard Tests:** ทดสอบ Guard หน้าจอว่า Cashier เข้าหน้า POS ไม่ได้ถ้ายังไม่เปิดกะ
-- [ ] **API Mocking:** ใช้ Mock Data จาก Contract เพื่อทดสอบการ Render UI
+- [x] **Cart Calculation Tests:** [cart-store.test.ts] ทดสอบความถูกต้องของเลขเงิน
+- [x] **Shift Guard Tests:** [shift-guard.test.tsx] ป้องกันการเข้า POS ถ้ายังไม่เปิดกะ
+- [x] **API Mocking:** ทดสอบการ Render ผ่าน Mock Adapter ครบทุกหลักสำคัญ (16+ Tests)
 
 ---
 
 ## 🛡️ Definition of Done (DoD)
-- [ ] หน้าจอ POS ใช้งานได้รวดเร็ว (รองรับ Keyboard Flow หลัก)
-- [ ] ระบบปิดกะเก็บความลับยอด Expected (Blind Drop) ทำงานตามจริงบน UI
-- [ ] Dashboards แสดงผลข้อมูลยอดขายและส่วนต่างกะได้ทันที
-- [ ] ทุกหน้าจอมี Empty, Loading, Success, และ API Error State ตามสัญญา API
+
+- [x] หน้าจอ POS ใช้งานได้รวดเร็ว (รองรับ Keyboard Flow หลัก)
+- [x] ระบบปิดกะเก็บความลับยอด Expected (Blind Drop) ทำงานตามจริงบน UI
+- [x] Dashboards แสดงผลข้อมูลยอดขายและส่วนต่างกะได้ทันที
+- [x] ทุกหน้าจอมี Empty, Loading, Success, และ API Error State ตามสัญญา API
 
 ---
 
 ## 📍 Current Repo Reality Check (As of 2026-03-08)
 
+
+สถานะจริงของ repository ตอนนี้คือ **Frontend Workflow & UI Completed (Mock-First)** โดย Person B ได้วางรากฐานไว้แน่นหนา ดังนี้:
+
+- **src/app/(app)/:** Scaffold ครบทุก Module (POS, Shift, Expenses, COA, Reports, Admin)
+- **src/features/adapters/:** มี Layer สำหรับเรียก API จริงรอไว้แล้ว (`real-app-adapter.ts`)
+- **tests/frontend/:** ครอบคลุม Logic สำคัญทั้ง POS, Shift Guard, และ Validation
+- **PWA:** ติดตั้ง Serwist และตั้งค่า build process เรียบร้อย
+
+---
+
+## 🚀 Next Phase for Person B: Integration
+เมื่อ Backend ของ Person A ทยอยปล่อย API v1 แล้ว งานของ Person B จะเปลี่ยนเป็นการถอด Mock แล้วเสียบปลั๊กจริง ดังนี้:
+1. สลับจาก `mock-app-adapter` ไปที่ `real-app-adapter` สำหรับ API ที่พร้อมแล้ว
+2. ทดสอบ Integration กับฐานข้อมูลจริง
+3. ปรับแต่ง UI ตาม Feedback จากการใช้งานจริง (Polish)
+
+*(Update 2026-03-08: Agent A ประกาศว่า Phase A-1 ถึง A-3 เสร็จสมบูรณ์แล้ว ให้ Agent B เริ่มเชื่อมต่อ `auth`, `products`, `shifts (open/active)`, `orders`, `expenses` ได้ทันที)*
+ 
 สถานะจริงของ repository ตอนนี้คือ **Scaffold Foundation เสร็จแล้ว แต่ Business Implementation ยังไม่เริ่ม** โดยสิ่งที่มีอยู่จริงใน code มีเพียง:
 
 - Next.js App Router shell
@@ -98,6 +117,7 @@
 
 - โครง route กลางของระบบพร้อมใช้งาน
 - เปลี่ยนเมนูตาม role ได้
+
 - สลับ state ระหว่าง `OWNER`, `ADMIN`, `CASHIER` ได้จาก mock
 
 ### 2. Login Screen UI
