@@ -11,18 +11,28 @@ export type UserSession = {
   active_shift_id: string | null;
 };
 
-function toUserSession(user: User): UserSession | null {
+async function toUserSession(user: User): Promise<UserSession | null> {
   const role = toAppRole(user.role);
   if (!role || !user.isActive) {
     return null;
   }
+
+  const activeShift = await prisma.shift.findFirst({
+    where: {
+      staffId: user.id,
+      status: "OPEN",
+      endTime: null,
+    },
+    orderBy: { startTime: "desc" },
+    select: { id: true },
+  });
 
   return {
     user_id: user.id,
     username: user.username,
     full_name: user.name,
     role,
-    active_shift_id: null,
+    active_shift_id: activeShift?.id ?? null,
   };
 }
 

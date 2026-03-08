@@ -36,13 +36,13 @@
 
 ### Phase A-2: Operations API (Target: POS Integration)
 เป้าหมาย: สร้าง Endpoints พื้นฐานที่หน้าจอ POS ของ Agent B ต้องการทันที
-- [ ] **A-2.1: Products API (`GET /api/v1/products`)**
+- [x] **A-2.1: Products API (`GET /api/v1/products`)**
     - ดึงรายการสินค้าพร้อมราคาและ Category
     - **Hard Gate**: DTO ต้องตรงตาม [API_Contract.md](projects/fitnessLA/API_Contract.md)
-- [ ] **A-2.2: Active Shift Service (`GET /api/v1/shifts/active`)**
+- [x] **A-2.2: Active Shift Service (`GET /api/v1/shifts/active`)**
     - ตรวจสอบว่าพนักงานปัจจุบันมีกะที่ยังไม่ปิดหรือไม่
     - **Hard Gate**: ต้องได้ Error 404 หากยังไม่มีกะเปิด (เพื่อให้ UI แสดงปุ่ม Open Shift)
-- [ ] **A-2.3: Shift Opening Logic (`POST /api/v1/shifts/open`)**
+- [x] **A-2.3: Shift Opening Logic (`POST /api/v1/shifts/open`)**
     - บันทึกกะใหม่พร้อม `starting_cash` และเปลี่ยนสถานะพนักงาน
     - **Hard Gate**: บันทึก Journal Entry ชุดแรก (Debit: Cash / Credit: Shift Equity) ทันที
 
