@@ -48,13 +48,13 @@
 
 ### Phase A-3: The Accounting Soul (Double-Entry Engine)
 เป้าหมาย: ระบบบันทึกบัญชีอัตโนมัติที่ไม่มีวันพลาดเมื่อมีรายการขายจริง
-- [ ] **A-3.1: Atomic Order Service (`POST /api/v1/orders`)**
+- [x] **A-3.1: Atomic Order Service (`POST /api/v1/orders`)**
     - รวมศูนย์: สร้าง Order -> ตัดเลข Tax Doc -> ลงบัญชี Journal -> Commit (All-or-Nothing)
     - **Hard Gate**: จำลองความล้มเหลวที่จุด Journal แล้วตรวจสอบว่า Order และ Sequence ต้องถูก Rollback
-- [ ] **A-3.2: Document Sequence Runner (Locked)**
+- [x] **A-3.2: Document Sequence Runner (Locked)**
     - ใช้ `SELECT ... FOR UPDATE` บน `document_sequences` เพื่อจองเลขกัน Race Condition
     - **Hard Gate**: Concurrency Test จำลอง 10 requests เข้ามาขอเลขพร้อมกัน (ห้ามซ้ำ)
-- [ ] **A-3.3: Petty Cash API (`POST /api/v1/expenses`)**
+- [x] **A-3.3: Petty Cash API (`POST /api/v1/expenses`)**
     - บันทึกรายจ่ายย่อยพร้อมรูปภาพ และลงบัญชี Expense คู่กับ Cash
     - **Hard Gate**: ยอด `actual_cash` ในกะต้องถูกหักลบยอดนี้อัตโนมัติ
 

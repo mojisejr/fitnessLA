@@ -84,6 +84,7 @@ model ChartOfAccount {
   type          String // ASSET, LIABILITY, EQUITY, REVENUE, EXPENSE
   normalBalance String // DEBIT, CREDIT
   journalLines  JournalLine[]
+  expenses      Expense[]
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
 
@@ -120,6 +121,7 @@ model DocumentSequence {
   type      String   @unique // e.g., "INVOICE", "RECEIPT", "EXPENSE"
   prefix    String
   currentNo Int      @default(0)
+  documents TaxDocument[]
   updatedAt DateTime @updatedAt
 
   @@map("document_sequences")
@@ -135,6 +137,8 @@ model Shift {
   actualCash   Decimal?  @db.Decimal(12, 2)
   difference   Decimal?  @db.Decimal(12, 2)
   status       String    @default("OPEN") // OPEN, CLOSED
+  orders       Order[]
+  expenses     Expense[]
 
   @@map("shifts")
 }
@@ -146,8 +150,75 @@ model Product {
   price       Decimal  @db.Decimal(12, 2)
   productType String
   isActive    Boolean  @default(true)
+  orderItems  OrderItem[]
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   @@map("products")
+}
+
+model Order {
+  id            String        @id @default(cuid())
+  orderNumber   String        @unique
+  shiftId       String
+  shift         Shift         @relation(fields: [shiftId], references: [id])
+  paymentMethod String // CASH, PROMPTPAY, CREDIT_CARD
+  totalAmount   Decimal       @db.Decimal(12, 2)
+  customerName  String?
+  customerTaxId String?
+  status        String        @default("COMPLETED")
+  items         OrderItem[]
+  taxDocuments  TaxDocument[]
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@map("orders")
+}
+
+model OrderItem {
+  id         String   @id @default(cuid())
+  orderId    String
+  order      Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId  String
+  product    Product  @relation(fields: [productId], references: [id])
+  quantity   Int
+  unitPrice  Decimal  @db.Decimal(12, 2)
+  totalPrice Decimal  @db.Decimal(12, 2)
+  createdAt  DateTime @default(now())
+
+  @@map("order_items")
+}
+
+model TaxDocument {
+  id              String            @id @default(cuid())
+  sequenceId      String
+  sequence        DocumentSequence  @relation(fields: [sequenceId], references: [id])
+  orderId         String
+  order           Order             @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  docType         String            @default("INVOICE")
+  docNumber       String            @unique
+  status          String            @default("ISSUED")
+  customerName    String?
+  customerTaxId   String?
+  issuedAt        DateTime          @default(now())
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  @@map("tax_documents")
+}
+
+model Expense {
+  id               String         @id @default(cuid())
+  shiftId          String
+  shift            Shift          @relation(fields: [shiftId], references: [id])
+  chartOfAccountId String
+  chartOfAccount   ChartOfAccount @relation(fields: [chartOfAccountId], references: [id])
+  amount           Decimal        @db.Decimal(12, 2)
+  description      String
+  receiptUrl       String?
+  status           String         @default("POSTED")
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  @@map("expenses")
 }
