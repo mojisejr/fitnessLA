@@ -71,10 +71,12 @@
 ---
 
 ## 🚀 Next Phase for Person B: Integration
-เมื่อ Backend ของ Person A พร้อม (API v1) งานของ Person B จะเปลี่ยนเป็น:
-1. สลับจาก `mock-app-adapter` ไปที่ `real-app-adapter`
+เมื่อ Backend ของ Person A ทยอยปล่อย API v1 แล้ว งานของ Person B จะเปลี่ยนเป็นการถอด Mock แล้วเสียบปลั๊กจริง ดังนี้:
+1. สลับจาก `mock-app-adapter` ไปที่ `real-app-adapter` สำหรับ API ที่พร้อมแล้ว
 2. ทดสอบ Integration กับฐานข้อมูลจริง
 3. ปรับแต่ง UI ตาม Feedback จากการใช้งานจริง (Polish)
+
+*(Update 2026-03-08: Agent A ประกาศว่า Phase A-1 ถึง A-3 เสร็จสมบูรณ์แล้ว ให้ Agent B เริ่มเชื่อมต่อ `auth`, `products`, `shifts (open/active)`, `orders`, `expenses` ได้ทันที)*
 
 - สลับ state ระหว่าง `OWNER`, `ADMIN`, `CASHIER` ได้จาก mock
 

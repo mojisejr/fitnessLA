@@ -1,6 +1,6 @@
 # Mission Blueprint: Person A (Finance Core & Backend Owner)
 **Project:** fitnessLA | Phase 1
-**Status:** ⚒️ Phase 1 In Progress (A-1 Completed)
+**Status:** ⚒️ Phase 1 In Progress (A-3 Completed. Waiting B Integration)
 **Role:** Backend / Accounting Engine / Database Governance
 
 ---
@@ -77,6 +77,6 @@
 ---
 
 ## 📍 Reality Sync (As of 2026-03-08)
-- **Agent B Status:** ทำ UI / Mock / Tests เสร็จแล้ว 90% (รอ API จริงจากเรา)
-- **Agent A Priority:** ต้องรีบทำ **Phase A-1 + Phase A-2** เพื่อเป็น Bridge ให้ Frontend เริ่มรันจริงได้
+- **Agent B Status:** ทำ UI / Mock / Tests เสร็จแล้ว 90% (รอเชื่อมต่อ API จริงผ่าน `real-app-adapter.ts`)
+- **Agent A Priority:** ปิดจบ Phase A-3 (Orders, Sequence, Expenses) และ Migration DB ยืนยันสมบูรณ์ ส่งให้ Agent B เอาไปเชื่อมหน้าบ้านแล้ว. ขั้นต่อไปคือลุย **Phase A-4** (Shift Close / Report).
 
