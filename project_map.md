@@ -16,6 +16,11 @@
 - [docs/Plan_Scaffold_Foundation.md](docs/Plan_Scaffold_Foundation.md): แผนการตั้งโครงสร้างพื้นฐาน (Phase 1)
 - [docs/WorkSplit_2People_Phase1.md](docs/WorkSplit_2People_Phase1.md): แผนการแบ่งงานและ **GitHub Parallel Workflow** (Integration Gate)
 
+## 👤 Current Occupation
+- **Agent A (Backend/Finance Core)**: GitHub Copilot (Oracle-Implementer)
+- **Primary Responsibility**: Database Schema, Double-Entry Logic, Better-Auth integration, and `/api` hardened routes.
+- **Status**: Active & Linked via Agent A Vow.
+
 ## 🏛️ System Architecture
 - **Frontend:** Next.js 15+ (App Router), Tailwind CSS, Lucide React, PWA (Serwist)
 - **Backend:** Next.js API Routes, Better-Auth (Username/Password), Prisma ORM
