@@ -5,6 +5,8 @@ import { GET as activeShiftGET } from "../../src/app/api/v1/shifts/active/route"
 import { POST as openShiftPOST } from "../../src/app/api/v1/shifts/open/route";
 import { POST as createOrderPOST } from "../../src/app/api/v1/orders/route";
 import { POST as createExpensePOST } from "../../src/app/api/v1/expenses/route";
+import { POST as closeShiftPOST } from "../../src/app/api/v1/shifts/close/route";
+import { GET as dailySummaryGET } from "../../src/app/api/v1/reports/daily-summary/route";
 
 const mockResolveSessionFromRequest = vi.fn();
 const mockListProducts = vi.fn();
@@ -12,6 +14,8 @@ const mockGetActiveShiftByStaff = vi.fn();
 const mockOpenShiftWithJournal = vi.fn();
 const mockCreateOrderWithJournal = vi.fn();
 const mockPostExpenseWithJournal = vi.fn();
+const mockCloseActiveShiftWithDifference = vi.fn();
+const mockGetDailySummaryByDate = vi.fn();
 
 vi.mock("../../src/lib/session", () => ({
   resolveSessionFromRequest: (...args: unknown[]) => mockResolveSessionFromRequest(...args),
@@ -23,6 +27,9 @@ vi.mock("../../src/features/operations/services", () => ({
   openShiftWithJournal: (...args: unknown[]) => mockOpenShiftWithJournal(...args),
   createOrderWithJournal: (...args: unknown[]) => mockCreateOrderWithJournal(...args),
   postExpenseWithJournal: (...args: unknown[]) => mockPostExpenseWithJournal(...args),
+  closeActiveShiftWithDifference: (...args: unknown[]) =>
+    mockCloseActiveShiftWithDifference(...args),
+  getDailySummaryByDate: (...args: unknown[]) => mockGetDailySummaryByDate(...args),
 }));
 
 describe("A-2 operations routes", () => {
@@ -166,6 +173,73 @@ describe("A-2 operations routes", () => {
     expect(body).toMatchObject({
       expense_id: "exp_1",
       status: "POSTED",
+    });
+  });
+
+  it("closes shift and returns discrepancy payload", async () => {
+    mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "CASHIER" });
+    mockCloseActiveShiftWithDifference.mockResolvedValue({
+      shift_id: "shift_1",
+      expected_cash: 2600,
+      actual_cash: 2550,
+      difference: -50,
+      status: "CLOSED",
+      journal_entry_id: "je_1",
+    });
+
+    const response = await closeShiftPOST(
+      new Request("http://localhost/api/v1/shifts/close", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ actual_cash: 2550, closing_note: "counted at close" }),
+      }),
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toMatchObject({
+      shift_id: "shift_1",
+      difference: -50,
+      status: "CLOSED",
+    });
+  });
+
+  it("returns 403 when cashier requests daily summary", async () => {
+    mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "CASHIER" });
+
+    const response = await dailySummaryGET(
+      new Request("http://localhost/api/v1/reports/daily-summary?date=2026-03-09"),
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(body.code).toBe("FORBIDDEN");
+  });
+
+  it("returns daily summary for admin", async () => {
+    mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "ADMIN" });
+    mockGetDailySummaryByDate.mockResolvedValue({
+      total_sales: 8420,
+      sales_by_method: {
+        CASH: 3120,
+        PROMPTPAY: 2580,
+        CREDIT_CARD: 2720,
+      },
+      total_expenses: 640,
+      net_cash_flow: 2480,
+      shift_discrepancies: -60,
+    });
+
+    const response = await dailySummaryGET(
+      new Request("http://localhost/api/v1/reports/daily-summary?date=2026-03-09"),
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toMatchObject({
+      total_sales: 8420,
+      net_cash_flow: 2480,
+      shift_discrepancies: -60,
     });
   });
 });
