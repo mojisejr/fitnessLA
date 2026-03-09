@@ -60,23 +60,23 @@
 
 ### Phase A-4: Shift Discrepancy & Reporting
 เป้าหมาย: สรุปส่วนต่างกะและยอดขายรายวันให้นักบัญชี
-- [ ] **A-4.1: Blind Drop Close Logic (`POST /api/v1/shifts/close`)**
+- [x] **A-4.1: Blind Drop Close Logic (`POST /api/v1/shifts/close`)**
     - รับ `actual_cash` -> คำนวณ Expected -> บันทึกส่วนต่างเข้าบัญชี Shortage/Overage
     - **Hard Gate**: ยอด Difference ต้องถูกบันทึกเป็น Ledger Line อัตโนมัติ
-- [ ] **A-4.2: Daily Summary API (`GET /api/v1/reports/daily-summary`)**
+- [x] **A-4.2: Daily Summary API (`GET /api/v1/reports/daily-summary`)**
     - Query รวมยอด แยกตาม Payment Method และสรุปผลประกอบการรายวัน
 
 ---
 
 ## 🛡️ Definition of Done (DoD)
-- [ ] `npm run build` และ `npm run lint` ผ่านสีเขียว 100%
-- [ ] API v1 ทุกตัวที่ Implement แล้วต้องผ่านการทดสอบด้วย `vitest` (backend suite)
+- [x] `npm run build` และ `npm run lint` ผ่านสีเขียว 100%
+- [x] API v1 ทุกตัวที่ Implement แล้วต้องผ่านการทดสอบด้วย `vitest` (backend suite)
 - [ ] [real-app-adapter.ts](src/features/adapters/real-app-adapter.ts) สามารถดึงข้อมูลจาก API เหล่านี้ได้จริง
 - [ ] ข้อมูลการเงินใน `JournalLine` ต้อง Balance (Debit == Credit) ทันทีหลังจบ Transaction
 
 ---
 
-## 📍 Reality Sync (As of 2026-03-08)
+## 📍 Reality Sync (As of 2026-03-09)
 - **Agent B Status:** ทำ UI / Mock / Tests เสร็จแล้ว 90% (รอเชื่อมต่อ API จริงผ่าน `real-app-adapter.ts`)
-- **Agent A Priority:** ปิดจบ Phase A-3 (Orders, Sequence, Expenses) และ Migration DB ยืนยันสมบูรณ์ ส่งให้ Agent B เอาไปเชื่อมหน้าบ้านแล้ว. ขั้นต่อไปคือลุย **Phase A-4** (Shift Close / Report).
+- **Agent A Priority:** ปิดจบ Phase A-4 (Shift Close / Daily Summary) พร้อม backend tests แล้ว. ขั้นต่อไปคือลุย integration ของ Agent B ผ่าน `real-app-adapter.ts` และขยาย reporting scope.
 

@@ -59,6 +59,32 @@ export type CreateExpenseResultDto = {
   status: "POSTED";
 };
 
+export type CloseShiftInput = {
+  actual_cash: number;
+  closing_note?: string;
+};
+
+export type CloseShiftResultDto = {
+  shift_id: string;
+  expected_cash: number;
+  actual_cash: number;
+  difference: number;
+  status: "CLOSED";
+  journal_entry_id: string;
+};
+
+export type DailySummaryDto = {
+  total_sales: number;
+  sales_by_method: {
+    CASH: number;
+    PROMPTPAY: number;
+    CREDIT_CARD: number;
+  };
+  total_expenses: number;
+  net_cash_flow: number;
+  shift_discrepancies: number;
+};
+
 type LockedSequenceRow = {
   id: string;
   prefix: string;
@@ -476,4 +502,222 @@ export async function postExpenseWithJournal(
       status: "POSTED",
     };
   });
+}
+
+export async function closeActiveShiftWithDifference(
+  staffId: string,
+  input: CloseShiftInput,
+): Promise<CloseShiftResultDto> {
+  if (input.actual_cash < 0) {
+    throw new Error("INVALID_ACTUAL_CASH");
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const shift = await tx.shift.findFirst({
+      where: {
+        staffId,
+        status: "OPEN",
+        endTime: null,
+      },
+      orderBy: { startTime: "desc" },
+    });
+
+    if (!shift) {
+      throw new Error("SHIFT_NOT_FOUND");
+    }
+
+    const expectedCash = new Prisma.Decimal(shift.expectedCash ?? shift.startingCash);
+    const actualCash = asMoney(input.actual_cash);
+    const difference = actualCash.sub(expectedCash);
+
+    const cashAccount = await tx.chartOfAccount.findUnique({ where: { code: "1010" } });
+    if (!cashAccount) {
+      throw new Error("CHART_OF_ACCOUNT_NOT_FOUND");
+    }
+
+    const shortageAccount = await tx.chartOfAccount.upsert({
+      where: { code: "5050" },
+      update: {
+        name: "Cash Shortage",
+        type: "EXPENSE",
+        normalBalance: "DEBIT",
+      },
+      create: {
+        code: "5050",
+        name: "Cash Shortage",
+        type: "EXPENSE",
+        normalBalance: "DEBIT",
+      },
+    });
+
+    const overageAccount = await tx.chartOfAccount.upsert({
+      where: { code: "4020" },
+      update: {
+        name: "Cash Overage",
+        type: "REVENUE",
+        normalBalance: "CREDIT",
+      },
+      create: {
+        code: "4020",
+        name: "Cash Overage",
+        type: "REVENUE",
+        normalBalance: "CREDIT",
+      },
+    });
+
+    const journalEntry = await tx.journalEntry.create({
+      data: {
+        sourceType: "SHIFT_DIFF",
+        sourceId: shift.id,
+        description: input.closing_note?.trim() || `Shift close ${shift.id}`,
+      },
+    });
+
+    const lines: Array<{
+      journalEntryId: string;
+      chartOfAccountId: string;
+      debit: Prisma.Decimal;
+      credit: Prisma.Decimal;
+    }> = [];
+
+    if (difference.gt(0)) {
+      lines.push(
+        {
+          journalEntryId: journalEntry.id,
+          chartOfAccountId: cashAccount.id,
+          debit: difference,
+          credit: new Prisma.Decimal(0),
+        },
+        {
+          journalEntryId: journalEntry.id,
+          chartOfAccountId: overageAccount.id,
+          debit: new Prisma.Decimal(0),
+          credit: difference,
+        },
+      );
+    } else if (difference.lt(0)) {
+      const shortageAmount = difference.abs();
+      lines.push(
+        {
+          journalEntryId: journalEntry.id,
+          chartOfAccountId: shortageAccount.id,
+          debit: shortageAmount,
+          credit: new Prisma.Decimal(0),
+        },
+        {
+          journalEntryId: journalEntry.id,
+          chartOfAccountId: cashAccount.id,
+          debit: new Prisma.Decimal(0),
+          credit: shortageAmount,
+        },
+      );
+    }
+
+    if (lines.length > 0) {
+      await tx.journalLine.createMany({ data: lines });
+    }
+
+    const closed = await tx.shift.update({
+      where: { id: shift.id },
+      data: {
+        status: "CLOSED",
+        endTime: new Date(),
+        expectedCash,
+        actualCash,
+        difference,
+      },
+    });
+
+    return {
+      shift_id: closed.id,
+      expected_cash: Number(expectedCash),
+      actual_cash: Number(actualCash),
+      difference: Number(difference),
+      status: "CLOSED",
+      journal_entry_id: journalEntry.id,
+    };
+  });
+}
+
+export async function getDailySummaryByDate(date: string): Promise<DailySummaryDto> {
+  const parsed = new Date(`${date}T00:00:00.000Z`);
+  if (Number.isNaN(parsed.getTime())) {
+    throw new Error("INVALID_DATE");
+  }
+
+  const from = parsed;
+  const to = new Date(parsed);
+  to.setUTCDate(to.getUTCDate() + 1);
+
+  const [orders, expenses, closedShifts] = await Promise.all([
+    prisma.order.findMany({
+      where: {
+        status: "COMPLETED",
+        createdAt: {
+          gte: from,
+          lt: to,
+        },
+      },
+      select: {
+        paymentMethod: true,
+        totalAmount: true,
+      },
+    }),
+    prisma.expense.findMany({
+      where: {
+        status: "POSTED",
+        createdAt: {
+          gte: from,
+          lt: to,
+        },
+      },
+      select: {
+        amount: true,
+      },
+    }),
+    prisma.shift.findMany({
+      where: {
+        status: "CLOSED",
+        endTime: {
+          gte: from,
+          lt: to,
+        },
+      },
+      select: {
+        difference: true,
+      },
+    }),
+  ]);
+
+  const salesByMethod = {
+    CASH: 0,
+    PROMPTPAY: 0,
+    CREDIT_CARD: 0,
+  };
+
+  let totalSales = 0;
+  for (const order of orders) {
+    const amount = Number(order.totalAmount);
+    totalSales += amount;
+    const method = assertPaymentMethod(order.paymentMethod);
+    salesByMethod[method] += amount;
+  }
+
+  const totalExpenses = expenses.reduce((sum, expense) => sum + Number(expense.amount), 0);
+  const shiftDiscrepancies = closedShifts.reduce(
+    (sum, shift) => sum + Number(shift.difference ?? 0),
+    0,
+  );
+
+  return {
+    total_sales: Number(totalSales.toFixed(2)),
+    sales_by_method: {
+      CASH: Number(salesByMethod.CASH.toFixed(2)),
+      PROMPTPAY: Number(salesByMethod.PROMPTPAY.toFixed(2)),
+      CREDIT_CARD: Number(salesByMethod.CREDIT_CARD.toFixed(2)),
+    },
+    total_expenses: Number(totalExpenses.toFixed(2)),
+    net_cash_flow: Number((salesByMethod.CASH - totalExpenses).toFixed(2)),
+    shift_discrepancies: Number(shiftDiscrepancies.toFixed(2)),
+  };
 }

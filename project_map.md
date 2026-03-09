@@ -47,9 +47,9 @@
 - **Strict Blind Drop:** การคุมพนักงานตอนปิดกะ (`shifts.expected_cash` vs `shifts.actual_cash`) เพื่อตรวจจับส่วนต่าง (`difference`)
 
 ## 🚩 Status & Signals
-- **Current Phase:** Phase 1 (Integration readiness A-3 -> Agent B)
-- **Latest Update:** 2026-03-08 (Agent A completed Phase A-3 Implementation + DB Migration verified)
-- **Shared Agreement:** ยึด `API_Contract.md` เป็นหัวใจหลักในการคุยกัน. ปัจจุบัน Backend เตรียม API จริงรองรับ POS/Expense แล้ว.
+- **Current Phase:** Phase 1 (Integration readiness A-4 -> Agent B)
+- **Latest Update:** 2026-03-09 (Agent A completed Phase A-4 Shift Close + Daily Summary with backend tests)
+- **Shared Agreement:** ยึด `API_Contract.md` เป็นหัวใจหลักในการคุยกัน. ปัจจุบัน Backend เตรียม API จริงรองรับ POS/Expense/Shift Close/Daily Summary แล้ว.
 
 ## 🤝 Implementation Integration Matrix (Agent A ⬌ Agent B)
 *(Use this matrix to track feature handoffs from Mock to Real)*
@@ -61,5 +61,5 @@
 | **Active Shift Check**| ✅ DONE (`GET /api/v1/shifts/active`)| 🏗️ Mocked | Agent B ผูก `real-app-adapter.ts` |
 | **Orders & Checkout** | ✅ DONE (`POST /api/v1/orders`) | 🏗️ Mocked | Agent B ผูก `real-app-adapter.ts` |
 | **Petty Cash** | ✅ DONE (`POST /api/v1/expenses`) | 🏗️ Mocked | Agent B ผูก `real-app-adapter.ts` |
-| **Close Shift** | ⏳ PENDING (Phase A-4.1) | 🏗️ Mocked | Agent A implement `POST /api/v1/shifts/close` |
-| **Daily Summary** | ⏳ PENDING (Phase A-4.2) | 🏗️ Mocked | Agent A implement `GET /api/v1/reports/daily-summary` |
+| **Close Shift** | ✅ DONE (`POST /api/v1/shifts/close`) | 🏗️ Mocked | Agent B switch close flow to real adapter endpoint |
+| **Daily Summary** | ✅ DONE (`GET /api/v1/reports/daily-summary`) | 🏗️ Mocked | Agent B switch report page to real adapter endpoint |
