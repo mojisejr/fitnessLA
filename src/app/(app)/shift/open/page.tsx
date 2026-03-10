@@ -2,11 +2,11 @@
 
 import Link from "next/link";
 import { useState, type FormEvent } from "react";
-import { useMockSession } from "@/features/auth/mock-session-provider";
+import { useAuth } from "@/features/auth/auth-provider";
 import { formatCurrency, formatDateTime, getErrorMessage } from "@/lib/utils";
 
 export default function OpenShiftPage() {
-  const { activeShift, openShift } = useMockSession();
+  const { activeShift, openShift } = useAuth();
   const [startingCash, setStartingCash] = useState("500");
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -68,7 +68,7 @@ export default function OpenShiftPage() {
                 inputMode="decimal"
                 value={startingCash}
                 onChange={(event) => setStartingCash(event.target.value)}
-                className="mt-2 w-full rounded-[20px] border border-line bg-white px-4 py-3 text-foreground outline-none transition focus:border-accent"
+                className="mt-2 w-full rounded-[20px] border border-line bg-[#fff8de] px-4 py-3 text-[#17130a] placeholder:text-[#8a7840] outline-none transition focus:border-accent"
               />
             </label>
 

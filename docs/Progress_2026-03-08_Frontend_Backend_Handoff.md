@@ -4,6 +4,18 @@
 **Project:** fitnessLA Phase 1
 **Scope of this note:** สรุปสิ่งที่ทำในฝั่ง Frontend Owner วันนี้, สถานะการเชื่อมต่อกับ Backend Plan A, สิ่งที่ยังไม่ทำ, และจุดที่สามารถกลับมาต่อได้ทันทีเมื่อ backend เพิ่ม
 
+> Reality Sync Update (2026-03-10)
+>
+> เอกสารนี้เป็น snapshot ของสถานะวันที่ 2026-03-08 และยังมีคุณค่าในฐานะ handoff ฝั่ง Frontend แต่มีบางส่วนที่ล้าสมัยเมื่อเทียบกับโค้ดปัจจุบัน
+>
+> สถานะล่าสุดที่ต้องถือเป็นจริงเพิ่มจากเอกสารนี้คือ:
+>
+> - Backend มี route จริงแล้วสำหรับ `GET /api/auth/session`, `GET /api/v1/shifts/active`, `POST /api/v1/expenses`, `POST /api/v1/admin/users`, `POST /api/v1/shifts/close`, และ `GET /api/v1/reports/daily-summary`
+> - Frontend `real-app-adapter.ts` ต่อจริงแล้วสำหรับ `products`, `open shift`, `close shift`, `orders`, `daily summary`, และ `expenses`
+> - Frontend เริ่มมี session bridge และ active shift bootstrap สำหรับโหมด `real` แล้ว แต่ยังไม่ใช่ Better Auth browser flow สมบูรณ์
+> - จุดที่ยังค้างหลักจริง ๆ ตอนนี้คือ auth flow ตัวจริง, COA APIs, report APIs ที่เกิน daily summary, export APIs, และ admin workflow ที่ยัง mismatch กับ backend ปัจจุบัน
+> - สำหรับภาพรวมล่าสุดแบบละเอียด ให้ใช้อ้างอิงร่วมกับ `docs/Analysis_2026-03-10_Frontend_Backend_Integration_Status.md`
+
 ---
 
 ## 1. Executive Summary
@@ -319,6 +331,12 @@ real adapter รองรับ:
 
 Plan A ต้องทำ Better-Auth integration จริง แต่ frontend ตอนนี้ยังใช้ mock login
 
+Reality sync 2026-03-10:
+
+- มี `GET /api/auth/session` และ session bridge ชั่วคราวแล้ว
+- Frontend เริ่ม bootstrap session ในโหมด `real` ได้แล้ว
+- แต่ login/logout/session persistence แบบ Better Auth จริงยังไม่ครบ
+
 สิ่งที่เตรียมไว้แล้ว:
 
 - provider structure
@@ -356,6 +374,11 @@ Plan A ระบุชัดว่ายังต้องทำ COA CRUD แต
 
 Plan A ระบุว่าจะมี RBAC admin flow แต่ API จริงยังไม่ถูกส่งมา
 
+Reality sync 2026-03-10:
+
+- ปัจจุบัน backend มี `POST /api/v1/admin/users` สำหรับสร้าง user โดยตรงแล้ว
+- แต่ยังไม่มี request queue / approval flow ให้ตรงกับ UI ปัจจุบัน
+
 สิ่งที่ frontend เตรียมไว้แล้ว:
 
 - create user request form
@@ -371,12 +394,17 @@ Plan A ระบุว่าจะมี RBAC admin flow แต่ API จริ
 
 #### D. Expense Upload จริง
 
-frontend มี petty cash form พร้อมแล้ว แต่ real adapter ยัง intentionally ไม่ implement เพราะ upload จริงต้องใช้ multipart และ COA integration เพิ่ม
+frontend มี petty cash form พร้อมแล้ว และตอนนี้ real adapter เริ่มส่ง multipart ไป `POST /api/v1/expenses` ได้แล้ว
+
+Reality sync 2026-03-10:
+
+- backend route รองรับทั้ง JSON และ multipart request แล้ว
+- แต่ feature นี้ยังไม่ถือว่าจบ เพราะ COA source จริงและ storage semantics ของ receipt ยังไม่ล็อกครบ
 
 สิ่งที่ Plan A ต้องส่งเพิ่ม:
 
-- expense upload endpoint ที่ชัดเจน
-- form field naming ที่แน่นอนของ multipart
+- COA API สำหรับดึงบัญชีรายจ่ายจริง
+- form field naming ที่เป็น final version ของ multipart
 - receipt storage strategy เช่น Supabase bucket ตาม Plan A
 
 #### E. Reports Beyond Daily Summary
@@ -611,6 +639,12 @@ Plan A:
 สรุปแบบตรงที่สุด:
 
 วันนี้ frontend ทำเกินระดับ scaffold ไปแล้ว และเข้าสู่สถานะ **mock-first application with backend handoff architecture**
+
+Reality sync 2026-03-10:
+
+- สถานะนี้ยังจริงในเชิงสถาปัตยกรรม แต่เริ่มมี `real` integration bridge แล้วบางส่วน
+- backend core พร้อมกว่าที่ note วันที่ 2026-03-08 ระบุไว้ โดยเฉพาะ session bridge, active shift, expenses, close shift, daily summary และ admin user creation
+- อย่างไรก็ดีทั้งระบบยังไม่ใช่ end-to-end real mode สมบูรณ์ เพราะ auth จริง, COA APIs, report APIs อื่น, export และ admin workflow ยังไม่ครบ
 
 สิ่งที่พร้อมแล้ว:
 

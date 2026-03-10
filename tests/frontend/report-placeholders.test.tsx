@@ -25,5 +25,7 @@ describe("report placeholders", () => {
     expect(screen.getByRole("heading", { name: "สรุปกะ" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "ส่งออก CSV" })).toBeInTheDocument();
     expect(screen.getByText("กำลังรอ backend contract")).toBeInTheDocument();
+    expect(screen.getByText("demo shell พร้อมต่อ shift summary API")).toBeInTheDocument();
+    expect(screen.getAllByText("SHIFT-1001").length).toBeGreaterThan(0);
   });
 });

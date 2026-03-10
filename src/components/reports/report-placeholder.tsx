@@ -6,7 +6,12 @@ type ReportPlaceholderProps = {
   description: string;
   waitingFor: string[];
   filters: string[];
+  integrationStatus?: string;
+  demoNote?: string;
   exportFormats?: string[];
+  metrics?: Array<{ label: string; value: string; tone?: "neutral" | "warning" | "accent" | "success" | "danger" }>;
+  previewColumns?: string[];
+  previewRows?: string[][];
   children?: ReactNode;
 };
 
@@ -16,17 +21,41 @@ export function ReportPlaceholder({
   description,
   waitingFor,
   filters,
+  integrationStatus = "รอ API",
+  demoNote = "demo shell นี้ใช้ทดสอบ layout, filter hierarchy, permission guard และตำแหน่ง export ก่อนต่อ backend จริง",
   exportFormats = ["CSV", "XLSX"],
+  metrics = [
+    { label: "ตัวชี้วัดหลัก", value: "รอ API" },
+    { label: "ตัวชี้วัดผลต่าง", value: "รอ API", tone: "warning" },
+    { label: "ตัวชี้วัดสถานะ", value: "รอ API", tone: "neutral" },
+  ],
+  previewColumns = ["คอลัมน์ตัวอย่าง", "สถานะ", "หมายเหตุ"],
+  previewRows = [
+    ["กำลังรอ contract", "pending", "โครงตารางพร้อมแล้ว"],
+    ["กำลังรอ query params", "pending", "filter พร้อมเสียบ API"],
+    ["กำลังรอ export", "pending", "ปุ่ม export อยู่ในตำแหน่งจริง"],
+  ],
   children,
 }: ReportPlaceholderProps) {
+  const metricTone = {
+    neutral: "border-line bg-[#161510]",
+    warning: "border-warning bg-warning-soft",
+    accent: "border-accent bg-accent-soft",
+    success: "border-[#2ea36a] bg-[rgba(46,163,106,0.16)]",
+    danger: "border-[#d44949] bg-[rgba(212,73,73,0.16)]",
+  } as const;
+
   return (
     <div className="space-y-6">
       <section className="rounded-[28px] border border-line bg-surface-strong p-6 md:p-8">
         <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
           <div>
-            <p className="text-xs uppercase tracking-[0.28em] text-muted">{eyebrow}</p>
+            <p className="text-xs uppercase tracking-[0.16em] text-muted">{eyebrow}</p>
             <h1 className="mt-3 text-3xl font-semibold text-foreground">{title}</h1>
             <p className="mt-3 max-w-3xl text-sm leading-7 text-muted">{description}</p>
+            <div className="mt-4 inline-flex rounded-full border border-line bg-background px-4 py-2 text-xs font-semibold text-foreground">
+              {integrationStatus}
+            </div>
           </div>
 
           <div className="flex flex-wrap gap-2">
@@ -34,7 +63,8 @@ export function ReportPlaceholder({
               <button
                 key={format}
                 type="button"
-                className="rounded-full border border-line bg-background px-4 py-2 text-sm font-semibold text-foreground transition hover:border-accent hover:bg-accent-soft"
+                disabled
+                className="rounded-full border border-line bg-background px-4 py-2 text-sm font-semibold text-muted opacity-80"
               >
                 ส่งออก {format}
               </button>
@@ -43,12 +73,17 @@ export function ReportPlaceholder({
         </div>
       </section>
 
+      <section className="rounded-[28px] border border-line bg-surface-strong p-6">
+        <p className="text-xs uppercase tracking-[0.16em] text-muted">Demo readiness</p>
+        <p className="mt-3 text-sm leading-7 text-foreground">{demoNote}</p>
+      </section>
+
       <section className="grid gap-4 lg:grid-cols-[0.72fr_1.28fr]">
         <div className="rounded-[28px] border border-line bg-surface-strong p-6">
-          <p className="text-xs uppercase tracking-[0.28em] text-muted">ชุดตัวกรอง</p>
+          <p className="text-xs font-semibold tracking-[0.08em] text-muted">ชุดตัวกรอง</p>
           <div className="mt-4 space-y-3">
             {filters.map((filter) => (
-              <div key={filter} className="rounded-[20px] border border-dashed border-line bg-background px-4 py-4 text-sm text-muted">
+              <div key={filter} className="rounded-[20px] border border-dashed border-line bg-[#161510] px-4 py-4 text-sm text-foreground">
                 {filter}
               </div>
             ))}
@@ -56,17 +91,42 @@ export function ReportPlaceholder({
         </div>
 
         <div className="rounded-[28px] border border-line bg-surface-strong p-6">
-          <p className="text-xs uppercase tracking-[0.28em] text-muted">พื้นที่รายงาน</p>
+          <p className="text-xs font-semibold tracking-[0.08em] text-muted">พื้นที่รายงาน</p>
           <div className="mt-4 grid gap-4 md:grid-cols-3">
-            {["ตัวชี้วัดหลัก", "ตัวชี้วัดผลต่าง", "ตัวชี้วัดสถานะ"].map((metric) => (
-              <div key={metric} className="rounded-[22px] border border-line bg-white p-5">
-                <p className="text-sm text-muted">{metric}</p>
-                <p className="mt-3 text-2xl font-semibold text-foreground">รอ API</p>
+            {metrics.map((metric) => (
+              <div key={metric.label} className={`rounded-[22px] border p-5 ${metricTone[metric.tone ?? "neutral"]}`}>
+                <p className="text-sm text-muted">{metric.label}</p>
+                <p className={`mt-3 text-2xl font-semibold ${metric.tone === "success" ? "text-[#8dffbe]" : metric.tone === "danger" ? "text-[#ff9f9f]" : "text-foreground"}`}>{metric.value}</p>
               </div>
             ))}
           </div>
 
-          <div className="mt-5 rounded-[24px] border border-dashed border-line bg-background p-6">
+          <div className="mt-5 overflow-hidden rounded-3xl border border-line bg-[#161510]">
+            <table className="min-w-full divide-y divide-line text-sm">
+              <thead className="bg-[#0d0d0a]">
+                <tr>
+                  {previewColumns.map((column) => (
+                    <th key={column} className="px-4 py-3 text-left font-semibold text-muted">
+                      {column}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-line">
+                {previewRows.map((row, index) => (
+                  <tr key={`${row[0]}-${index}`}>
+                    {row.map((cell, cellIndex) => (
+                      <td key={`${cell}-${cellIndex}`} className="px-4 py-4 text-[#f3e8ba]">
+                        {cell}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="mt-5 rounded-3xl border border-dashed border-line bg-background p-6">
             <p className="text-sm font-semibold text-foreground">กำลังรอ backend contract</p>
             <ul className="mt-3 space-y-2 text-sm leading-7 text-muted">
               {waitingFor.map((item) => (

@@ -13,6 +13,7 @@ export type ProductDto = {
 export type ActiveShiftDto = {
   shift_id: string;
   opened_at: string;
+  starting_cash: number;
   status: "OPEN";
 };
 
@@ -185,6 +186,7 @@ export async function getActiveShiftByStaff(staffId: string): Promise<ActiveShif
   return {
     shift_id: shift.id,
     opened_at: shift.startTime.toISOString(),
+    starting_cash: Number(shift.startingCash),
     status: "OPEN",
   };
 }

@@ -1,16 +1,78 @@
 "use client";
 
 import Link from "next/link";
-import { useState, type FormEvent } from "react";
-import { useMockSession } from "@/features/auth/mock-session-provider";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useAppAdapter } from "@/features/adapters/adapter-provider";
+import { useAuth } from "@/features/auth/auth-provider";
+import type { ShiftInventorySummaryRow } from "@/lib/contracts";
 import { formatCurrency, getErrorMessage } from "@/lib/utils";
 
 export default function CloseShiftPage() {
-  const { closeShift, clearLastClosedShift, lastClosedShift, activeShift, session } = useMockSession();
+  const adapter = useAppAdapter();
+  const { closeShift, clearLastClosedShift, lastClosedShift, activeShift, session } = useAuth();
   const [actualCash, setActualCash] = useState("");
   const [closingNote, setClosingNote] = useState("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [inventorySummary, setInventorySummary] = useState<ShiftInventorySummaryRow[]>([]);
+  const [inventoryLoading, setInventoryLoading] = useState(true);
+  const [inventoryError, setInventoryError] = useState<string | null>(null);
+
+  const currentShiftId = activeShift?.shift_id ?? lastClosedShift?.shift_id ?? null;
+
+  const inventoryTotals = useMemo(() => {
+    return inventorySummary.reduce(
+      (summary, row) => ({
+        opening_stock: summary.opening_stock + row.opening_stock,
+        sold_quantity: summary.sold_quantity + row.sold_quantity,
+        remaining_stock: summary.remaining_stock + row.remaining_stock,
+      }),
+      { opening_stock: 0, sold_quantity: 0, remaining_stock: 0 },
+    );
+  }, [inventorySummary]);
+
+  useEffect(() => {
+    let isActive = true;
+
+    async function loadShiftInventory() {
+      if (!currentShiftId) {
+        if (isActive) {
+          setInventorySummary([]);
+          setInventoryLoading(false);
+        }
+        return;
+      }
+
+      setInventoryLoading(true);
+
+      try {
+        const result = await adapter.getShiftInventorySummary(currentShiftId);
+        if (!isActive) {
+          return;
+        }
+
+        setInventorySummary(result);
+        setInventoryError(null);
+      } catch (error) {
+        if (!isActive) {
+          return;
+        }
+
+        setInventorySummary([]);
+        setInventoryError(getErrorMessage(error, "ยังไม่สามารถดึง summary สินค้าในกะนี้ได้"));
+      } finally {
+        if (isActive) {
+          setInventoryLoading(false);
+        }
+      }
+    }
+
+    void loadShiftInventory();
+
+    return () => {
+      isActive = false;
+    };
+  }, [adapter, currentShiftId, lastClosedShift?.shift_id]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -40,7 +102,7 @@ export default function CloseShiftPage() {
 
   if (!canRenderCloseFlow) {
     return (
-      <div className="rounded-[28px] border border-line bg-surface p-8 shadow-[var(--shadow)] backdrop-blur">
+      <div className="rounded-[28px] border border-line bg-surface p-8 shadow-(--shadow) backdrop-blur">
         <p className="text-sm uppercase tracking-[0.28em] text-muted">ต้องเปิดกะก่อน</p>
         <h2 className="mt-3 text-2xl font-semibold text-foreground">หน้านี้เริ่มใช้งานได้เมื่อมีกะที่เปิดอยู่</h2>
         <p className="mt-3 text-sm leading-7 text-muted">
@@ -73,7 +135,7 @@ export default function CloseShiftPage() {
               value={actualCash}
               onChange={(event) => setActualCash(event.target.value)}
               placeholder="กรอกจำนวนเงินที่นับได้"
-              className="mt-2 w-full rounded-[20px] border border-line bg-white px-4 py-3 text-foreground outline-none transition focus:border-accent"
+              className="mt-2 w-full rounded-[20px] border border-line bg-[#fff8de] px-4 py-3 text-[#17130a] placeholder:text-[#8a7840] outline-none transition focus:border-accent"
             />
           </label>
 
@@ -84,7 +146,7 @@ export default function CloseShiftPage() {
               onChange={(event) => setClosingNote(event.target.value)}
               rows={4}
               placeholder="บันทึกหมายเหตุเพิ่มเติมได้ถ้าต้องการ"
-              className="mt-2 w-full rounded-[20px] border border-line bg-white px-4 py-3 text-foreground outline-none transition focus:border-accent"
+              className="mt-2 w-full rounded-[20px] border border-line bg-[#fff8de] px-4 py-3 text-[#17130a] placeholder:text-[#8a7840] outline-none transition focus:border-accent"
             />
           </label>
 
@@ -107,14 +169,14 @@ export default function CloseShiftPage() {
       <section className="rounded-[28px] border border-line bg-surface-strong p-6 md:p-8">
         <p className="text-xs uppercase tracking-[0.28em] text-muted">ผลการปิดกะ</p>
         {!lastClosedShift ? (
-          <div className="mt-4 rounded-[24px] border border-dashed border-line bg-background p-6">
+          <div className="mt-4 rounded-3xl border border-dashed border-line bg-background p-6">
             <h2 className="text-xl font-semibold text-foreground">ยอดคาดหวังยังถูกซ่อนไว้ตามตั้งใจ</h2>
             <p className="mt-3 text-sm leading-7 text-muted">
               ต้องส่งยอดที่นับได้จริงก่อน แล้วระบบจะแสดงยอดคาดหวัง, ผลต่าง และเลขอ้างอิงรายการบัญชี
             </p>
           </div>
         ) : (
-          <div className="mt-4 rounded-[24px] border border-line bg-background p-6">
+          <div className="mt-4 rounded-3xl border border-line bg-background p-6">
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
                 <p className="text-sm text-muted">ยอดคาดหวัง</p>
@@ -151,6 +213,74 @@ export default function CloseShiftPage() {
             </button>
           </div>
         )}
+
+        <div className="mt-6 rounded-3xl border border-line bg-background p-6">
+          <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+            <div>
+              <p className="text-sm text-muted">summary สินค้าในกะนี้</p>
+              <h2 className="mt-2 text-2xl font-semibold text-foreground">สรุปยอดขายและ stock ตอนปิดกะ</h2>
+            </div>
+            <p className="text-sm text-muted">ดูได้ทั้งก่อนกดปิดกะและหลังปิดกะสำเร็จ</p>
+          </div>
+
+          {inventoryError ? (
+            <div className="mt-4 rounded-[20px] border border-warning bg-warning-soft px-4 py-3 text-sm text-foreground">
+              {inventoryError}
+            </div>
+          ) : null}
+
+          {inventoryLoading ? (
+            <div className="mt-4 rounded-3xl border border-dashed border-line bg-[#161510] p-4 text-sm text-muted">
+              กำลังโหลดสรุปสินค้าในกะ...
+            </div>
+          ) : inventorySummary.length > 0 ? (
+            <>
+              <div className="mt-4 grid gap-3 md:grid-cols-3">
+                <div className="rounded-[22px] border border-line bg-[#161510] p-4">
+                  <p className="text-xs font-semibold text-muted">stock ตั้งต้นรวม</p>
+                  <p className="mt-2 text-2xl font-semibold text-foreground">{inventoryTotals.opening_stock}</p>
+                </div>
+                <div className="rounded-[22px] border border-line bg-[#161510] p-4">
+                  <p className="text-xs font-semibold text-muted">ขายรวมทั้งกะ</p>
+                  <p className="mt-2 text-2xl font-semibold text-foreground">{inventoryTotals.sold_quantity}</p>
+                </div>
+                <div className="rounded-[22px] border border-line bg-[#161510] p-4">
+                  <p className="text-xs font-semibold text-muted">คงเหลือปัจจุบัน</p>
+                  <p className="mt-2 text-2xl font-semibold text-foreground">{inventoryTotals.remaining_stock}</p>
+                </div>
+              </div>
+
+              <div className="mt-4 overflow-hidden rounded-3xl border border-line bg-[#161510]">
+                <table className="min-w-full divide-y divide-line text-sm">
+                  <thead className="bg-[#0d0d0a]">
+                    <tr>
+                      <th className="px-4 py-3 text-left font-semibold text-muted">สินค้า</th>
+                      <th className="px-4 py-3 text-left font-semibold text-muted">SKU</th>
+                      <th className="px-4 py-3 text-left font-semibold text-muted">ตั้งต้น</th>
+                      <th className="px-4 py-3 text-left font-semibold text-muted">ขายไป</th>
+                      <th className="px-4 py-3 text-left font-semibold text-muted">คงเหลือ</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-line">
+                    {inventorySummary.map((row) => (
+                      <tr key={row.product_id}>
+                        <td className="px-4 py-4 text-[#f3e8ba]">{row.name}</td>
+                        <td className="px-4 py-4 text-[#f3e8ba]">{row.sku}</td>
+                        <td className="px-4 py-4 text-[#f3e8ba]">{row.opening_stock}</td>
+                        <td className="px-4 py-4 text-[#f3e8ba]">{row.sold_quantity}</td>
+                        <td className="px-4 py-4 text-[#f3e8ba]">{row.remaining_stock}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          ) : (
+            <div className="mt-4 rounded-3xl border border-dashed border-line bg-[#161510] p-4 text-sm text-muted">
+              ยังไม่มีสินค้าแบบ stock-tracked ในกะนี้
+            </div>
+          )}
+        </div>
       </section>
     </div>
   );

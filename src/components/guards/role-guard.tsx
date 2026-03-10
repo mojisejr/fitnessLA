@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { useMockSession } from "@/features/auth/mock-session-provider";
+import { useAuth } from "@/features/auth/auth-provider";
 import type { Role } from "@/lib/contracts";
 
 export function RoleGuard({
@@ -12,7 +12,7 @@ export function RoleGuard({
   allowedRoles: Role[];
   children: ReactNode;
 }) {
-  const { session, status } = useMockSession();
+  const { session, status } = useAuth();
 
   if (status === "loading") {
     return null;

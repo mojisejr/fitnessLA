@@ -21,6 +21,12 @@ export function formatDateTime(value: string) {
   }).format(new Date(value));
 }
 
+export function formatDate(value: string) {
+  return new Intl.DateTimeFormat("en-GB", {
+    dateStyle: "medium",
+  }).format(new Date(value));
+}
+
 export function sleep(duration = 320) {
   return new Promise((resolve) => setTimeout(resolve, duration));
 }
@@ -40,4 +46,17 @@ export function getErrorMessage(error: unknown, fallback = "Something went wrong
   }
 
   return fallback;
+}
+
+export function getErrorCode(error: unknown) {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    typeof error.code === "string"
+  ) {
+    return error.code;
+  }
+
+  return null;
 }

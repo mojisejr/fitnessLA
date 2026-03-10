@@ -2,10 +2,10 @@
 
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { useMockSession } from "@/features/auth/mock-session-provider";
+import { useAuth } from "@/features/auth/auth-provider";
 
 export function ShiftGuard({ children }: { children: ReactNode }) {
-  const { session, activeShift, status } = useMockSession();
+  const { session, activeShift, status } = useAuth();
 
   if (status === "loading") {
     return null;

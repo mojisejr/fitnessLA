@@ -1,4 +1,5 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
+import PosPage from "@/app/(app)/pos/page";
 import CloseShiftPage from "@/app/(app)/shift/close/page";
 import { clearMockSession, renderWithProviders, seedMockSession } from "./test-utils";
 
@@ -36,5 +37,31 @@ describe("close shift blind drop", () => {
     await waitFor(() => {
       expect(screen.getByText("ยอดคาดหวัง")).toBeInTheDocument();
     });
+  });
+
+  it("shows shift inventory summary on the close shift page", async () => {
+    const posView = renderWithProviders(<PosPage />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Add Mineral Water" })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Add Mineral Water" }));
+    fireEvent.click(screen.getByRole("button", { name: "คิดเงิน" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("คิดเงินสำเร็จ")).toBeInTheDocument();
+    });
+
+    posView.unmount();
+
+    renderWithProviders(<CloseShiftPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Mineral Water")).toBeInTheDocument();
+    });
+
+    expect(screen.getByText("summary สินค้าในกะนี้")).toBeInTheDocument();
+    expect(screen.getByText("ขายรวมทั้งกะ")).toBeInTheDocument();
   });
 });

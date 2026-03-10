@@ -1,16 +1,63 @@
 import type {
+  AdminUserRecord,
   CreateOrderRequest,
   DailySummary,
+  EntityId,
   MockShiftRecord,
   OrderResult,
   Product,
+  ShiftInventorySummaryRow,
   ShiftCloseResult,
   ShiftOpenResult,
+  UserSession,
 } from "@/lib/contracts";
-import type { AppAdapter, CreateChartOfAccountInput, CreateUserRequestInput } from "@/features/adapters/types";
+import type {
+  AppAdapter,
+  CreateAdminUserInput,
+  CreateChartOfAccountInput,
+  CreateProductInput,
+  UpdateProductInput,
+} from "@/features/adapters/types";
+import { readAuthState } from "@/features/auth/auth-storage";
+
+function createHeaders(headers?: HeadersInit): Headers {
+  const nextHeaders = new Headers(headers);
+  const session = readAuthState().session;
+
+  if (session?.user_id !== null && session?.user_id !== undefined && !nextHeaders.has("x-user-id")) {
+    nextHeaders.set("x-user-id", String(session.user_id));
+  }
+
+  if (session?.username && !nextHeaders.has("x-username")) {
+    nextHeaders.set("x-username", session.username);
+  }
+
+  return nextHeaders;
+}
 
 async function fetchJson<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
-  const response = await fetch(input, init);
+  const response = await fetch(input, {
+    ...init,
+    headers: createHeaders(init?.headers),
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({ message: "Request failed" }));
+    throw body;
+  }
+
+  return response.json() as Promise<T>;
+}
+
+async function fetchOptionalJson<T>(input: RequestInfo, init?: RequestInit): Promise<T | null> {
+  const response = await fetch(input, {
+    ...init,
+    headers: createHeaders(init?.headers),
+  });
+
+  if (response.status === 404) {
+    return null;
+  }
+
   if (!response.ok) {
     const body = await response.json().catch(() => ({ message: "Request failed" }));
     throw body;
@@ -30,13 +77,44 @@ export const realAppAdapter: AppAdapter = {
   mode: "real",
 
   async authenticateUser(username: string, password: string) {
-    void username;
     void password;
-    return notImplemented("ระบบ login จริงยังรอ Better Auth จากฝั่ง backend");
+    const normalizedUsername = username.trim();
+
+    if (!normalizedUsername) {
+      throw {
+        code: "INVALID_CREDENTIALS",
+        message: "กรุณาระบุชื่อผู้ใช้สำหรับเชื่อม session bridge",
+      };
+    }
+
+    return fetchJson<UserSession>("/api/auth/session", {
+      headers: {
+        "x-username": normalizedUsername,
+      },
+    });
+  },
+
+  async getActiveShift() {
+    return fetchOptionalJson<MockShiftRecord>("/api/v1/shifts/active");
   },
 
   async listProducts() {
     return fetchJson<Product[]>("/api/v1/products");
+  },
+
+  async createProduct(input: CreateProductInput) {
+    void input;
+    return notImplemented("Product create ยังมีเฉพาะ mock adapter ในรอบนี้");
+  },
+
+  async updateProduct(input: UpdateProductInput) {
+    void input;
+    return notImplemented("Product edit และ stock edit ยังมีเฉพาะ mock adapter ในรอบนี้");
+  },
+
+  async getShiftInventorySummary(shiftId: string | number) {
+    void shiftId;
+    return notImplemented("Shift inventory summary ยังมีเฉพาะ mock adapter ในรอบนี้");
   },
 
   async openShift(startingCash: number) {
@@ -65,14 +143,29 @@ export const realAppAdapter: AppAdapter = {
   },
 
   async createExpense(input: {
-    shift_id: number;
-    account_id: number;
+    shift_id: EntityId;
+    account_id: EntityId;
     amount: number;
     description: string;
     receiptName: string;
+    receiptFile?: File | null;
   }) {
-    void input;
-    return notImplemented("API รายจ่ายจริงยังต้องใช้ multipart upload adapter เพิ่ม");
+    const formData = new FormData();
+    formData.set("shift_id", String(input.shift_id));
+    formData.set("account_id", String(input.account_id));
+    formData.set("amount", String(input.amount));
+    formData.set("description", input.description);
+
+    if (input.receiptFile) {
+      formData.set("receipt_file", input.receiptFile, input.receiptFile.name || input.receiptName);
+    } else {
+      formData.set("receipt_url", input.receiptName);
+    }
+
+    return fetchJson("/api/v1/expenses", {
+      method: "POST",
+      body: formData,
+    });
   },
 
   async getDailySummary(date: string) {
@@ -86,19 +179,15 @@ export const realAppAdapter: AppAdapter = {
     void input;
     return notImplemented("COA create API จริงยังไม่ถูกล็อก contract");
   },
-  async toggleChartOfAccount(accountId: number) {
+  async toggleChartOfAccount(accountId: EntityId) {
     void accountId;
     return notImplemented("COA toggle API จริงยังไม่ถูกล็อก contract");
   },
-  async listUserRequests() {
-    return notImplemented("Admin user API จริงยังไม่ถูกล็อก contract");
-  },
-  async createUserRequest(input: CreateUserRequestInput) {
-    void input;
-    return notImplemented("Admin user API จริงยังไม่ถูกล็อก contract");
-  },
-  async approveUserRequest(requestId: number) {
-    void requestId;
-    return notImplemented("Admin user API จริงยังไม่ถูกล็อก contract");
+  async createAdminUser(input: CreateAdminUserInput) {
+    return fetchJson<AdminUserRecord>("/api/v1/admin/users", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    });
   },
 };

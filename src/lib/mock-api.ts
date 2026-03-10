@@ -2,6 +2,7 @@ import type {
   ApiError,
   CreateOrderRequest,
   DailySummary,
+  EntityId,
   ExpenseResult,
   MockShiftRecord,
   OrderResult,
@@ -80,7 +81,10 @@ export async function closeMockShift(input: {
     actual_cash: input.actualCash,
     difference,
     status: "CLOSED",
-    journal_entry_id: input.activeShift.shift_id + 9000,
+    journal_entry_id:
+      typeof input.activeShift.shift_id === "number"
+        ? input.activeShift.shift_id + 9000
+        : `${input.activeShift.shift_id}-close`,
   };
 }
 
@@ -113,8 +117,8 @@ export async function submitMockOrder(request: CreateOrderRequest): Promise<Orde
 }
 
 export async function submitMockExpense(input: {
-  shift_id: number;
-  account_id: number;
+  shift_id: EntityId;
+  account_id: EntityId;
   amount: number;
   description: string;
   receiptName: string;

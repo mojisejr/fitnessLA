@@ -1,8 +1,12 @@
 export type Role = "OWNER" | "ADMIN" | "CASHIER";
 
+export type EntityId = string | number;
+
 export type PaymentMethod = "CASH" | "PROMPTPAY" | "CREDIT_CARD";
 
 export type ProductType = "GOODS" | "SERVICE" | "MEMBERSHIP";
+
+export type MembershipPeriod = "DAILY" | "MONTHLY" | "QUARTERLY" | "SEMIANNUAL" | "YEARLY";
 
 export type AccountType = "ASSET" | "LIABILITY" | "EQUITY" | "REVENUE" | "EXPENSE";
 
@@ -13,39 +17,43 @@ export type ApiError = {
 };
 
 export interface UserSession {
-  user_id: number;
+  user_id: EntityId;
   username: string;
   full_name: string;
   role: Role;
-  active_shift_id: number | null;
+  active_shift_id: EntityId | null;
 }
 
 export interface ShiftOpenResult {
-  shift_id: number;
+  shift_id: EntityId;
   opened_at: string;
 }
 
 export interface ShiftCloseResult {
-  shift_id: number;
+  shift_id: EntityId;
   expected_cash: number;
   actual_cash: number;
   difference: number;
   status: "CLOSED";
-  journal_entry_id: number;
+  journal_entry_id: EntityId;
 }
 
 export interface Product {
-  product_id: number;
+  product_id: EntityId;
   sku: string;
   name: string;
   price: number;
   product_type: ProductType;
+  track_stock?: boolean;
+  stock_on_hand?: number | null;
+  membership_period?: MembershipPeriod | null;
+  membership_duration_days?: number | null;
 }
 
 export interface CreateOrderRequest {
-  shift_id: number;
+  shift_id: EntityId;
   items: {
-    product_id: number;
+    product_id: EntityId;
     quantity: number;
   }[];
   payment_method: PaymentMethod;
@@ -56,7 +64,7 @@ export interface CreateOrderRequest {
 }
 
 export interface OrderResult {
-  order_id: number;
+  order_id: EntityId;
   order_number: string;
   total_amount: number;
   tax_doc_number: string;
@@ -64,7 +72,7 @@ export interface OrderResult {
 }
 
 export interface ExpenseResult {
-  expense_id: number;
+  expense_id: EntityId;
   status: "POSTED";
 }
 
@@ -80,20 +88,54 @@ export interface DailySummary {
   shift_discrepancies: number;
 }
 
+export interface MemberSubscriptionRecord {
+  member_id: EntityId;
+  member_code: string;
+  full_name: string;
+  phone: string;
+  membership_product_id: EntityId;
+  membership_name: string;
+  membership_period: MembershipPeriod;
+  started_at: string;
+  expires_at: string;
+  checked_in_at: string | null;
+  renewed_at: string | null;
+  renewal_status: "ACTIVE" | "EXPIRES_TODAY" | "EXPIRED_NOT_RENEWED" | "RENEWED";
+}
+
+export interface ShiftInventorySummaryRow {
+  product_id: EntityId;
+  sku: string;
+  name: string;
+  opening_stock: number;
+  sold_quantity: number;
+  remaining_stock: number;
+}
+
 export interface MockExpenseAccount {
-  account_id: number;
+  account_id: EntityId;
   account_code: string;
   account_name: string;
 }
 
-export interface MockChartOfAccount {
-  account_id: number;
+export interface ChartOfAccountRecord {
+  account_id: EntityId;
   account_code: string;
   account_name: string;
   account_type: AccountType;
   is_active: boolean;
   description?: string;
   locked_reason?: string;
+}
+
+export type MockChartOfAccount = ChartOfAccountRecord;
+
+export interface AdminUserRecord {
+  user_id: EntityId;
+  username: string;
+  full_name: string;
+  email: string;
+  role: Role;
 }
 
 export interface MockPendingUser {
@@ -107,7 +149,7 @@ export interface MockPendingUser {
 }
 
 export interface MockShiftRecord {
-  shift_id: number;
+  shift_id: EntityId;
   opened_at: string;
   starting_cash: number;
 }

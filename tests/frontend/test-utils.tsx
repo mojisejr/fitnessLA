@@ -3,27 +3,29 @@ import { Provider as JotaiProvider } from "jotai";
 import type { ReactElement } from "react";
 import { AdapterProvider } from "@/features/adapters/adapter-provider";
 import { resetMockAdapterState } from "@/features/adapters/mock-app-adapter";
-import { MockSessionProvider } from "@/features/auth/mock-session-provider";
+import { AuthProvider } from "@/features/auth/auth-provider";
+import { resetMemberRegistry } from "@/features/members/member-registry";
 import {
-  clearMockSessionState,
+  clearAuthState,
   type StoredAuthState,
-  writeMockSessionState,
-} from "@/features/auth/mock-session-storage";
+  writeAuthState,
+} from "@/features/auth/auth-storage";
 
 export function seedMockSession(state: StoredAuthState) {
-  writeMockSessionState(state);
+  writeAuthState(state);
 }
 
 export function clearMockSession() {
   resetMockAdapterState();
-  clearMockSessionState();
+  resetMemberRegistry();
+  clearAuthState();
 }
 
 export function renderWithProviders(ui: ReactElement) {
   return render(
     <AdapterProvider>
       <JotaiProvider>
-        <MockSessionProvider>{ui}</MockSessionProvider>
+        <AuthProvider>{ui}</AuthProvider>
       </JotaiProvider>
     </AdapterProvider>,
   );

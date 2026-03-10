@@ -10,6 +10,51 @@ const prisma = new PrismaClient({
 });
 
 async function main() {
+  const seedUsers = [
+    {
+      id: "user-owner-dev",
+      name: "Lalin Charoen",
+      email: "owner@fitnessla.local",
+      username: "owner",
+      role: "OWNER",
+    },
+    {
+      id: "user-admin-dev",
+      name: "Niran Ops Lead",
+      email: "admin@fitnessla.local",
+      username: "admin",
+      role: "ADMIN",
+    },
+    {
+      id: "user-cashier-dev",
+      name: "Pim Counter",
+      email: "cashier@fitnessla.local",
+      username: "cashier",
+      role: "CASHIER",
+    },
+  ];
+
+  for (const user of seedUsers) {
+    await prisma.user.upsert({
+      where: { username: user.username },
+      update: {
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        isActive: true,
+        emailVerified: true,
+      },
+      create: {
+        ...user,
+        emailVerified: true,
+        isActive: true,
+        image: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    });
+  }
+
   const seedAccounts = [
     {
       code: "1010",

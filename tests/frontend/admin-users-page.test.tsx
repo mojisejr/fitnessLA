@@ -25,7 +25,7 @@ describe("admin users page", () => {
     expect(screen.getByText("บทบาทของคุณยังเข้าใช้งานหน้านี้ไม่ได้")).toBeInTheDocument();
   });
 
-  it("creates and approves an onboarding request", async () => {
+  it("creates a user directly through the current backend-aligned flow", async () => {
     seedMockSession({
       session: {
         user_id: 2,
@@ -48,21 +48,19 @@ describe("admin users page", () => {
     fireEvent.change(screen.getByPlaceholderText("ชื่อผู้ใช้"), {
       target: { value: "june.desk" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "สร้างคำขอ" }));
+    fireEvent.change(screen.getByPlaceholderText("อีเมล"), {
+      target: { value: "june.desk@example.com" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "สร้างผู้ใช้" }));
 
     await waitFor(() => {
-      expect(screen.getByText("สร้างคำขอผู้ใช้ june.desk เรียบร้อยแล้ว")).toBeInTheDocument();
+      expect(screen.getByText("สร้างผู้ใช้ june.desk เรียบร้อยแล้ว")).toBeInTheDocument();
     });
 
-    const approveButtons = screen.getAllByRole("button", { name: "อนุมัติคำขอ" });
-    fireEvent.click(approveButtons[0]);
-
-    await waitFor(() => {
-      expect(screen.getByText(/อนุมัติ .* แล้ว/)).toBeInTheDocument();
-    });
+    expect(screen.getByText("june.desk@example.com")).toBeInTheDocument();
   });
 
-  it("shows validation and empty state for filters", async () => {
+  it("shows validation and empty state for direct create mode", async () => {
     seedMockSession({
       session: {
         user_id: 2,
@@ -85,16 +83,13 @@ describe("admin users page", () => {
     fireEvent.change(screen.getByPlaceholderText("ชื่อผู้ใช้"), {
       target: { value: "@" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "สร้างคำขอ" }));
+    fireEvent.change(screen.getByPlaceholderText("อีเมล"), {
+      target: { value: "june.desk@example.com" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "สร้างผู้ใช้" }));
 
     expect(screen.getByText("ชื่อผู้ใช้ต้องมีอย่างน้อย 3 ตัว และใช้ได้เฉพาะ a-z, 0-9, จุด, ขีดล่าง, ขีดกลาง")).toBeInTheDocument();
 
-    fireEvent.change(screen.getByPlaceholderText("ค้นหาจากชื่อผู้ใช้, ชื่อพนักงาน หรือสาขา"), {
-      target: { value: "nobody-here" },
-    });
-
-    await waitFor(() => {
-      expect(screen.getByText("ไม่พบคำขอที่ตรงกับตัวกรองปัจจุบัน ลองเปลี่ยนคำค้นหรือสถานะใหม่")).toBeInTheDocument();
-    });
+    expect(screen.getByText(/ยังไม่มีผู้ใช้ที่สร้างใน session นี้/)).toBeInTheDocument();
   });
 });

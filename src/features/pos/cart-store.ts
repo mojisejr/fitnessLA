@@ -1,5 +1,5 @@
 import { atom } from "jotai";
-import type { Product } from "@/lib/contracts";
+import type { EntityId, Product } from "@/lib/contracts";
 
 export type CartLine = Product & {
   quantity: number;
@@ -19,7 +19,7 @@ export function addProductToCart(lines: CartLine[], product: Product) {
   );
 }
 
-export function updateProductQuantity(lines: CartLine[], productId: number, quantity: number) {
+export function updateProductQuantity(lines: CartLine[], productId: EntityId, quantity: number) {
   if (quantity <= 0) {
     return lines.filter((line) => line.product_id !== productId);
   }
@@ -45,7 +45,7 @@ export const addCartLineAtom = atom(null, (get, set, product: Product) => {
 
 export const updateCartLineAtom = atom(
   null,
-  (get, set, input: { productId: number; quantity: number }) => {
+  (get, set, input: { productId: EntityId; quantity: number }) => {
     set(
       cartLinesAtom,
       updateProductQuantity(get(cartLinesAtom), input.productId, input.quantity),
@@ -53,7 +53,7 @@ export const updateCartLineAtom = atom(
   },
 );
 
-export const removeCartLineAtom = atom(null, (get, set, productId: number) => {
+export const removeCartLineAtom = atom(null, (get, set, productId: EntityId) => {
   set(
     cartLinesAtom,
     get(cartLinesAtom).filter((line) => line.product_id !== productId),

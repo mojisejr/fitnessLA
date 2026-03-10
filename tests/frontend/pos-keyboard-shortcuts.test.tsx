@@ -36,11 +36,29 @@ describe("POS keyboard shortcuts", () => {
     });
 
     fireEvent.keyDown(window, { key: "2", altKey: true });
-    expect(screen.getByRole("button", { name: "PROMPTPAY" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "PromptPay" })).toHaveAttribute("aria-pressed", "true");
 
     fireEvent.keyDown(window, { key: "Escape" });
     await waitFor(() => {
       expect(screen.getByText(/ตะกร้ายังว่างอยู่/)).toBeInTheDocument();
     });
+  });
+
+  it("blocks increasing quantity beyond stock", async () => {
+    renderWithProviders(<PosPage />);
+
+    await waitFor(() => {
+      expect(screen.queryByText("กำลังโหลดสินค้า...")).not.toBeInTheDocument();
+    });
+
+    const shakeCard = screen.getByRole("button", { name: "Add Protein Shake" });
+
+    for (let index = 0; index < 6; index += 1) {
+      fireEvent.click(shakeCard);
+    }
+
+    fireEvent.click(shakeCard);
+
+    expect(screen.getByText("สต็อก Protein Shake คงเหลือ 6 ชิ้น")).toBeInTheDocument();
   });
 });
