@@ -298,4 +298,59 @@ describe("real-app-adapter — response shape alignment", () => {
       locked_reason: "ใช้งานแล้ว",
     });
   });
+
+  // ── 4G: Product Mapping ───────────────────────────────────────────────
+
+  it("4G-12: createProduct returns product with revenue_account_id", async () => {
+    const mockResponse = {
+      product_id: "prod-1",
+      sku: "MEM-001",
+      name: "Monthly Membership",
+      price: 1500,
+      product_type: "MEMBERSHIP",
+      revenue_account_id: "coa-4101",
+    };
+    mockFetchOk(mockResponse);
+
+    const result = await realAppAdapter.createProduct({
+      sku: "MEM-001",
+      name: "Monthly Membership",
+      price: 1500,
+      productType: "SERVICE",
+      revenueAccountId: "coa-4101",
+    });
+
+    expect(result).toMatchObject({
+      product_id: "prod-1",
+      sku: "MEM-001",
+      name: "Monthly Membership",
+      revenue_account_id: "coa-4101",
+    });
+  });
+
+  it("4G-13: updateProduct returns updated product mapping", async () => {
+    const mockResponse = {
+      product_id: "prod-1",
+      sku: "MEM-001",
+      name: "Monthly Membership Plus",
+      price: 1800,
+      product_type: "MEMBERSHIP",
+      revenue_account_id: "coa-4102",
+    };
+    mockFetchOk(mockResponse);
+
+    const result = await realAppAdapter.updateProduct({
+      productId: "prod-1",
+      sku: "MEM-001",
+      name: "Monthly Membership Plus",
+      price: 1800,
+      revenueAccountId: "coa-4102",
+    });
+
+    expect(result).toMatchObject({
+      product_id: "prod-1",
+      name: "Monthly Membership Plus",
+      revenue_account_id: "coa-4102",
+    });
+  });
 });

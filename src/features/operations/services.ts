@@ -8,6 +8,23 @@ export type ProductDto = {
   name: string;
   price: number;
   product_type: "GOODS" | "SERVICE" | "MEMBERSHIP";
+  revenue_account_id?: string;
+};
+
+export type CreateProductInputDto = {
+  sku: string;
+  name: string;
+  price: number;
+  product_type: "GOODS" | "SERVICE" | "MEMBERSHIP";
+  revenue_account_id?: string;
+};
+
+export type UpdateProductInputDto = {
+  product_id: string;
+  sku: string;
+  name: string;
+  price: number;
+  revenue_account_id?: string;
 };
 
 export type ActiveShiftDto = {
@@ -169,6 +186,61 @@ function assertProductType(value: string): "GOODS" | "SERVICE" | "MEMBERSHIP" {
   return "SERVICE";
 }
 
+function mapProductRecord(product: {
+  id: string;
+  sku: string;
+  name: string;
+  price: Prisma.Decimal;
+  productType: string;
+  revenueAccountId?: string | null;
+}): ProductDto {
+  return {
+    product_id: product.id,
+    sku: product.sku,
+    name: product.name,
+    price: Number(product.price),
+    product_type: assertProductType(product.productType),
+    revenue_account_id: product.revenueAccountId ?? undefined,
+  };
+}
+
+async function resolveRevenueAccountId(
+  client: Prisma.TransactionClient | typeof prisma,
+  requestedId: string | undefined,
+): Promise<string> {
+  if (requestedId) {
+    const account = await client.chartOfAccount.findUnique({ where: { id: requestedId } });
+    if (!account) {
+      throw new Error("REVENUE_ACCOUNT_NOT_FOUND");
+    }
+
+    if (account.type !== "REVENUE") {
+      throw new Error("INVALID_REVENUE_ACCOUNT_TYPE");
+    }
+
+    if (!account.isActive) {
+      throw new Error("REVENUE_ACCOUNT_INACTIVE");
+    }
+
+    return account.id;
+  }
+
+  const defaultRevenueAccount = await client.chartOfAccount.findUnique({ where: { code: "4010" } });
+  if (!defaultRevenueAccount) {
+    throw new Error("REVENUE_ACCOUNT_NOT_FOUND");
+  }
+
+  if (defaultRevenueAccount.type !== "REVENUE") {
+    throw new Error("INVALID_REVENUE_ACCOUNT_TYPE");
+  }
+
+  if (!defaultRevenueAccount.isActive) {
+    throw new Error("REVENUE_ACCOUNT_INACTIVE");
+  }
+
+  return defaultRevenueAccount.id;
+}
+
 function assertPaymentMethod(value: string): PaymentMethod {
   if (value === "CASH" || value === "PROMPTPAY" || value === "CREDIT_CARD") {
     return value;
@@ -229,13 +301,79 @@ export async function listProducts(): Promise<ProductDto[]> {
     orderBy: { createdAt: "asc" },
   });
 
-  return products.map((product) => ({
-    product_id: product.id,
-    sku: product.sku,
-    name: product.name,
-    price: Number(product.price),
-    product_type: assertProductType(product.productType),
-  }));
+  return products.map((product) =>
+    mapProductRecord({
+      ...product,
+      revenueAccountId: product.revenueAccountId,
+    }),
+  );
+}
+
+export async function createProduct(input: CreateProductInputDto): Promise<ProductDto> {
+  const sku = input.sku.trim();
+  const name = input.name.trim();
+
+  if (!sku || !name) {
+    throw new Error("INVALID_PRODUCT");
+  }
+
+  if (input.price < 0) {
+    throw new Error("INVALID_PRODUCT_PRICE");
+  }
+
+  const productType = assertProductType(input.product_type);
+  const revenueAccountId = await resolveRevenueAccountId(prisma, input.revenue_account_id);
+
+  const created = await prisma.product.create({
+    data: {
+      sku,
+      name,
+      price: asMoney(input.price),
+      productType,
+      isActive: true,
+      revenueAccountId,
+    },
+  });
+
+  return mapProductRecord({
+    ...created,
+    revenueAccountId: created.revenueAccountId,
+  });
+}
+
+export async function updateProduct(input: UpdateProductInputDto): Promise<ProductDto> {
+  const sku = input.sku.trim();
+  const name = input.name.trim();
+
+  if (!sku || !name) {
+    throw new Error("INVALID_PRODUCT");
+  }
+
+  if (input.price < 0) {
+    throw new Error("INVALID_PRODUCT_PRICE");
+  }
+
+  const existing = await prisma.product.findUnique({ where: { id: input.product_id } });
+  if (!existing) {
+    throw new Error("PRODUCT_NOT_FOUND");
+  }
+
+  const revenueAccountId = await resolveRevenueAccountId(prisma, input.revenue_account_id);
+
+  const updated = await prisma.product.update({
+    where: { id: existing.id },
+    data: {
+      sku,
+      name,
+      price: asMoney(input.price),
+      revenueAccountId,
+    },
+  });
+
+  return mapProductRecord({
+    ...updated,
+    revenueAccountId: updated.revenueAccountId,
+  });
 }
 
 export async function getActiveShiftByStaff(staffId: string): Promise<ActiveShiftDto | null> {

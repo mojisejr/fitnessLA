@@ -104,13 +104,32 @@ export const realAppAdapter: AppAdapter = {
   },
 
   async createProduct(input: CreateProductInput) {
-    void input;
-    return notImplemented("Product create ยังมีเฉพาะ mock adapter ในรอบนี้");
+    return fetchJson<Product>("/api/v1/products", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sku: input.sku,
+        name: input.name,
+        price: input.price,
+        product_type: input.productType,
+        revenue_account_id:
+          input.revenueAccountId === undefined ? undefined : String(input.revenueAccountId),
+      }),
+    });
   },
 
   async updateProduct(input: UpdateProductInput) {
-    void input;
-    return notImplemented("Product edit และ stock edit ยังมีเฉพาะ mock adapter ในรอบนี้");
+    return fetchJson<Product>(`/api/v1/products/${encodeURIComponent(String(input.productId))}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sku: input.sku,
+        name: input.name,
+        price: input.price,
+        revenue_account_id:
+          input.revenueAccountId === undefined ? undefined : String(input.revenueAccountId),
+      }),
+    });
   },
 
   async getShiftInventorySummary(shiftId: string | number) {

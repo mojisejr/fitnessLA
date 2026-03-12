@@ -34,6 +34,7 @@ export type UpdateProductInput = {
   sku: string;
   name: string;
   price: number;
+  revenueAccountId?: EntityId;
   stockOnHand?: number | null;
 };
 
@@ -42,6 +43,7 @@ export type CreateProductInput = {
   name: string;
   price: number;
   productType: "GOODS" | "SERVICE";
+  revenueAccountId?: EntityId;
   stockOnHand?: number | null;
 };
 

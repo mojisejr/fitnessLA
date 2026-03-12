@@ -58,6 +58,8 @@
 - [x] เขียน Unit Test ใน `tests/backend/coa-routes.test.ts`
 
 ### Step 4: Accounting Trigger Logic
+- [x] Product-to-COA Binding (Backend A): เพิ่ม `revenueAccountId` ใน `Product`, เปิด `POST/PATCH /api/v1/products`, และเชื่อม `real-app-adapter` สำหรับ create/update product
+- [ ] Product-to-COA Binding (Frontend B): เพิ่ม UI เลือก Revenue Account ในหน้าจัดการสินค้า
 - [ ] แก้ไข Logic ใน `POST /api/v1/orders` ให้เรียกใช้ Journaling Service
 - [ ] แก้ไข Logic ใน `POST /api/v1/expenses` ให้เรียกใช้ Journaling Service
 

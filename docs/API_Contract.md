@@ -93,6 +93,34 @@ interface Product {
   name: string;
   price: number;
   product_type: 'GOODS' | 'SERVICE' | 'MEMBERSHIP';
+  revenue_account_id?: string;
+}
+```
+
+### **POST /api/v1/products**
+- **Purpose:** สร้างสินค้าใหม่และผูก Revenue Account (COA)
+- **Auth:** `OWNER` | `ADMIN`
+- **Request:**
+```typescript
+interface CreateProductRequest {
+  sku: string;
+  name: string;
+  price: number;
+  product_type: 'GOODS' | 'SERVICE' | 'MEMBERSHIP';
+  revenue_account_id?: string; // optional, defaults to account code 4010
+}
+```
+
+### **PATCH /api/v1/products/:productId**
+- **Purpose:** แก้ไขสินค้าและสลับ Revenue Account Mapping
+- **Auth:** `OWNER` | `ADMIN`
+- **Request:**
+```typescript
+interface UpdateProductRequest {
+  sku: string;
+  name: string;
+  price: number;
+  revenue_account_id?: string;
 }
 ```
 
