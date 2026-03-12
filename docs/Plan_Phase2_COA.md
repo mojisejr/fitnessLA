@@ -47,15 +47,15 @@
 ## 🛠️ Implementation Plan (Implementation Script)
 
 ### Step 1: Schema Update (Prisma)
-- [ ] Update `prisma/schema.prisma` เพื่อยืนยันความสัมพันธ์ (Relation) ระหว่าง `Product` และ `ChartOfAccount`
-- [ ] Run `npx prisma migrate dev --name phase2_coa_mapping`
+- [x] Update `prisma/schema.prisma` เพื่อรองรับ COA API contract (`isActive`, `description`, `lockedReason`)
+- [x] Run `npx prisma migrate dev --name phase2_coa_mapping`
 
 ### Step 2: Seed COA Standard
 - [ ] สร้างชุดข้อมูลบัญชีมาตรฐาน (Standard COA) เช่น 1101 (Cash), 4101 (Sales), 5101 (Petty Cash)
 
 ### Step 3: Backend API (COA CRUD)
-- [ ] Implement Route Handlers ใน `src/app/api/v1/coa/route.ts`
-- [ ] เขียน Unit Test ใน `tests/backend/coa.test.ts`
+- [x] Implement Route Handlers ใน `src/app/api/v1/coa/route.ts` และ `src/app/api/v1/coa/[accountId]/toggle/route.ts`
+- [x] เขียน Unit Test ใน `tests/backend/coa-routes.test.ts`
 
 ### Step 4: Accounting Trigger Logic
 - [ ] แก้ไข Logic ใน `POST /api/v1/orders` ให้เรียกใช้ Journaling Service

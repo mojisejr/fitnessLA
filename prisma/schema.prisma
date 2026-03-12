@@ -83,6 +83,9 @@ model ChartOfAccount {
   name          String
   type          String // ASSET, LIABILITY, EQUITY, REVENUE, EXPENSE
   normalBalance String // DEBIT, CREDIT
+  isActive      Boolean       @default(true)
+  description   String?
+  lockedReason  String?
   journalLines  JournalLine[]
   expenses      Expense[]
   createdAt     DateTime      @default(now())

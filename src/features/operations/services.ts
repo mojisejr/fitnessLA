@@ -86,11 +86,80 @@ export type DailySummaryDto = {
   shift_discrepancies: number;
 };
 
+export type ChartOfAccountRecordDto = {
+  account_id: string;
+  account_code: string;
+  account_name: string;
+  account_type: "ASSET" | "LIABILITY" | "EQUITY" | "REVENUE" | "EXPENSE";
+  is_active: boolean;
+  description?: string;
+  locked_reason?: string;
+};
+
+export type CreateChartOfAccountInput = {
+  account_code: string;
+  account_name: string;
+  account_type: "ASSET" | "LIABILITY" | "EQUITY" | "REVENUE" | "EXPENSE";
+  description?: string;
+};
+
 type LockedSequenceRow = {
   id: string;
   prefix: string;
   currentNo: number;
 };
+
+const protectedAccountCodes = new Set(["1010", "3010", "4010", "4020", "5050"]);
+
+function getProtectedAccountReason(accountCode: string): string | null {
+  if (!protectedAccountCodes.has(accountCode)) {
+    return null;
+  }
+
+  return "บัญชีนี้ถูกอ้างอิงในธุรกรรมหลักของระบบ จึงไม่สามารถปิดใช้งานได้";
+}
+
+function toNormalBalance(accountType: CreateChartOfAccountInput["account_type"]): "DEBIT" | "CREDIT" {
+  return accountType === "ASSET" || accountType === "EXPENSE" ? "DEBIT" : "CREDIT";
+}
+
+function toAccountType(
+  value: string,
+): "ASSET" | "LIABILITY" | "EQUITY" | "REVENUE" | "EXPENSE" {
+  if (
+    value === "ASSET" ||
+    value === "LIABILITY" ||
+    value === "EQUITY" ||
+    value === "REVENUE" ||
+    value === "EXPENSE"
+  ) {
+    return value;
+  }
+
+  throw new Error("INVALID_ACCOUNT_TYPE");
+}
+
+function mapChartOfAccountRecord(account: {
+  id: string;
+  code: string;
+  name: string;
+  type: string;
+  isActive?: boolean;
+  description?: string | null;
+  lockedReason?: string | null;
+}): ChartOfAccountRecordDto {
+  const protectedReason = getProtectedAccountReason(account.code);
+
+  return {
+    account_id: account.id,
+    account_code: account.code,
+    account_name: account.name,
+    account_type: toAccountType(account.type),
+    is_active: account.isActive ?? true,
+    description: account.description ?? undefined,
+    locked_reason: account.lockedReason ?? protectedReason ?? undefined,
+  };
+}
 
 function assertProductType(value: string): "GOODS" | "SERVICE" | "MEMBERSHIP" {
   if (value === "GOODS" || value === "SERVICE" || value === "MEMBERSHIP") {
@@ -722,4 +791,84 @@ export async function getDailySummaryByDate(date: string): Promise<DailySummaryD
     net_cash_flow: Number((salesByMethod.CASH - totalExpenses).toFixed(2)),
     shift_discrepancies: Number(shiftDiscrepancies.toFixed(2)),
   };
+}
+
+export async function listChartOfAccounts(): Promise<ChartOfAccountRecordDto[]> {
+  const accounts = await prisma.chartOfAccount.findMany({
+    orderBy: [{ code: "asc" }],
+  });
+
+  return accounts.map((account) =>
+    mapChartOfAccountRecord({
+      ...account,
+      isActive: account.isActive,
+      description: account.description,
+      lockedReason: account.lockedReason,
+    }),
+  );
+}
+
+export async function createChartOfAccount(
+  input: CreateChartOfAccountInput,
+): Promise<ChartOfAccountRecordDto> {
+  const accountCode = input.account_code.trim();
+  const accountName = input.account_name.trim();
+
+  if (!/^\d{4,}$/.test(accountCode)) {
+    throw new Error("INVALID_ACCOUNT_CODE");
+  }
+
+  if (accountName.length < 3) {
+    throw new Error("INVALID_ACCOUNT_NAME");
+  }
+
+  const created = await prisma.chartOfAccount.create({
+    data: {
+      code: accountCode,
+      name: accountName,
+      type: input.account_type,
+      normalBalance: toNormalBalance(input.account_type),
+      isActive: true,
+      description: input.description?.trim() || null,
+      lockedReason: null,
+    },
+  });
+
+  return mapChartOfAccountRecord({
+    ...created,
+    isActive: created.isActive,
+    description: created.description,
+    lockedReason: created.lockedReason,
+  });
+}
+
+export async function toggleChartOfAccount(accountId: string): Promise<ChartOfAccountRecordDto> {
+  const account = await prisma.chartOfAccount.findUnique({
+    where: { id: accountId },
+  });
+
+  if (!account) {
+    throw new Error("ACCOUNT_NOT_FOUND");
+  }
+
+  const protectedReason = getProtectedAccountReason(account.code);
+  const lockedReason = account.lockedReason ?? protectedReason;
+
+  if (lockedReason) {
+    throw new Error("ACCOUNT_LOCKED");
+  }
+
+  const updated = await prisma.chartOfAccount.update({
+    where: { id: accountId },
+    data: {
+      isActive: !account.isActive,
+    },
+  });
+
+  return mapChartOfAccountRecord({
+    ...updated,
+    isActive: updated.isActive,
+    description: updated.description,
+    lockedReason: updated.lockedReason,
+  });
 }

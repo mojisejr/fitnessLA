@@ -1,5 +1,5 @@
 import { realAppAdapter } from "@/features/adapters/real-app-adapter";
-import type { CreateChartOfAccountInput, CreateProductInput, UpdateProductInput } from "@/features/adapters/types";
+import type { CreateProductInput, UpdateProductInput } from "@/features/adapters/types";
 
 /**
  * Phase 3: notImplemented Surface Tests
@@ -25,13 +25,6 @@ describe("real-app-adapter — notImplemented surface", () => {
     stockOnHand: 10,
   };
 
-  const DUMMY_COA_INPUT: CreateChartOfAccountInput = {
-    account_code: "5001",
-    account_name: "Operating Expense",
-    account_type: "EXPENSE",
-    description: "General operating costs",
-  };
-
   it("3-1: createProduct throws NOT_IMPLEMENTED", async () => {
     await expect(
       realAppAdapter.createProduct(DUMMY_PRODUCT_INPUT),
@@ -50,21 +43,4 @@ describe("real-app-adapter — notImplemented surface", () => {
     ).rejects.toMatchObject({ code: "NOT_IMPLEMENTED" });
   });
 
-  it("3-4: listChartOfAccounts throws NOT_IMPLEMENTED", async () => {
-    await expect(
-      realAppAdapter.listChartOfAccounts(),
-    ).rejects.toMatchObject({ code: "NOT_IMPLEMENTED" });
-  });
-
-  it("3-5: createChartOfAccount throws NOT_IMPLEMENTED", async () => {
-    await expect(
-      realAppAdapter.createChartOfAccount(DUMMY_COA_INPUT),
-    ).rejects.toMatchObject({ code: "NOT_IMPLEMENTED" });
-  });
-
-  it("3-6: toggleChartOfAccount throws NOT_IMPLEMENTED", async () => {
-    await expect(
-      realAppAdapter.toggleChartOfAccount("1"),
-    ).rejects.toMatchObject({ code: "NOT_IMPLEMENTED" });
-  });
 });

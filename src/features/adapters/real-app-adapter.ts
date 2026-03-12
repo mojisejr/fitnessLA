@@ -174,15 +174,19 @@ export const realAppAdapter: AppAdapter = {
   },
 
   async listChartOfAccounts() {
-    return notImplemented("COA API จริงยังไม่ถูกล็อก contract");
+    return fetchJson("/api/v1/coa");
   },
   async createChartOfAccount(input: CreateChartOfAccountInput) {
-    void input;
-    return notImplemented("COA create API จริงยังไม่ถูกล็อก contract");
+    return fetchJson("/api/v1/coa", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    });
   },
   async toggleChartOfAccount(accountId: EntityId) {
-    void accountId;
-    return notImplemented("COA toggle API จริงยังไม่ถูกล็อก contract");
+    return fetchJson(`/api/v1/coa/${encodeURIComponent(String(accountId))}/toggle`, {
+      method: "PATCH",
+    });
   },
   async createAdminUser(input: CreateAdminUserInput) {
     return fetchJson<AdminUserRecord>("/api/v1/admin/users", {

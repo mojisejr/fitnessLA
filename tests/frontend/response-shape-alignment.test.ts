@@ -221,4 +221,81 @@ describe("real-app-adapter — response shape alignment", () => {
       message: "Request failed",
     });
   });
+
+  // ── 4F: COA ───────────────────────────────────────────────────────────
+
+  it("4F-9: listChartOfAccounts returns full account list shape", async () => {
+    const mockResponse = [
+      {
+        account_id: "coa-1",
+        account_code: "4101",
+        account_name: "Membership Revenue",
+        account_type: "REVENUE",
+        is_active: true,
+        description: "รายได้ค่าสมาชิก",
+      },
+    ];
+    mockFetchOk(mockResponse);
+
+    const result = await realAppAdapter.listChartOfAccounts();
+
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({
+      account_id: "coa-1",
+      account_code: "4101",
+      account_name: "Membership Revenue",
+      account_type: "REVENUE",
+      is_active: true,
+    });
+  });
+
+  it("4F-10: createChartOfAccount returns created account shape", async () => {
+    const mockResponse = {
+      account_id: "coa-2",
+      account_code: "5209",
+      account_name: "Utilities Expense",
+      account_type: "EXPENSE",
+      is_active: true,
+      description: "ค่าน้าและไฟ",
+    };
+    mockFetchOk(mockResponse);
+
+    const result = await realAppAdapter.createChartOfAccount({
+      account_code: "5209",
+      account_name: "Utilities Expense",
+      account_type: "EXPENSE",
+      description: "ค่าน้าและไฟ",
+    });
+
+    expect(result).toMatchObject({
+      account_id: "coa-2",
+      account_code: "5209",
+      account_name: "Utilities Expense",
+      account_type: "EXPENSE",
+      is_active: true,
+    });
+  });
+
+  it("4F-11: toggleChartOfAccount returns updated account shape", async () => {
+    const mockResponse = {
+      account_id: "coa-3",
+      account_code: "5201",
+      account_name: "Cleaning Supplies",
+      account_type: "EXPENSE",
+      is_active: false,
+      locked_reason: "ใช้งานแล้ว",
+    };
+    mockFetchOk(mockResponse);
+
+    const result = await realAppAdapter.toggleChartOfAccount("coa-3");
+
+    expect(result).toMatchObject({
+      account_id: "coa-3",
+      account_code: "5201",
+      account_name: "Cleaning Supplies",
+      account_type: "EXPENSE",
+      is_active: false,
+      locked_reason: "ใช้งานแล้ว",
+    });
+  });
 });
