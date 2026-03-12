@@ -47,10 +47,10 @@
 - **Strict Blind Drop:** การคุมพนักงานตอนปิดกะ (`shifts.expected_cash` vs `shifts.actual_cash`) เพื่อตรวจจับส่วนต่าง (`difference`)
 
 ## 🚩 Status & Signals
-- **Current Phase:** Phase 1.5 (Real Auth Activated, Agent B Integration Polish)
-- **Latest Update:** 2026-03-11 (Better-Auth cookie session migration complete, middleware guard active, hard gate passed)
+- **Current Phase:** Phase 2 Completed (Accounting Soul backend complete, Agent B integration in progress)
+- **Latest Update:** 2026-03-12 (Dynamic Revenue Journaling + GL CSV export complete, hard gate passed 89/89)
 - **Shared Agreement:** ยึด `API_Contract.md` เป็นหัวใจหลักในการคุยกัน และให้ Agent B เดินงานต่อผ่าน `real-app-adapter.ts` เป็นจุดเชื่อมเดียว
-- **Handoff Doc (Agent B):** [docs/Handoff_2026-03-11_Agent-B_Real-Mode.md](docs/Handoff_2026-03-11_Agent-B_Real-Mode.md)
+- **Handoff Doc (Agent B):** [docs/Handoff_2026-03-12_Agent-B_Phase2-Ready.md](docs/Handoff_2026-03-12_Agent-B_Phase2-Ready.md)
 
 ## 🤝 Implementation Integration Matrix (Agent A ⬌ Agent B)
 *(Use this matrix to track feature handoffs from Mock to Real)*
@@ -64,6 +64,9 @@
 | **Petty Cash** | ✅ DONE (`POST /api/v1/expenses`) | 🏗️ Mocked | Agent B ผูก `real-app-adapter.ts` |
 | **Close Shift** | ✅ DONE (`POST /api/v1/shifts/close`) | 🏗️ Mocked | Agent B switch close flow to real adapter endpoint |
 | **Daily Summary** | ✅ DONE (`GET /api/v1/reports/daily-summary`) | 🏗️ Mocked | Agent B switch report page to real adapter endpoint |
+| **COA Management** | ✅ DONE (`GET/POST /api/v1/coa`, `PATCH /api/v1/coa/:id/toggle`) | 🏗️ Shell ready | Agent B ต่อหน้า COA กับ real adapter และจัดการ error state |
+| **Product-COA Mapping** | ✅ DONE (`POST/PATCH /api/v1/products` + `revenue_account_id`) | 🏗️ Partial | Agent B เพิ่ม UI เลือกบัญชีรายได้ตอน create/edit product |
+| **General Ledger CSV** | ✅ DONE (`GET /api/v1/reports/gl`) | 🏗️ Placeholder | Agent B ต่อปุ่ม Download CSV ด้วย `start_date/end_date` |
 
 ## 🔄 2026-03-11 Grounding Delta (For Agent B)
 
@@ -89,3 +92,27 @@
 1. ปิดงาน smoke test + regression ย่อยในโหมด real
 2. Freeze รายการ mismatch ระหว่าง UI กับ API contract ที่ยังขาด
 3. เปิดแผน Phase 2 สำหรับ COA/Product management/report APIs ตามลำดับความสำคัญของ owner
+
+## 🔄 2026-03-12 Grounding Delta (For Agent B)
+
+### ✅ Done ล่าสุด (ล็อกแล้ว)
+- Dynamic revenue journaling ใน `createOrderWithJournal` ใช้งานแล้ว: เครดิตบัญชีรายได้ตามสินค้า และ fallback บัญชี `4010`
+- GL export API พร้อมใช้งานแล้วที่ `GET /api/v1/reports/gl?start_date=YYYY-MM-DD&end_date=YYYY-MM-DD`
+- COA และ Product revenue mapping พร้อมใช้งานจริงผ่าน `real-app-adapter.ts`
+- Hard gate ผ่านครบ: `npm run build`, `npm run lint`, `npx vitest run` (89/89)
+
+### 🟡 Remaining สำหรับ Agent B
+- ต่อหน้า `/reports/general-ledger` จาก placeholder เป็น flow ดาวน์โหลด CSV จริง
+- ต่อหน้า COA/Product management ให้ครบ real mode โดยยึด response shape ใน `API_Contract.md`
+- เพิ่ม UX state (loading/error/empty/success) สำหรับ COA, Product update, GL export
+
+### 🔴 Must Not Forget
+- ทุกคำขอที่เรียก API ต้องส่ง cookie (`credentials: include`) ใน real adapter
+- GL endpoint คืนค่าเป็น `text/csv` (ไม่ใช่ JSON) และต้องส่ง query params ทั้ง `start_date` และ `end_date`
+- ห้ามแก้ชื่อ field contract ฝั่ง frontend (`revenue_account_id`, `account_code`, `account_name`) โดยไม่อัปเดต contract ก่อน
+- อย่าทำ bypass flow เปิดกะ/ปิดกะใน UI เพราะ backend ใช้ hard gate (`SHIFT_NOT_OPEN`, `SHIFT_OWNER_MISMATCH`)
+
+### 🚀 แผนต่อไป
+1. Agent B ต่อปุ่ม export CSV ที่หน้า General Ledger แล้วทำ smoke test บน owner account
+2. Agent B ต่อฟอร์ม Product create/edit ให้เลือก revenue account จาก `/api/v1/coa`
+3. รัน regression frontend tests และเพิ่ม test สำหรับ GL download interaction

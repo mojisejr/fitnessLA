@@ -1,6 +1,6 @@
 # API Interface Contract (Phase 1)
 **Project:** fitnessLA (Gym Management System)
-**Status:** Current Working Contract as of 2026-03-10
+**Status:** Current Working Contract as of 2026-03-12
 **Governance:** Person A (Backend/Logic) & Person B (Frontend/UX) must adhere to these types and update this file when implementation drifts.
 
 ---
@@ -8,7 +8,7 @@
 ## 🛠️ Global Config & Error Handling
 - **Base URL:** `/api/v1`
 - **Auth Session Endpoint:** `/api/auth/session`
-- **Current Session Mode:** Temporary header-based bridge in implementation today. Better Auth full browser flow is not the final locked contract yet.
+- **Current Session Mode:** Better-Auth cookie session (browser credentials mode)
 - **ID Format (Current Backend Reality):** Primary entity identifiers currently come back as `string` from Prisma-backed routes.
 - **Standard Error Body:**
   ```typescript
@@ -39,7 +39,7 @@ interface UserSession {
 }
 ```
 
-**Current implementation note:** route ปัจจุบัน resolve session จาก request headers (`x-user-id` หรือ `x-username`) เพื่อใช้เป็น bridge ระหว่างรอ auth flow จริงครบ
+**Current implementation note:** route ปัจจุบันใช้ cookie session จาก Better-Auth โดยตรง (real mode)
 
 ---
 
@@ -202,12 +202,12 @@ interface OrderResult {
 ## 6. Chart of Accounts (COA)
 ### **Current Status**
 - Frontend มีหน้า COA และใช้ adapter contract แล้ว
-- Backend route สำหรับ COA ยังไม่ถูก implement ใน route set ปัจจุบัน
-- ด้านล่างนี้คือ draft contract ที่ต้องใช้ร่วมกันก่อนเริ่มต่อ API จริง
+- Backend routes ถูก implement แล้วใน route set ปัจจุบัน
+- Contract ด้านล่างคือ shape ที่ใช้งานจริง
 
 ### **GET /api/v1/coa**
 - **Purpose:** โหลดผังบัญชีทั้งหมดเพื่อใช้ในหน้า COA และเลือก expense account
-- **Draft Response:**
+- **Response:**
   ```typescript
   interface ChartOfAccountRecord {
     account_id: string;
@@ -222,7 +222,7 @@ interface OrderResult {
 
 ### **POST /api/v1/coa**
 - **Purpose:** สร้างรหัสบัญชีใหม่
-- **Draft Request:**
+- **Request:**
   ```typescript
   interface CreateChartOfAccountRequest {
     account_code: string;
@@ -231,11 +231,11 @@ interface OrderResult {
     description?: string;
   }
   ```
-- **Draft Response:** `ChartOfAccountRecord`
+- **Response:** `ChartOfAccountRecord`
 
 ### **PATCH /api/v1/coa/:accountId/toggle**
 - **Purpose:** เปิดหรือปิดการใช้งานบัญชี
-- **Draft Response:** `ChartOfAccountRecord`
+- **Response:** `ChartOfAccountRecord`
 - **Validation Note:** ถ้าบัญชีถูก lock ด้วย usage ทางบัญชี ให้ตอบ error เช่น `ACCOUNT_LOCKED`
 
 **Frontend readiness note:** ฝั่ง UI ถูกเตรียมให้ใช้ shape นี้แล้ว ดังนั้น backend ควรยึด field names ตาม draft นี้เพื่อลด mapping ที่ไม่จำเป็น
@@ -243,7 +243,7 @@ interface OrderResult {
 ---
 
 ## 7. Accounting & Reports (Owner/Accountant)
-### **GET /api/reports/daily-summary?date=YYYY-MM-DD**
+### **GET /api/v1/reports/daily-summary?date=YYYY-MM-DD**
 ```typescript
 interface DailySummary {
   total_sales: number;
@@ -254,7 +254,18 @@ interface DailySummary {
 }
 ```
 
-**Current implementation status:** daily summary is implemented. Shift summary, P&L, general ledger, and export endpoints are not yet part of the implemented route set.
+### **GET /api/v1/reports/gl?start_date=YYYY-MM-DD&end_date=YYYY-MM-DD**
+- **Purpose:** Export General Ledger by date range in CSV format
+- **Auth:** `OWNER` | `ADMIN`
+- **Response:** `text/csv; charset=utf-8`
+- **Header:** `Date,Account Code,Account Name,Debit,Credit,Description`
+- **CSV row example:**
+  ```csv
+  2026-03-09,1010,Cash,3000.00,0.00,Order ORD-2026-0001
+  ```
+- **Validation:** ถ้า query date format ผิดหรือช่วงวันที่ไม่ถูกต้อง ให้คืน `400` พร้อม `code` เป็น `VALIDATION_ERROR` หรือ `INVALID_DATE_RANGE`
+
+**Current implementation status:** daily summary, COA routes, product revenue mapping, และ general ledger CSV export ถูก implement แล้ว. Shift summary และ P&L ยังรอ implementation.
 
 ---
 
