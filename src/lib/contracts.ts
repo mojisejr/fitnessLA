@@ -44,6 +44,7 @@ export interface Product {
   name: string;
   price: number;
   product_type: ProductType;
+  revenue_account_id?: EntityId;
   track_stock?: boolean;
   stock_on_hand?: number | null;
   membership_period?: MembershipPeriod | null;

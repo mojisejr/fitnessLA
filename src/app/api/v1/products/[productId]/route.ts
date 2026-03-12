@@ -1,36 +1,24 @@
-import { Prisma } from "@prisma/client";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { createProduct, listProducts } from "@/features/operations/services";
+import { updateProduct } from "@/features/operations/services";
 import { canManageUsers, toAppRole } from "@/lib/roles";
 import { resolveSessionFromRequest } from "@/lib/session";
 
-const createProductSchema = z.object({
+const updateProductSchema = z.object({
   sku: z.string().trim().min(1).max(64),
   name: z.string().trim().min(1).max(200),
   price: z.number().nonnegative(),
-  product_type: z.enum(["GOODS", "SERVICE", "MEMBERSHIP"]),
   revenue_account_id: z.string().trim().min(1).optional(),
 });
 
-export async function GET(request: Request) {
-  const session = await resolveSessionFromRequest(request);
-  if (!session) {
-    return NextResponse.json(
-      {
-        code: "UNAUTHENTICATED",
-        message: "ต้องยืนยันตัวตนก่อนเข้าถึงสินค้า",
-      },
-      { status: 401 },
-    );
-  }
+type Params = {
+  params: Promise<{
+    productId: string;
+  }>;
+};
 
-  const products = await listProducts();
-  return NextResponse.json(products, { status: 200 });
-}
-
-export async function POST(request: Request) {
+export async function PATCH(request: Request, { params }: Params) {
   const session = await resolveSessionFromRequest(request);
   const headerRole = toAppRole(request.headers.get("x-user-role"));
   const requesterRole = session?.role ?? headerRole;
@@ -39,7 +27,7 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         code: "UNAUTHENTICATED",
-        message: "ต้องยืนยันตัวตนก่อนสร้างสินค้า",
+        message: "ต้องยืนยันตัวตนก่อนแก้ไขสินค้า",
       },
       { status: 401 },
     );
@@ -49,13 +37,13 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         code: "FORBIDDEN",
-        message: "สิทธิ์ไม่เพียงพอสำหรับการสร้างสินค้า",
+        message: "สิทธิ์ไม่เพียงพอสำหรับการแก้ไขสินค้า",
       },
       { status: 403 },
     );
   }
 
-  const parseResult = createProductSchema.safeParse(await request.json());
+  const parseResult = updateProductSchema.safeParse(await request.json());
   if (!parseResult.success) {
     return NextResponse.json(
       {
@@ -67,20 +55,23 @@ export async function POST(request: Request) {
     );
   }
 
+  const { productId } = await params;
+
   try {
-    const created = await createProduct(parseResult.data);
-    return NextResponse.json(created, { status: 201 });
+    const updated = await updateProduct({
+      product_id: productId,
+      ...parseResult.data,
+    });
+
+    return NextResponse.json(updated, { status: 200 });
   } catch (error) {
-    if (
-      error instanceof Prisma.PrismaClientKnownRequestError &&
-      error.code === "P2002"
-    ) {
+    if (error instanceof Error && error.message === "PRODUCT_NOT_FOUND") {
       return NextResponse.json(
         {
-          code: "DUPLICATE_PRODUCT_SKU",
-          message: "SKU นี้ถูกใช้งานแล้ว",
+          code: "PRODUCT_NOT_FOUND",
+          message: "ไม่พบสินค้าที่ต้องการแก้ไข",
         },
-        { status: 409 },
+        { status: 404 },
       );
     }
 

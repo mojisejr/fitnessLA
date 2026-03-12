@@ -83,8 +83,12 @@ model ChartOfAccount {
   name          String
   type          String // ASSET, LIABILITY, EQUITY, REVENUE, EXPENSE
   normalBalance String // DEBIT, CREDIT
+  isActive      Boolean       @default(true)
+  description   String?
+  lockedReason  String?
   journalLines  JournalLine[]
   expenses      Expense[]
+  products      Product[]
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
 
@@ -144,15 +148,17 @@ model Shift {
 }
 
 model Product {
-  id          String   @id @default(cuid())
-  sku         String   @unique
-  name        String
-  price       Decimal  @db.Decimal(12, 2)
-  productType String
-  isActive    Boolean  @default(true)
-  orderItems  OrderItem[]
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id               String         @id @default(cuid())
+  sku              String         @unique
+  name             String
+  price            Decimal        @db.Decimal(12, 2)
+  productType      String
+  isActive         Boolean        @default(true)
+  revenueAccountId String?
+  revenueAccount   ChartOfAccount? @relation(fields: [revenueAccountId], references: [id])
+  orderItems       OrderItem[]
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
 
   @@map("products")
 }

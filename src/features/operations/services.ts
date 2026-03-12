@@ -8,6 +8,23 @@ export type ProductDto = {
   name: string;
   price: number;
   product_type: "GOODS" | "SERVICE" | "MEMBERSHIP";
+  revenue_account_id?: string;
+};
+
+export type CreateProductInputDto = {
+  sku: string;
+  name: string;
+  price: number;
+  product_type: "GOODS" | "SERVICE" | "MEMBERSHIP";
+  revenue_account_id?: string;
+};
+
+export type UpdateProductInputDto = {
+  product_id: string;
+  sku: string;
+  name: string;
+  price: number;
+  revenue_account_id?: string;
 };
 
 export type ActiveShiftDto = {
@@ -86,11 +103,89 @@ export type DailySummaryDto = {
   shift_discrepancies: number;
 };
 
+export type GeneralLedgerRowDto = {
+  date: string;
+  account_code: string;
+  account_name: string;
+  debit: number;
+  credit: number;
+  description: string;
+};
+
+export type ChartOfAccountRecordDto = {
+  account_id: string;
+  account_code: string;
+  account_name: string;
+  account_type: "ASSET" | "LIABILITY" | "EQUITY" | "REVENUE" | "EXPENSE";
+  is_active: boolean;
+  description?: string;
+  locked_reason?: string;
+};
+
+export type CreateChartOfAccountInput = {
+  account_code: string;
+  account_name: string;
+  account_type: "ASSET" | "LIABILITY" | "EQUITY" | "REVENUE" | "EXPENSE";
+  description?: string;
+};
+
 type LockedSequenceRow = {
   id: string;
   prefix: string;
   currentNo: number;
 };
+
+const protectedAccountCodes = new Set(["1010", "3010", "4010", "4020", "5050"]);
+
+function getProtectedAccountReason(accountCode: string): string | null {
+  if (!protectedAccountCodes.has(accountCode)) {
+    return null;
+  }
+
+  return "บัญชีนี้ถูกอ้างอิงในธุรกรรมหลักของระบบ จึงไม่สามารถปิดใช้งานได้";
+}
+
+function toNormalBalance(accountType: CreateChartOfAccountInput["account_type"]): "DEBIT" | "CREDIT" {
+  return accountType === "ASSET" || accountType === "EXPENSE" ? "DEBIT" : "CREDIT";
+}
+
+function toAccountType(
+  value: string,
+): "ASSET" | "LIABILITY" | "EQUITY" | "REVENUE" | "EXPENSE" {
+  if (
+    value === "ASSET" ||
+    value === "LIABILITY" ||
+    value === "EQUITY" ||
+    value === "REVENUE" ||
+    value === "EXPENSE"
+  ) {
+    return value;
+  }
+
+  throw new Error("INVALID_ACCOUNT_TYPE");
+}
+
+function mapChartOfAccountRecord(account: {
+  id: string;
+  code: string;
+  name: string;
+  type: string;
+  isActive?: boolean;
+  description?: string | null;
+  lockedReason?: string | null;
+}): ChartOfAccountRecordDto {
+  const protectedReason = getProtectedAccountReason(account.code);
+
+  return {
+    account_id: account.id,
+    account_code: account.code,
+    account_name: account.name,
+    account_type: toAccountType(account.type),
+    is_active: account.isActive ?? true,
+    description: account.description ?? undefined,
+    locked_reason: account.lockedReason ?? protectedReason ?? undefined,
+  };
+}
 
 function assertProductType(value: string): "GOODS" | "SERVICE" | "MEMBERSHIP" {
   if (value === "GOODS" || value === "SERVICE" || value === "MEMBERSHIP") {
@@ -98,6 +193,61 @@ function assertProductType(value: string): "GOODS" | "SERVICE" | "MEMBERSHIP" {
   }
 
   return "SERVICE";
+}
+
+function mapProductRecord(product: {
+  id: string;
+  sku: string;
+  name: string;
+  price: Prisma.Decimal;
+  productType: string;
+  revenueAccountId?: string | null;
+}): ProductDto {
+  return {
+    product_id: product.id,
+    sku: product.sku,
+    name: product.name,
+    price: Number(product.price),
+    product_type: assertProductType(product.productType),
+    revenue_account_id: product.revenueAccountId ?? undefined,
+  };
+}
+
+async function resolveRevenueAccountId(
+  client: Prisma.TransactionClient | typeof prisma,
+  requestedId: string | undefined,
+): Promise<string> {
+  if (requestedId) {
+    const account = await client.chartOfAccount.findUnique({ where: { id: requestedId } });
+    if (!account) {
+      throw new Error("REVENUE_ACCOUNT_NOT_FOUND");
+    }
+
+    if (account.type !== "REVENUE") {
+      throw new Error("INVALID_REVENUE_ACCOUNT_TYPE");
+    }
+
+    if (!account.isActive) {
+      throw new Error("REVENUE_ACCOUNT_INACTIVE");
+    }
+
+    return account.id;
+  }
+
+  const defaultRevenueAccount = await client.chartOfAccount.findUnique({ where: { code: "4010" } });
+  if (!defaultRevenueAccount) {
+    throw new Error("REVENUE_ACCOUNT_NOT_FOUND");
+  }
+
+  if (defaultRevenueAccount.type !== "REVENUE") {
+    throw new Error("INVALID_REVENUE_ACCOUNT_TYPE");
+  }
+
+  if (!defaultRevenueAccount.isActive) {
+    throw new Error("REVENUE_ACCOUNT_INACTIVE");
+  }
+
+  return defaultRevenueAccount.id;
 }
 
 function assertPaymentMethod(value: string): PaymentMethod {
@@ -160,13 +310,79 @@ export async function listProducts(): Promise<ProductDto[]> {
     orderBy: { createdAt: "asc" },
   });
 
-  return products.map((product) => ({
-    product_id: product.id,
-    sku: product.sku,
-    name: product.name,
-    price: Number(product.price),
-    product_type: assertProductType(product.productType),
-  }));
+  return products.map((product) =>
+    mapProductRecord({
+      ...product,
+      revenueAccountId: product.revenueAccountId,
+    }),
+  );
+}
+
+export async function createProduct(input: CreateProductInputDto): Promise<ProductDto> {
+  const sku = input.sku.trim();
+  const name = input.name.trim();
+
+  if (!sku || !name) {
+    throw new Error("INVALID_PRODUCT");
+  }
+
+  if (input.price < 0) {
+    throw new Error("INVALID_PRODUCT_PRICE");
+  }
+
+  const productType = assertProductType(input.product_type);
+  const revenueAccountId = await resolveRevenueAccountId(prisma, input.revenue_account_id);
+
+  const created = await prisma.product.create({
+    data: {
+      sku,
+      name,
+      price: asMoney(input.price),
+      productType,
+      isActive: true,
+      revenueAccountId,
+    },
+  });
+
+  return mapProductRecord({
+    ...created,
+    revenueAccountId: created.revenueAccountId,
+  });
+}
+
+export async function updateProduct(input: UpdateProductInputDto): Promise<ProductDto> {
+  const sku = input.sku.trim();
+  const name = input.name.trim();
+
+  if (!sku || !name) {
+    throw new Error("INVALID_PRODUCT");
+  }
+
+  if (input.price < 0) {
+    throw new Error("INVALID_PRODUCT_PRICE");
+  }
+
+  const existing = await prisma.product.findUnique({ where: { id: input.product_id } });
+  if (!existing) {
+    throw new Error("PRODUCT_NOT_FOUND");
+  }
+
+  const revenueAccountId = await resolveRevenueAccountId(prisma, input.revenue_account_id);
+
+  const updated = await prisma.product.update({
+    where: { id: existing.id },
+    data: {
+      sku,
+      name,
+      price: asMoney(input.price),
+      revenueAccountId,
+    },
+  });
+
+  return mapProductRecord({
+    ...updated,
+    revenueAccountId: updated.revenueAccountId,
+  });
 }
 
 export async function getActiveShiftByStaff(staffId: string): Promise<ActiveShiftDto | null> {
@@ -318,6 +534,7 @@ export async function createOrderWithJournal(
         quantity: item.quantity,
         unitPrice,
         totalPrice,
+        revenueAccountId: product.revenueAccountId,
       };
     });
 
@@ -367,9 +584,16 @@ export async function createOrderWithJournal(
     }
 
     const cashAccount = await tx.chartOfAccount.findUnique({ where: { code: "1010" } });
-    const revenueAccount = await tx.chartOfAccount.findUnique({ where: { code: "4010" } });
-    if (!cashAccount || !revenueAccount) {
+    const defaultRevenueAccount = await tx.chartOfAccount.findUnique({ where: { code: "4010" } });
+    if (!cashAccount || !defaultRevenueAccount) {
       throw new Error("CHART_OF_ACCOUNT_NOT_FOUND");
+    }
+
+    const revenueCreditsByAccount = new Map<string, Prisma.Decimal>();
+    for (const item of normalizedItems) {
+      const accountId = item.revenueAccountId ?? defaultRevenueAccount.id;
+      const current = revenueCreditsByAccount.get(accountId) ?? new Prisma.Decimal(0);
+      revenueCreditsByAccount.set(accountId, current.add(item.totalPrice));
     }
 
     const journalEntry = await tx.journalEntry.create({
@@ -388,12 +612,14 @@ export async function createOrderWithJournal(
           debit: totalAmount,
           credit: new Prisma.Decimal(0),
         },
-        {
-          journalEntryId: journalEntry.id,
-          chartOfAccountId: revenueAccount.id,
-          debit: new Prisma.Decimal(0),
-          credit: totalAmount,
-        },
+        ...Array.from(revenueCreditsByAccount.entries())
+          .sort(([left], [right]) => left.localeCompare(right))
+          .map(([accountId, creditAmount]) => ({
+            journalEntryId: journalEntry.id,
+            chartOfAccountId: accountId,
+            debit: new Prisma.Decimal(0),
+            credit: creditAmount,
+          })),
       ],
     });
 
@@ -722,4 +948,148 @@ export async function getDailySummaryByDate(date: string): Promise<DailySummaryD
     net_cash_flow: Number((salesByMethod.CASH - totalExpenses).toFixed(2)),
     shift_discrepancies: Number(shiftDiscrepancies.toFixed(2)),
   };
+}
+
+export async function getGeneralLedgerReport(
+  startDate: string,
+  endDate: string,
+): Promise<GeneralLedgerRowDto[]> {
+  const from = new Date(`${startDate}T00:00:00.000Z`);
+  const end = new Date(`${endDate}T00:00:00.000Z`);
+
+  if (Number.isNaN(from.getTime()) || Number.isNaN(end.getTime()) || from > end) {
+    throw new Error("INVALID_DATE_RANGE");
+  }
+
+  const to = new Date(end);
+  to.setUTCDate(to.getUTCDate() + 1);
+
+  const lines = await prisma.journalLine.findMany({
+    where: {
+      journalEntry: {
+        date: {
+          gte: from,
+          lt: to,
+        },
+      },
+    },
+    include: {
+      chartOfAccount: {
+        select: {
+          code: true,
+          name: true,
+        },
+      },
+      journalEntry: {
+        select: {
+          date: true,
+          description: true,
+        },
+      },
+    },
+    orderBy: [
+      {
+        journalEntry: {
+          date: "asc",
+        },
+      },
+      {
+        chartOfAccount: {
+          code: "asc",
+        },
+      },
+      {
+        id: "asc",
+      },
+    ],
+  });
+
+  return lines.map((line) => ({
+    date: line.journalEntry.date.toISOString().slice(0, 10),
+    account_code: line.chartOfAccount.code,
+    account_name: line.chartOfAccount.name,
+    debit: Number(line.debit),
+    credit: Number(line.credit),
+    description: line.journalEntry.description ?? "",
+  }));
+}
+
+export async function listChartOfAccounts(): Promise<ChartOfAccountRecordDto[]> {
+  const accounts = await prisma.chartOfAccount.findMany({
+    orderBy: [{ code: "asc" }],
+  });
+
+  return accounts.map((account) =>
+    mapChartOfAccountRecord({
+      ...account,
+      isActive: account.isActive,
+      description: account.description,
+      lockedReason: account.lockedReason,
+    }),
+  );
+}
+
+export async function createChartOfAccount(
+  input: CreateChartOfAccountInput,
+): Promise<ChartOfAccountRecordDto> {
+  const accountCode = input.account_code.trim();
+  const accountName = input.account_name.trim();
+
+  if (!/^\d{4,}$/.test(accountCode)) {
+    throw new Error("INVALID_ACCOUNT_CODE");
+  }
+
+  if (accountName.length < 3) {
+    throw new Error("INVALID_ACCOUNT_NAME");
+  }
+
+  const created = await prisma.chartOfAccount.create({
+    data: {
+      code: accountCode,
+      name: accountName,
+      type: input.account_type,
+      normalBalance: toNormalBalance(input.account_type),
+      isActive: true,
+      description: input.description?.trim() || null,
+      lockedReason: null,
+    },
+  });
+
+  return mapChartOfAccountRecord({
+    ...created,
+    isActive: created.isActive,
+    description: created.description,
+    lockedReason: created.lockedReason,
+  });
+}
+
+export async function toggleChartOfAccount(accountId: string): Promise<ChartOfAccountRecordDto> {
+  const account = await prisma.chartOfAccount.findUnique({
+    where: { id: accountId },
+  });
+
+  if (!account) {
+    throw new Error("ACCOUNT_NOT_FOUND");
+  }
+
+  const protectedReason = getProtectedAccountReason(account.code);
+  const lockedReason = account.lockedReason ?? protectedReason;
+
+  if (lockedReason) {
+    throw new Error("ACCOUNT_LOCKED");
+  }
+
+  const updated = await prisma.chartOfAccount.update({
+    where: { id: accountId },
+    data: {
+      isActive: !account.isActive,
+    },
+  });
+
+  return mapChartOfAccountRecord({
+    ...updated,
+    isActive: updated.isActive,
+    description: updated.description,
+    lockedReason: updated.lockedReason,
+  });
 }

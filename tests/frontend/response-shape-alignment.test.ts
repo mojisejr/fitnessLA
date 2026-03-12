@@ -221,4 +221,136 @@ describe("real-app-adapter — response shape alignment", () => {
       message: "Request failed",
     });
   });
+
+  // ── 4F: COA ───────────────────────────────────────────────────────────
+
+  it("4F-9: listChartOfAccounts returns full account list shape", async () => {
+    const mockResponse = [
+      {
+        account_id: "coa-1",
+        account_code: "4101",
+        account_name: "Membership Revenue",
+        account_type: "REVENUE",
+        is_active: true,
+        description: "รายได้ค่าสมาชิก",
+      },
+    ];
+    mockFetchOk(mockResponse);
+
+    const result = await realAppAdapter.listChartOfAccounts();
+
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({
+      account_id: "coa-1",
+      account_code: "4101",
+      account_name: "Membership Revenue",
+      account_type: "REVENUE",
+      is_active: true,
+    });
+  });
+
+  it("4F-10: createChartOfAccount returns created account shape", async () => {
+    const mockResponse = {
+      account_id: "coa-2",
+      account_code: "5209",
+      account_name: "Utilities Expense",
+      account_type: "EXPENSE",
+      is_active: true,
+      description: "ค่าน้าและไฟ",
+    };
+    mockFetchOk(mockResponse);
+
+    const result = await realAppAdapter.createChartOfAccount({
+      account_code: "5209",
+      account_name: "Utilities Expense",
+      account_type: "EXPENSE",
+      description: "ค่าน้าและไฟ",
+    });
+
+    expect(result).toMatchObject({
+      account_id: "coa-2",
+      account_code: "5209",
+      account_name: "Utilities Expense",
+      account_type: "EXPENSE",
+      is_active: true,
+    });
+  });
+
+  it("4F-11: toggleChartOfAccount returns updated account shape", async () => {
+    const mockResponse = {
+      account_id: "coa-3",
+      account_code: "5201",
+      account_name: "Cleaning Supplies",
+      account_type: "EXPENSE",
+      is_active: false,
+      locked_reason: "ใช้งานแล้ว",
+    };
+    mockFetchOk(mockResponse);
+
+    const result = await realAppAdapter.toggleChartOfAccount("coa-3");
+
+    expect(result).toMatchObject({
+      account_id: "coa-3",
+      account_code: "5201",
+      account_name: "Cleaning Supplies",
+      account_type: "EXPENSE",
+      is_active: false,
+      locked_reason: "ใช้งานแล้ว",
+    });
+  });
+
+  // ── 4G: Product Mapping ───────────────────────────────────────────────
+
+  it("4G-12: createProduct returns product with revenue_account_id", async () => {
+    const mockResponse = {
+      product_id: "prod-1",
+      sku: "MEM-001",
+      name: "Monthly Membership",
+      price: 1500,
+      product_type: "MEMBERSHIP",
+      revenue_account_id: "coa-4101",
+    };
+    mockFetchOk(mockResponse);
+
+    const result = await realAppAdapter.createProduct({
+      sku: "MEM-001",
+      name: "Monthly Membership",
+      price: 1500,
+      productType: "SERVICE",
+      revenueAccountId: "coa-4101",
+    });
+
+    expect(result).toMatchObject({
+      product_id: "prod-1",
+      sku: "MEM-001",
+      name: "Monthly Membership",
+      revenue_account_id: "coa-4101",
+    });
+  });
+
+  it("4G-13: updateProduct returns updated product mapping", async () => {
+    const mockResponse = {
+      product_id: "prod-1",
+      sku: "MEM-001",
+      name: "Monthly Membership Plus",
+      price: 1800,
+      product_type: "MEMBERSHIP",
+      revenue_account_id: "coa-4102",
+    };
+    mockFetchOk(mockResponse);
+
+    const result = await realAppAdapter.updateProduct({
+      productId: "prod-1",
+      sku: "MEM-001",
+      name: "Monthly Membership Plus",
+      price: 1800,
+      revenueAccountId: "coa-4102",
+    });
+
+    expect(result).toMatchObject({
+      product_id: "prod-1",
+      name: "Monthly Membership Plus",
+      revenue_account_id: "coa-4102",
+    });
+  });
 });
