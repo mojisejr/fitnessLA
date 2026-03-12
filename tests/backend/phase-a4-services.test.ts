@@ -33,6 +33,15 @@ type State = {
   journalLines: Array<{ id: string; journalEntryId: string; debit: number; credit: number }>;
   orders: OrderState[];
   expenses: ExpenseState[];
+  generalLedgerLines: Array<{
+    id: string;
+    date: Date;
+    description: string;
+    accountCode: string;
+    accountName: string;
+    debit: number;
+    credit: number;
+  }>;
 };
 
 const mocked = vi.hoisted(() => {
@@ -43,6 +52,7 @@ const mocked = vi.hoisted(() => {
     journalLines: [],
     orders: [],
     expenses: [],
+    generalLedgerLines: [],
   };
 
   let idCounter = 1;
@@ -228,6 +238,34 @@ const mocked = vi.hoisted(() => {
     shift: {
       findMany: txMock.shift.findMany,
     },
+    journalLine: {
+      findMany: async ({
+        where,
+      }: {
+        where: { journalEntry: { date: { gte: Date; lt: Date } } };
+      }) => {
+        return state.generalLedgerLines
+          .filter(
+            (line) =>
+              line.date >= where.journalEntry.date.gte &&
+              line.date < where.journalEntry.date.lt,
+          )
+          .sort((a, b) => a.date.getTime() - b.date.getTime())
+          .map((line) => ({
+            id: line.id,
+            debit: new Prisma.Decimal(line.debit),
+            credit: new Prisma.Decimal(line.credit),
+            chartOfAccount: {
+              code: line.accountCode,
+              name: line.accountName,
+            },
+            journalEntry: {
+              date: line.date,
+              description: line.description,
+            },
+          }));
+      },
+    },
   };
 
   const reset = () => {
@@ -286,6 +324,35 @@ const mocked = vi.hoisted(() => {
         createdAt: new Date("2026-03-09T06:00:00.000Z"),
       },
     ];
+    state.generalLedgerLines = [
+      {
+        id: "gl_1",
+        date: new Date("2026-03-09T08:00:00.000Z"),
+        description: "Order ORD-2026-0001",
+        accountCode: "1010",
+        accountName: "Cash",
+        debit: 500,
+        credit: 0,
+      },
+      {
+        id: "gl_2",
+        date: new Date("2026-03-09T08:00:00.000Z"),
+        description: "Order ORD-2026-0001",
+        accountCode: "4010",
+        accountName: "General Revenue",
+        debit: 0,
+        credit: 500,
+      },
+      {
+        id: "gl_3",
+        date: new Date("2026-03-10T08:00:00.000Z"),
+        description: "Expense exp_1",
+        accountCode: "5010",
+        accountName: "Supplies Expense",
+        debit: 200,
+        credit: 0,
+      },
+    ];
     idCounter = 1;
   };
 
@@ -299,6 +366,7 @@ vi.mock("../../src/lib/prisma", () => ({
 import {
   closeActiveShiftWithDifference,
   getDailySummaryByDate,
+  getGeneralLedgerReport,
 } from "../../src/features/operations/services";
 
 describe("A-4 services", () => {
@@ -345,5 +413,27 @@ describe("A-4 services", () => {
 
   it("throws invalid date error when date format is invalid", async () => {
     await expect(getDailySummaryByDate("bad-date")).rejects.toThrow("INVALID_DATE");
+  });
+
+  it("returns GL rows in date range", async () => {
+    const rows = await getGeneralLedgerReport("2026-03-09", "2026-03-09");
+
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toMatchObject({
+      date: "2026-03-09",
+      account_code: "1010",
+      debit: 500,
+      credit: 0,
+    });
+
+    const totalDebit = rows.reduce((sum, row) => sum + row.debit, 0);
+    const totalCredit = rows.reduce((sum, row) => sum + row.credit, 0);
+    expect(totalDebit).toBe(totalCredit);
+  });
+
+  it("throws invalid date range when start_date is after end_date", async () => {
+    await expect(getGeneralLedgerReport("2026-03-10", "2026-03-09")).rejects.toThrow(
+      "INVALID_DATE_RANGE",
+    );
   });
 });

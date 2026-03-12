@@ -103,6 +103,15 @@ export type DailySummaryDto = {
   shift_discrepancies: number;
 };
 
+export type GeneralLedgerRowDto = {
+  date: string;
+  account_code: string;
+  account_name: string;
+  debit: number;
+  credit: number;
+  description: string;
+};
+
 export type ChartOfAccountRecordDto = {
   account_id: string;
   account_code: string;
@@ -525,6 +534,7 @@ export async function createOrderWithJournal(
         quantity: item.quantity,
         unitPrice,
         totalPrice,
+        revenueAccountId: product.revenueAccountId,
       };
     });
 
@@ -574,9 +584,16 @@ export async function createOrderWithJournal(
     }
 
     const cashAccount = await tx.chartOfAccount.findUnique({ where: { code: "1010" } });
-    const revenueAccount = await tx.chartOfAccount.findUnique({ where: { code: "4010" } });
-    if (!cashAccount || !revenueAccount) {
+    const defaultRevenueAccount = await tx.chartOfAccount.findUnique({ where: { code: "4010" } });
+    if (!cashAccount || !defaultRevenueAccount) {
       throw new Error("CHART_OF_ACCOUNT_NOT_FOUND");
+    }
+
+    const revenueCreditsByAccount = new Map<string, Prisma.Decimal>();
+    for (const item of normalizedItems) {
+      const accountId = item.revenueAccountId ?? defaultRevenueAccount.id;
+      const current = revenueCreditsByAccount.get(accountId) ?? new Prisma.Decimal(0);
+      revenueCreditsByAccount.set(accountId, current.add(item.totalPrice));
     }
 
     const journalEntry = await tx.journalEntry.create({
@@ -595,12 +612,14 @@ export async function createOrderWithJournal(
           debit: totalAmount,
           credit: new Prisma.Decimal(0),
         },
-        {
-          journalEntryId: journalEntry.id,
-          chartOfAccountId: revenueAccount.id,
-          debit: new Prisma.Decimal(0),
-          credit: totalAmount,
-        },
+        ...Array.from(revenueCreditsByAccount.entries())
+          .sort(([left], [right]) => left.localeCompare(right))
+          .map(([accountId, creditAmount]) => ({
+            journalEntryId: journalEntry.id,
+            chartOfAccountId: accountId,
+            debit: new Prisma.Decimal(0),
+            credit: creditAmount,
+          })),
       ],
     });
 
@@ -929,6 +948,70 @@ export async function getDailySummaryByDate(date: string): Promise<DailySummaryD
     net_cash_flow: Number((salesByMethod.CASH - totalExpenses).toFixed(2)),
     shift_discrepancies: Number(shiftDiscrepancies.toFixed(2)),
   };
+}
+
+export async function getGeneralLedgerReport(
+  startDate: string,
+  endDate: string,
+): Promise<GeneralLedgerRowDto[]> {
+  const from = new Date(`${startDate}T00:00:00.000Z`);
+  const end = new Date(`${endDate}T00:00:00.000Z`);
+
+  if (Number.isNaN(from.getTime()) || Number.isNaN(end.getTime()) || from > end) {
+    throw new Error("INVALID_DATE_RANGE");
+  }
+
+  const to = new Date(end);
+  to.setUTCDate(to.getUTCDate() + 1);
+
+  const lines = await prisma.journalLine.findMany({
+    where: {
+      journalEntry: {
+        date: {
+          gte: from,
+          lt: to,
+        },
+      },
+    },
+    include: {
+      chartOfAccount: {
+        select: {
+          code: true,
+          name: true,
+        },
+      },
+      journalEntry: {
+        select: {
+          date: true,
+          description: true,
+        },
+      },
+    },
+    orderBy: [
+      {
+        journalEntry: {
+          date: "asc",
+        },
+      },
+      {
+        chartOfAccount: {
+          code: "asc",
+        },
+      },
+      {
+        id: "asc",
+      },
+    ],
+  });
+
+  return lines.map((line) => ({
+    date: line.journalEntry.date.toISOString().slice(0, 10),
+    account_code: line.chartOfAccount.code,
+    account_name: line.chartOfAccount.name,
+    debit: Number(line.debit),
+    credit: Number(line.credit),
+    description: line.journalEntry.description ?? "",
+  }));
 }
 
 export async function listChartOfAccounts(): Promise<ChartOfAccountRecordDto[]> {
