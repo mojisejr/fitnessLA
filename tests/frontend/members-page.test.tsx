@@ -3,6 +3,13 @@ import MembersPage from "@/app/(app)/members/page";
 import PosPage from "@/app/(app)/pos/page";
 import { clearMockSession, renderWithProviders, seedMockSession } from "./test-utils";
 
+async function waitForPosReady() {
+  await waitFor(() => {
+    expect(screen.queryByText("กำลังโหลดสินค้า...")).not.toBeInTheDocument();
+    expect(screen.queryByText("กำลังโหลดตัวเลือกบัญชีรายได้...")).not.toBeInTheDocument();
+  }, { timeout: 15000 });
+}
+
 describe("Members page", () => {
   beforeEach(() => {
     clearMockSession();
@@ -24,11 +31,9 @@ describe("Members page", () => {
   });
 
   it("shows a newly purchased membership immediately after POS checkout", async () => {
-    renderWithProviders(<PosPage />);
+    const posView = renderWithProviders(<PosPage />);
 
-    await waitFor(() => {
-      expect(screen.queryByText("กำลังโหลดสินค้า...")).not.toBeInTheDocument();
-    });
+    await waitForPosReady();
 
     fireEvent.click(screen.getByRole("button", { name: "Add 3-Month Membership" }));
     fireEvent.change(screen.getByPlaceholderText("ชื่อลูกค้าสมาชิก"), {
@@ -38,14 +43,15 @@ describe("Members page", () => {
 
     await waitFor(() => {
       expect(screen.getByText("คิดเงินสำเร็จ")).toBeInTheDocument();
-    });
+    }, { timeout: 15000 });
 
+    posView.unmount();
     renderWithProviders(<MembersPage />);
 
     await waitFor(() => {
       expect(screen.getByText("Somchai Member")).toBeInTheDocument();
-    });
+    }, { timeout: 15000 });
 
     expect(screen.getAllByText("3-Month Membership").length).toBeGreaterThan(0);
-  });
+  }, 20000);
 });

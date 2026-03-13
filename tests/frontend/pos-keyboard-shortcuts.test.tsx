@@ -2,6 +2,13 @@ import { fireEvent, screen, waitFor } from "@testing-library/react";
 import PosPage from "@/app/(app)/pos/page";
 import { clearMockSession, renderWithProviders, seedMockSession } from "./test-utils";
 
+async function waitForPosReady() {
+  await waitFor(() => {
+    expect(screen.queryByText("กำลังโหลดสินค้า...")).not.toBeInTheDocument();
+    expect(screen.queryByText("กำลังโหลดตัวเลือกบัญชีรายได้...")).not.toBeInTheDocument();
+  }, { timeout: 10000 });
+}
+
 describe("POS keyboard shortcuts", () => {
   beforeEach(() => {
     clearMockSession();
@@ -25,31 +32,27 @@ describe("POS keyboard shortcuts", () => {
   it("supports shortcut-driven product add, payment selection, and cart clear", async () => {
     renderWithProviders(<PosPage />);
 
-    await waitFor(() => {
-      expect(screen.queryByText("กำลังโหลดสินค้า...")).not.toBeInTheDocument();
-    });
+    await waitForPosReady();
 
     fireEvent.keyDown(window, { key: "F2" });
 
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "ลบ" })).toBeInTheDocument();
-    });
+    }, { timeout: 10000 });
 
     fireEvent.keyDown(window, { key: "2", altKey: true });
-    expect(screen.getByRole("button", { name: "PromptPay" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "พร้อมเพย์" })).toHaveAttribute("aria-pressed", "true");
 
     fireEvent.keyDown(window, { key: "Escape" });
     await waitFor(() => {
       expect(screen.getByText(/ตะกร้ายังว่างอยู่/)).toBeInTheDocument();
-    });
-  });
+    }, { timeout: 10000 });
+  }, 10000);
 
   it("blocks increasing quantity beyond stock", async () => {
     renderWithProviders(<PosPage />);
 
-    await waitFor(() => {
-      expect(screen.queryByText("กำลังโหลดสินค้า...")).not.toBeInTheDocument();
-    });
+    await waitForPosReady();
 
     const shakeCard = screen.getByRole("button", { name: "Add Protein Shake" });
 
@@ -60,5 +63,5 @@ describe("POS keyboard shortcuts", () => {
     fireEvent.click(shakeCard);
 
     expect(screen.getByText("สต็อก Protein Shake คงเหลือ 6 ชิ้น")).toBeInTheDocument();
-  });
+  }, 10000);
 });

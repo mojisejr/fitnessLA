@@ -16,6 +16,24 @@ const accountTypeLabel: Record<AccountType, string> = {
   EXPENSE: "ค่าใช้จ่าย",
 };
 
+function getChartOfAccountsErrorMessage(error: unknown, fallback: string) {
+  const errorCode = getErrorCode(error);
+
+  if (errorCode === "UNAUTHENTICATED") {
+    return "เซสชันหมดอายุ กรุณาเข้าสู่ระบบอีกครั้งก่อนจัดการผังบัญชี";
+  }
+
+  if (errorCode === "FORBIDDEN") {
+    return "บทบาทปัจจุบันไม่มีสิทธิ์จัดการผังบัญชี";
+  }
+
+  if (errorCode === "ACCOUNT_LOCKED") {
+    return "บัญชีนี้ถูก lock จากการใช้งานทางบัญชี จึงยังไม่สามารถปรับสถานะได้";
+  }
+
+  return getErrorMessage(error, fallback);
+}
+
 export default function ChartOfAccountsPage() {
   const adapter = useAppAdapter();
   const [accounts, setAccounts] = useState<ChartOfAccountRecord[]>([]);
@@ -59,7 +77,7 @@ export default function ChartOfAccountsPage() {
             setSelectedAccountId(null);
             setAvailabilityMessage("backend ปัจจุบันยังไม่มี COA API จริง หน้านี้จึงอยู่ในสถานะพร้อมต่อ แต่ยังจัดการข้อมูลจริงไม่ได้");
           } else {
-            setErrorMessage(getErrorMessage(error, "ไม่สามารถโหลดผังบัญชีได้"));
+            setErrorMessage(getChartOfAccountsErrorMessage(error, "ไม่สามารถโหลดผังบัญชีได้"));
           }
         }
       } finally {
@@ -142,7 +160,7 @@ export default function ChartOfAccountsPage() {
       setDescription("");
       setStatusMessage(`สร้างบัญชี ${nextAccount.account_code} สำเร็จแล้ว`);
     } catch (error) {
-      setErrorMessage(getErrorMessage(error, "ไม่สามารถสร้างบัญชีได้"));
+      setErrorMessage(getChartOfAccountsErrorMessage(error, "ไม่สามารถสร้างบัญชีได้"));
     } finally {
       setIsSubmitting(false);
     }
@@ -168,17 +186,17 @@ export default function ChartOfAccountsPage() {
         `${updated.account_code} ถูกปรับเป็น${updated.is_active ? "ใช้งาน" : "ไม่ใช้งาน"}แล้ว`,
       );
     } catch (error) {
-      setErrorMessage(getErrorMessage(error, "ไม่สามารถเปลี่ยนสถานะบัญชีได้"));
+      setErrorMessage(getChartOfAccountsErrorMessage(error, "ไม่สามารถเปลี่ยนสถานะบัญชีได้"));
     } finally {
       setIsTogglingId(null);
     }
   }
 
   return (
-    <RoleGuard allowedRoles={["OWNER"]}>
+    <RoleGuard allowedRoles={["OWNER", "ADMIN"]}>
       <div className="space-y-6">
         <section className="rounded-[28px] border border-line bg-surface-strong p-6 md:p-8">
-          <p className="text-xs uppercase tracking-[0.16em] text-muted">Owner-only management</p>
+          <p className="text-xs uppercase tracking-[0.16em] text-muted">Owner and admin management</p>
           <h1 className="mt-3 text-3xl font-semibold text-foreground">ผังบัญชี</h1>
           <p className="mt-3 max-w-3xl text-sm leading-7 text-muted">
             หน้านี้รองรับ flow ดูรายการบัญชี, สร้างบัญชี, ปรับสถานะใช้งาน และจะบอกสถานะชัดเจนทันทีถ้า backend environment ปัจจุบันยังไม่มี COA API จริง

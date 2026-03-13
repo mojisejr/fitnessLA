@@ -14,14 +14,63 @@ import {
   removeCartLineAtom,
   updateCartLineAtom,
 } from "@/features/pos/cart-store";
-import type { OrderResult, PaymentMethod, Product, ShiftInventorySummaryRow } from "@/lib/contracts";
-import { formatCurrency, getErrorMessage, formatDate } from "@/lib/utils";
+import type { ChartOfAccountRecord, OrderResult, PaymentMethod, Product, ShiftInventorySummaryRow } from "@/lib/contracts";
+import { formatCurrency, getErrorCode, getErrorMessage, formatDate } from "@/lib/utils";
 
 const paymentMethodLabel: Record<PaymentMethod, string> = {
   CASH: "เงินสด",
-  PROMPTPAY: "PromptPay",
+  PROMPTPAY: "พร้อมเพย์",
   CREDIT_CARD: "บัตรเครดิต",
 };
+
+const membershipPeriodLabel = {
+  DAILY: "รายวัน",
+  MONTHLY: "1 เดือน",
+  QUARTERLY: "3 เดือน",
+  SEMIANNUAL: "6 เดือน",
+  YEARLY: "1 ปี",
+} as const;
+
+const productDisplayLabelBySku: Record<string, { title: string; subtitle?: string }> = {
+  "WATER-01": { title: "น้ำดื่ม", subtitle: "ขวดเล็กแช่เย็น" },
+  "COFFEE-01": { title: "อเมริกาโน่เย็น", subtitle: "สูตรเข้มตามป้ายร้าน" },
+  "SHAKE-01": { title: "โปรตีนเชค", subtitle: "เครื่องดื่มโปรตีนพร้อมขาย" },
+  DAYPASS: { title: "สมาชิกรายวัน", subtitle: "เข้าใช้ได้ 1 วัน" },
+  "MEM-MONTH": { title: "สมาชิกรายเดือน", subtitle: "เข้าใช้ได้ 30 วัน" },
+  "MEM-3MONTH": { title: "สมาชิก 3 เดือน", subtitle: "แพ็กเกจยอดนิยม" },
+  "MEM-6MONTH": { title: "สมาชิก 6 เดือน", subtitle: "แพ็กเกจคุ้มค่าสำหรับลูกค้าประจำ" },
+  "MEM-YEAR": { title: "สมาชิกรายปี", subtitle: "เหมาะสำหรับลูกค้าระยะยาว" },
+  "PT-01": { title: "เทรนเดี่ยว 1 ครั้ง", subtitle: "ครั้งละ 500 บาท" },
+  "PT-10": { title: "เทรน 10 ครั้ง", subtitle: "อายุเทรน 30 วัน" },
+  "PT-20": { title: "เทรน 20 ครั้ง", subtitle: "อายุเทรน 60 วัน" },
+  "PT-MONTH": { title: "เทรนรายเดือน", subtitle: "ไม่จำกัดครั้ง" },
+  "PT-COUPLE": { title: "เทรนคู่รายเดือน", subtitle: "ไม่จำกัดครั้ง" },
+  "TOWEL-01": { title: "บริการผ้าเช็ดตัว", subtitle: "บริการเสริมหน้าเคาน์เตอร์" },
+  "COFFEE-11": { title: "อเมริกาโน่ร้อน", subtitle: "คั่วเข้ม" },
+  "COFFEE-12": { title: "เอสเปรสโซ่ร้อน", subtitle: "ช็อตเข้ม" },
+  "COFFEE-13": { title: "เอสเปรสโซ่เย็น", subtitle: "เข้มและหอม" },
+  "COFFEE-14": { title: "ลาเต้ร้อน", subtitle: "นมนุ่ม ดื่มง่าย" },
+  "COFFEE-15": { title: "ลาเต้เย็น", subtitle: "รสนุ่มตามป้าย" },
+  "COFFEE-16": { title: "คาปูชิโน่ร้อน", subtitle: "ฟองนมนุ่ม" },
+  "COFFEE-17": { title: "คาปูชิโน่เย็น", subtitle: "เข้มขึ้น หวานน้อย" },
+  "COFFEE-18": { title: "อเมริกาโน่มะพร้าว", subtitle: "เมนูพิเศษเย็น" },
+  "COFFEE-19": { title: "ลาเต้โอรีโอ้", subtitle: "เมนูหวานขายดี" },
+  "COFFEE-20": { title: "ฮันนี่มิลค์ร้อน", subtitle: "นมหอมน้ำผึ้ง" },
+  "COFFEE-21": { title: "ฮันนี่มิลค์เย็น", subtitle: "ดื่มง่าย สดชื่น" },
+  "FOOD-01": { title: "กะเพราหมูสับไข่ดาว", subtitle: "จานด่วน 70 บาท" },
+  "FOOD-02": { title: "ผัดซีอิ๊วหมู", subtitle: "เมนูเส้นขายดี" },
+  "FOOD-03": { title: "ข้าวผัดไก่", subtitle: "จานเดียวพร้อมขาย" },
+  "FOOD-04": { title: "หมูกระเทียมไข่ดาว", subtitle: "เมนูครัวหน้าร้าน" },
+  "FOOD-05": { title: "คะน้าหมูกรอบ", subtitle: "จานด่วนยอดนิยม" },
+};
+
+function getProductDisplayTitle(product: Product) {
+  return productDisplayLabelBySku[product.sku]?.title ?? product.name;
+}
+
+function getProductDisplaySubtitle(product: Product) {
+  return productDisplayLabelBySku[product.sku]?.subtitle ?? product.sku;
+}
 
 export default function PosPage() {
   const adapter = useAppAdapter();
@@ -56,6 +105,10 @@ export default function PosPage() {
   const [editorMessage, setEditorMessage] = useState<string | null>(null);
   const [editorError, setEditorError] = useState<string | null>(null);
   const [isSavingProduct, setIsSavingProduct] = useState(false);
+  const [chartOfAccounts, setChartOfAccounts] = useState<ChartOfAccountRecord[]>([]);
+  const [revenueAccountsLoading, setRevenueAccountsLoading] = useState(true);
+  const [revenueAccountsError, setRevenueAccountsError] = useState<string | null>(null);
+  const [selectedRevenueAccountId, setSelectedRevenueAccountId] = useState("");
 
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const checkoutButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -92,7 +145,7 @@ export default function PosPage() {
     () =>
       cartLines.map((line) => ({
         productId: line.product_id,
-        name: line.name,
+        name: getProductDisplayTitle(line),
         quantity: line.quantity,
         total: line.price * line.quantity,
       })),
@@ -155,6 +208,37 @@ export default function PosPage() {
   }, [adapter]);
 
   useEffect(() => {
+    let isActive = true;
+
+    async function loadChartOfAccounts() {
+      setRevenueAccountsLoading(true);
+      setRevenueAccountsError(null);
+
+      try {
+        const result = await adapter.listChartOfAccounts();
+        if (isActive) {
+          setChartOfAccounts(result);
+        }
+      } catch (error) {
+        if (isActive) {
+          setChartOfAccounts([]);
+          setRevenueAccountsError(getErrorMessage(error, "ไม่สามารถโหลดรายการบัญชีรายได้ได้"));
+        }
+      } finally {
+        if (isActive) {
+          setRevenueAccountsLoading(false);
+        }
+      }
+    }
+
+    void loadChartOfAccounts();
+
+    return () => {
+      isActive = false;
+    };
+  }, [adapter]);
+
+  useEffect(() => {
     void refreshShiftInventory();
   }, [refreshShiftInventory]);
 
@@ -177,7 +261,16 @@ export default function PosPage() {
     setEditName(selectedProduct.name);
     setEditPrice(String(selectedProduct.price));
     setEditStockOnHand(selectedProduct.track_stock ? String(selectedProduct.stock_on_hand ?? 0) : "");
+    setSelectedRevenueAccountId(
+      selectedProduct.revenue_account_id === undefined ? "" : String(selectedProduct.revenue_account_id),
+    );
   }, [isCreateMode, selectedProduct]);
+
+  useEffect(() => {
+    if (isCreateMode) {
+      setSelectedRevenueAccountId("");
+    }
+  }, [isCreateMode]);
 
   const filteredProducts = useMemo(() => {
     const normalizedQuery = deferredQuery.trim().toLowerCase();
@@ -200,6 +293,62 @@ export default function PosPage() {
     () => filteredProducts.filter((product) => product.product_type === "MEMBERSHIP"),
     [filteredProducts],
   );
+
+  const coffeeProducts = useMemo(
+    () => inventoryProducts.filter((product) => product.sku.startsWith("COFFEE-")),
+    [inventoryProducts],
+  );
+
+  const madeToOrderProducts = useMemo(
+    () => inventoryProducts.filter((product) => product.sku.startsWith("FOOD-")),
+    [inventoryProducts],
+  );
+
+  const trainerProducts = useMemo(
+    () => inventoryProducts.filter((product) => product.sku.startsWith("PT-")),
+    [inventoryProducts],
+  );
+
+  const featuredInventoryProductIds = useMemo(
+    () =>
+      new Set(
+        [...coffeeProducts, ...madeToOrderProducts, ...trainerProducts].map((product) => String(product.product_id)),
+      ),
+    [coffeeProducts, madeToOrderProducts, trainerProducts],
+  );
+
+  const frontDeskProducts = useMemo(
+    () => inventoryProducts.filter((product) => !featuredInventoryProductIds.has(String(product.product_id))),
+    [featuredInventoryProductIds, inventoryProducts],
+  );
+
+  const revenueAccounts = useMemo(
+    () =>
+      chartOfAccounts.filter(
+        (account) => account.account_type === "REVENUE" && account.is_active,
+      ),
+    [chartOfAccounts],
+  );
+
+  const selectedRevenueAccount = useMemo(
+    () =>
+      chartOfAccounts.find(
+        (account) => String(account.account_id) === selectedRevenueAccountId,
+      ) ?? null,
+    [chartOfAccounts, selectedRevenueAccountId],
+  );
+
+  const mappedRevenueAccount = useMemo(() => {
+    if (!selectedProduct?.revenue_account_id) {
+      return null;
+    }
+
+    return (
+      chartOfAccounts.find(
+        (account) => String(account.account_id) === String(selectedProduct.revenue_account_id),
+      ) ?? null
+    );
+  }, [chartOfAccounts, selectedProduct]);
 
   const handleKeyboardShortcut = useEffectEvent((event: KeyboardEvent) => {
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
@@ -333,21 +482,25 @@ export default function PosPage() {
 
     try {
       if (isCreateMode) {
-        await adapter.createProduct({
+        const createdProduct = await adapter.createProduct({
           sku: editSku,
           name: editName,
           price: parsedPrice,
           productType: newProductType,
+          revenueAccountId: selectedRevenueAccountId || undefined,
           stockOnHand: newProductType === "GOODS" ? parsedStockOnHand : null,
         });
+        setSelectedProductId(String(createdProduct.product_id));
       } else if (selectedProduct) {
-        await adapter.updateProduct({
+        const updatedProduct = await adapter.updateProduct({
           productId: selectedProduct.product_id,
           sku: editSku,
           name: editName,
           price: parsedPrice,
+          revenueAccountId: selectedRevenueAccountId || undefined,
           stockOnHand: selectedProduct.track_stock ? parsedStockOnHand : null,
         });
+        setSelectedProductId(String(updatedProduct.product_id));
       }
 
       await Promise.all([refreshProducts(), refreshShiftInventory()]);
@@ -359,7 +512,16 @@ export default function PosPage() {
         setEditorMessage("อัปเดตสินค้าและ stock เรียบร้อยแล้ว");
       }
     } catch (error) {
-      setEditorError(getErrorMessage(error, "ไม่สามารถอัปเดตสินค้าได้"));
+      const errorCode = getErrorCode(error);
+      if (errorCode === "REVENUE_ACCOUNT_NOT_FOUND") {
+        setEditorError("ไม่พบบัญชีรายได้ที่เลือก กรุณารีเฟรชรายการบัญชีก่อนลองใหม่");
+      } else if (errorCode === "REVENUE_ACCOUNT_INACTIVE") {
+        setEditorError("บัญชีรายได้ที่เลือกถูกปิดใช้งานอยู่ กรุณาเลือกบัญชีที่ยัง active");
+      } else if (errorCode === "INVALID_REVENUE_ACCOUNT_TYPE") {
+        setEditorError("บัญชีที่เลือกไม่ใช่หมวดรายได้ จึงไม่สามารถผูกกับสินค้าได้");
+      } else {
+        setEditorError(getErrorMessage(error, "ไม่สามารถอัปเดตสินค้าได้"));
+      }
     } finally {
       setIsSavingProduct(false);
     }
@@ -416,14 +578,90 @@ export default function PosPage() {
     }
   }
 
+  function renderSellableProductSection({
+    eyebrow,
+    title,
+    description,
+    products,
+    sectionLabel,
+    highlightText,
+  }: {
+    eyebrow: string;
+    title: string;
+    description: string;
+    products: Product[];
+    sectionLabel: string;
+    highlightText: string;
+  }) {
+    if (products.length === 0) {
+      return null;
+    }
+
+    return (
+      <section className="rounded-3xl border border-line/80 bg-background/60 p-5 md:p-6">
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+          <div>
+            <p className="text-xs font-semibold text-muted">{eyebrow}</p>
+            <h2 className="mt-2 text-2xl font-semibold text-foreground">{title}</h2>
+          </div>
+          <p className="max-w-2xl text-sm leading-6 text-muted">{description}</p>
+        </div>
+        <div className="mt-5 grid auto-rows-fr grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-4">
+          {products.map((product) => {
+            const isOutOfStock =
+              product.track_stock && typeof product.stock_on_hand === "number" && product.stock_on_hand <= 0;
+
+            return (
+              <button
+                key={product.product_id}
+                type="button"
+                onClick={() => handleAddProduct(product)}
+                aria-label={`Add ${product.name}`}
+                disabled={Boolean(isOutOfStock)}
+                className="group flex h-full flex-col rounded-3xl border border-line bg-[#161510] p-5 text-left transition hover:-translate-y-0.5 hover:border-accent hover:bg-[#f4cf3a] disabled:cursor-not-allowed disabled:opacity-45"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <p className="text-xs uppercase tracking-[0.16em] text-muted transition group-hover:text-[#2c2200]">{sectionLabel}</p>
+                  {product.track_stock ? (
+                    <span
+                      className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                        isOutOfStock
+                          ? "bg-warning-soft text-foreground group-hover:bg-[#5a2f04] group-hover:text-[#fff7d6]"
+                          : "bg-accent-soft text-foreground group-hover:bg-[#2c2200] group-hover:text-[#fff7d6]"
+                      }`}
+                    >
+                      คงเหลือ {product.stock_on_hand}
+                    </span>
+                  ) : (
+                    <span className="rounded-full bg-accent-soft px-3 py-1 text-xs font-semibold text-foreground group-hover:bg-[#2c2200] group-hover:text-[#fff7d6]">
+                      บริการ
+                    </span>
+                  )}
+                </div>
+                <h2 className="mt-3 text-xl font-semibold leading-snug text-foreground text-balance transition group-hover:text-[#201703]">
+                  {getProductDisplayTitle(product)}
+                </h2>
+                <p className="mt-1 text-sm text-muted transition group-hover:text-[#4c3a08]">{getProductDisplaySubtitle(product)}</p>
+                <p className="mt-2 text-sm leading-6 text-muted transition group-hover:text-[#4c3a08]">{highlightText}</p>
+                <p className="mt-auto pt-5 text-2xl font-semibold text-foreground transition group-hover:text-[#201703]">
+                  {formatCurrency(product.price)}
+                </p>
+              </button>
+            );
+          })}
+        </div>
+      </section>
+    );
+  }
+
   return (
     <ShiftGuard>
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1.42fr)_minmax(360px,0.78fr)] xl:items-start">
         <section className="rounded-[28px] border border-line bg-surface-strong p-6 md:p-8">
           <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
             <div>
-              <p className="text-xs uppercase tracking-[0.18em] text-muted">POS foundation</p>
-              <h1 className="mt-3 text-3xl font-semibold text-foreground">พื้นที่ขายหน้าร้าน</h1>
+              <p className="text-xs uppercase tracking-[0.18em] text-muted">จุดขายหน้าร้าน</p>
+              <h1 className="mt-3 text-3xl font-semibold text-foreground">เคาน์เตอร์ขาย LA GYM</h1>
             </div>
             <div className="rounded-[20px] bg-accent-soft px-4 py-3">
               <p className="text-xs uppercase tracking-[0.16em] text-muted">จำนวนรายการในตะกร้า</p>
@@ -437,10 +675,10 @@ export default function PosPage() {
               aria-label="Product search"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="ค้นหาจากชื่อสินค้า, SKU หรือประเภท"
+              placeholder="ค้นหาจากชื่อเมนู รหัสสินค้า หรือหมวดขาย"
               className="w-full rounded-[20px] border border-line bg-[#fff8de] px-4 py-3 text-[#17130a] placeholder:text-[#8a7840] outline-none transition focus:border-accent md:max-w-md"
             />
-            <p className="text-sm text-muted">เป้าหมายรอบนี้คือหยิบสินค้า, จัดการตะกร้า และทดสอบขั้นตอนรับเงิน</p>
+            <p className="text-sm text-muted">รวมเมนูกาแฟ สมาชิก อาหารตามสั่ง และแพ็กเกจเทรนไว้ในหน้าเดียวเพื่อขายหน้าร้านได้เร็ว</p>
           </div>
 
           {productsLoading ? (
@@ -449,50 +687,22 @@ export default function PosPage() {
             </div>
           ) : (
             <div className="mt-6 space-y-6 xl:space-y-7">
-              <section className="rounded-3xl border border-line/80 bg-background/60 p-5 md:p-6">
-                <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-                  <div>
-                    <p className="text-xs font-semibold text-muted">สินค้าและบริการ</p>
-                    <h2 className="mt-2 text-2xl font-semibold text-foreground">แยกจากสมาชิกชัดเจน</h2>
-                  </div>
-                  <p className="max-w-2xl text-sm leading-6 text-muted">เฉพาะสินค้า goods จะตรวจสต็อกก่อนเพิ่มเข้าตะกร้า</p>
-                </div>
-                <div className="mt-5 grid auto-rows-fr grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-4">
-                  {inventoryProducts.map((product) => {
-                    const isOutOfStock = product.track_stock && typeof product.stock_on_hand === "number" && product.stock_on_hand <= 0;
-                    return (
-                      <button
-                        key={product.product_id}
-                        type="button"
-                        onClick={() => handleAddProduct(product)}
-                        aria-label={`Add ${product.name}`}
-                        disabled={Boolean(isOutOfStock)}
-                        className="group flex h-full flex-col rounded-3xl border border-line bg-[#161510] p-5 text-left transition hover:-translate-y-0.5 hover:border-accent hover:bg-[#f4cf3a] disabled:cursor-not-allowed disabled:opacity-45"
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <p className="text-xs uppercase tracking-[0.16em] text-muted transition group-hover:text-[#2c2200]">{product.product_type}</p>
-                          {product.track_stock ? (
-                            <span className={`rounded-full px-3 py-1 text-xs font-semibold ${isOutOfStock ? "bg-warning-soft text-foreground group-hover:bg-[#5a2f04] group-hover:text-[#fff7d6]" : "bg-accent-soft text-foreground group-hover:bg-[#2c2200] group-hover:text-[#fff7d6]"}`}>
-                              คงเหลือ {product.stock_on_hand}
-                            </span>
-                          ) : null}
-                        </div>
-                        <h2 className="mt-3 text-xl font-semibold leading-snug text-foreground text-balance transition group-hover:text-[#201703]">{product.name}</h2>
-                        <p className="mt-1 text-sm text-muted transition group-hover:text-[#4c3a08]">{product.sku}</p>
-                        <p className="mt-auto pt-5 text-2xl font-semibold text-foreground transition group-hover:text-[#201703]">{formatCurrency(product.price)}</p>
-                      </button>
-                    );
-                  })}
-                </div>
-              </section>
+              {renderSellableProductSection({
+                eyebrow: "เมนูกาแฟ",
+                title: "กาแฟและเครื่องดื่ม",
+                description: "อิงราคาตามป้ายร้าน แยกร้อนและเย็นชัดเจน เหมาะกับงานขายไวหน้าเคาน์เตอร์",
+                products: coffeeProducts,
+                sectionLabel: "บาร์กาแฟ",
+                highlightText: "เมนูขายเร็วของหน้าร้าน เพิ่มลงบิลได้ทันที",
+              })}
 
               <section className="rounded-3xl border border-line/80 bg-background/60 p-5 md:p-6">
                 <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
                   <div>
-                    <p className="text-xs font-semibold text-muted">ระบบสมาชิก</p>
-                    <h2 className="mt-2 text-2xl font-semibold text-foreground">แยกจากสินค้าเพื่อรองรับวันหมดอายุ</h2>
+                    <p className="text-xs font-semibold text-muted">ราคาสมาชิก</p>
+                    <h2 className="mt-2 text-2xl font-semibold text-foreground">ราคาสมาชิกตามป้ายหน้าฟิตเนส</h2>
                   </div>
-                  <p className="max-w-2xl text-sm leading-6 text-muted">daily, monthly, quarterly, semiannual, yearly จะคำนวณช่วงอายุสมาชิกจากวันที่ซื้อ</p>
+                  <p className="max-w-2xl text-sm leading-6 text-muted">รายวัน รายเดือน 3 เดือน 6 เดือน และรายปี จะคำนวณวันหมดอายุจากวันที่ขายให้อัตโนมัติ</p>
                 </div>
                 <div className="mt-5 grid auto-rows-fr grid-cols-[repeat(auto-fit,minmax(240px,1fr))] gap-4">
                   {membershipProducts.map((product) => (
@@ -503,11 +713,14 @@ export default function PosPage() {
                       aria-label={`Add ${product.name}`}
                       className="group flex h-full min-h-64 min-w-0 flex-col overflow-hidden rounded-3xl border border-line bg-[#1a1608] p-5 text-left transition hover:-translate-y-0.5 hover:border-accent hover:bg-[#f4cf3a]"
                     >
-                      <p className="text-xs uppercase tracking-[0.16em] text-muted transition group-hover:text-[#4c3a08]">{product.membership_period}</p>
+                      <p className="text-xs uppercase tracking-[0.16em] text-muted transition group-hover:text-[#4c3a08]">
+                        {membershipPeriodLabel[product.membership_period ?? "MONTHLY"]}
+                      </p>
                       <h2 className="mt-3 max-w-full text-[clamp(1.1rem,1.6vw,1.4rem)] font-semibold leading-snug text-foreground text-balance transition group-hover:text-[#201703]">
-                        {product.name}
+                        {getProductDisplayTitle(product)}
                       </h2>
-                      <p className="mt-2 text-sm leading-6 text-muted transition group-hover:text-[#4c3a08]">เริ่มวันนี้ หมดอายุ {getProjectedMembershipEndDate(product)}</p>
+                      <p className="mt-2 text-sm leading-6 text-muted transition group-hover:text-[#4c3a08]">{getProductDisplaySubtitle(product)}</p>
+                      <p className="mt-1 text-sm leading-6 text-muted transition group-hover:text-[#4c3a08]">เริ่มวันนี้ หมดอายุ {getProjectedMembershipEndDate(product)}</p>
                       <p className="mt-auto break-words pt-5 text-[clamp(1.55rem,2vw,2rem)] font-semibold leading-tight text-foreground transition group-hover:text-[#201703]">
                         {formatCurrency(product.price)}
                       </p>
@@ -515,6 +728,72 @@ export default function PosPage() {
                   ))}
                 </div>
               </section>
+
+              {renderSellableProductSection({
+                eyebrow: "อาหารตามสั่ง",
+                title: "เมนูอาหารตามสั่ง",
+                description: "รวมเมนูจานด่วนจากหน้าร้าน เช่น กะเพราหมูสับไข่ดาว ผัดซีอิ๊ว และข้าวผัดไก่ ในราคาเข้าถึงง่ายสำหรับลูกค้าหน้าฟิตเนส",
+                products: madeToOrderProducts,
+                sectionLabel: "ครัวหน้าร้าน",
+                highlightText: "เมนูจานเดียวพร้อมขาย ตัดสต็อกและสรุปยอดในกะได้ทันที",
+              })}
+
+              {renderSellableProductSection({
+                eyebrow: "เทรนเนอร์ส่วนตัว",
+                title: "แพ็กเกจเทรนส่วนตัว",
+                description: "รวมโปรเทรนเดี่ยว เทรนรายครั้ง และแพ็กเกจรายเดือนตามป้ายโปรโมชัน โดยไม่ตัดสต็อกและขายเป็นบริการ",
+                products: trainerProducts,
+                sectionLabel: "บริการเทรน",
+                highlightText: "ขายเป็นบริการ เพิ่มเข้าบิลได้ทันทีสำหรับลูกค้าที่ต้องการเทรนจริงจัง",
+              })}
+
+              {frontDeskProducts.length > 0 ? (
+                <section className="rounded-3xl border border-line/80 bg-background/60 p-5 md:p-6">
+                  <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+                    <div>
+                      <p className="text-xs font-semibold text-muted">สินค้าเสริมหน้าเคาน์เตอร์</p>
+                      <h2 className="mt-2 text-2xl font-semibold text-foreground">เมนูเสริมและของใช้จุกจิก</h2>
+                    </div>
+                    <p className="max-w-2xl text-sm leading-6 text-muted">รวมรายการที่ไม่ได้อยู่ใน 4 หมวดหลัก เช่น น้ำดื่ม โปรตีนเชค และบริการเสริมหน้าเคาน์เตอร์</p>
+                  </div>
+                  <div className="mt-5 grid auto-rows-fr grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-4">
+                    {frontDeskProducts.map((product) => {
+                      const isOutOfStock =
+                        product.track_stock && typeof product.stock_on_hand === "number" && product.stock_on_hand <= 0;
+
+                      return (
+                        <button
+                          key={product.product_id}
+                          type="button"
+                          onClick={() => handleAddProduct(product)}
+                          aria-label={`Add ${product.name}`}
+                          disabled={Boolean(isOutOfStock)}
+                          className="group flex h-full flex-col rounded-3xl border border-line bg-[#161510] p-5 text-left transition hover:-translate-y-0.5 hover:border-accent hover:bg-[#f4cf3a] disabled:cursor-not-allowed disabled:opacity-45"
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <p className="text-xs uppercase tracking-[0.16em] text-muted transition group-hover:text-[#2c2200]">ขายเร็ว</p>
+                            {product.track_stock ? (
+                              <span className={`rounded-full px-3 py-1 text-xs font-semibold ${isOutOfStock ? "bg-warning-soft text-foreground group-hover:bg-[#5a2f04] group-hover:text-[#fff7d6]" : "bg-accent-soft text-foreground group-hover:bg-[#2c2200] group-hover:text-[#fff7d6]"}`}>
+                                คงเหลือ {product.stock_on_hand}
+                              </span>
+                            ) : (
+                              <span className="rounded-full bg-accent-soft px-3 py-1 text-xs font-semibold text-foreground group-hover:bg-[#2c2200] group-hover:text-[#fff7d6]">
+                                บริการ
+                              </span>
+                            )}
+                          </div>
+                          <h2 className="mt-3 text-xl font-semibold leading-snug text-foreground text-balance transition group-hover:text-[#201703]">
+                            {getProductDisplayTitle(product)}
+                          </h2>
+                          <p className="mt-1 text-sm text-muted transition group-hover:text-[#4c3a08]">{getProductDisplaySubtitle(product)}</p>
+                          <p className="mt-2 text-sm leading-6 text-muted transition group-hover:text-[#4c3a08]">เพิ่มลงบิลได้เร็วโดยไม่ชนกับหมวดหลักของหน้าร้าน</p>
+                          <p className="mt-auto pt-5 text-2xl font-semibold text-foreground transition group-hover:text-[#201703]">{formatCurrency(product.price)}</p>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </section>
+              ) : null}
 
               <section className="rounded-3xl border border-line bg-background/70 p-5 md:p-6">
                 <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
@@ -535,6 +814,7 @@ export default function PosPage() {
                       setEditName("");
                       setEditPrice("");
                       setEditStockOnHand("0");
+                      setSelectedRevenueAccountId("");
                       setEditorMessage(null);
                       setEditorError(null);
                     }}
@@ -551,6 +831,11 @@ export default function PosPage() {
                         setEditName(selectedProduct.name);
                         setEditPrice(String(selectedProduct.price));
                         setEditStockOnHand(selectedProduct.track_stock ? String(selectedProduct.stock_on_hand ?? 0) : "");
+                        setSelectedRevenueAccountId(
+                          selectedProduct.revenue_account_id === undefined
+                            ? ""
+                            : String(selectedProduct.revenue_account_id),
+                        );
                       }
                       setEditorMessage(null);
                       setEditorError(null);
@@ -638,6 +923,72 @@ export default function PosPage() {
                   </label>
                 </div>
 
+                <div className="mt-4 rounded-[24px] border border-line bg-background/70 p-4">
+                  <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-foreground">บัญชีรายได้</p>
+                      <p className="mt-1 text-sm leading-6 text-muted">
+                        ผูกสินค้าเข้ากับ COA หมวด REVENUE เพื่อให้ backend ลงบัญชีรายได้แยกตามสินค้าได้ตรง contract
+                      </p>
+                    </div>
+                    {selectedRevenueAccount ? (
+                      <div className="rounded-[18px] bg-accent-soft px-4 py-3 text-sm text-foreground">
+                        {selectedRevenueAccount.account_code} · {selectedRevenueAccount.account_name}
+                      </div>
+                    ) : null}
+                  </div>
+
+                  <label className="mt-4 block">
+                    <span className="text-sm font-medium text-foreground">เลือกบัญชีรายได้</span>
+                    <select
+                      aria-label="เลือกบัญชีรายได้"
+                      value={selectedRevenueAccountId}
+                      onChange={(event) => setSelectedRevenueAccountId(event.target.value)}
+                      disabled={revenueAccountsLoading}
+                      className="mt-2 w-full rounded-[18px] border border-line bg-[#fff8de] px-4 py-3 text-[#17130a] outline-none transition focus:border-accent disabled:opacity-60"
+                    >
+                      <option value="">ใช้ค่า default ของ backend</option>
+                      {revenueAccounts.map((account) => (
+                        <option key={account.account_id} value={String(account.account_id)}>
+                          {account.account_code} · {account.account_name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  {revenueAccountsLoading ? (
+                    <div className="mt-4 rounded-[18px] border border-dashed border-line bg-[#161510] px-4 py-3 text-sm text-muted">
+                      กำลังโหลดตัวเลือกบัญชีรายได้...
+                    </div>
+                  ) : null}
+
+                  {revenueAccountsError ? (
+                    <div className="mt-4 rounded-[18px] border border-warning bg-warning-soft px-4 py-3 text-sm text-foreground">
+                      โหลดบัญชีรายได้ไม่สำเร็จ แต่ยังแก้ไข SKU, ชื่อ, ราคา และ stock ได้ตามปกติ
+                      <div className="mt-1">{revenueAccountsError}</div>
+                    </div>
+                  ) : null}
+
+                  {!revenueAccountsLoading && !revenueAccountsError && revenueAccounts.length === 0 ? (
+                    <div className="mt-4 rounded-[18px] border border-dashed border-line bg-[#161510] px-4 py-3 text-sm text-muted">
+                      ยังไม่มีบัญชีหมวด REVENUE ที่ active ให้เลือก หากบันทึกตอนนี้ระบบจะ fallback ไปบัญชีรายได้ default ของ backend
+                    </div>
+                  ) : null}
+
+                  {!isCreateMode && mappedRevenueAccount && !mappedRevenueAccount.is_active ? (
+                    <div className="mt-4 rounded-[18px] border border-warning bg-warning-soft px-4 py-3 text-sm text-foreground">
+                      สินค้านี้เคยผูกกับบัญชี {mappedRevenueAccount.account_code} · {mappedRevenueAccount.account_name} ซึ่งตอนนี้ inactive อยู่
+                      กรุณาเลือกบัญชีใหม่ก่อนบันทึกเพื่อหลีกเลี่ยง validation error จาก backend
+                    </div>
+                  ) : null}
+
+                  {!isCreateMode && selectedProduct?.revenue_account_id && !mappedRevenueAccount ? (
+                    <div className="mt-4 rounded-[18px] border border-warning bg-warning-soft px-4 py-3 text-sm text-foreground">
+                      ไม่พบข้อมูลบัญชีรายได้ที่เคยผูกอยู่ในรายการ COA ปัจจุบัน กรุณาเลือกบัญชีใหม่ก่อนบันทึก
+                    </div>
+                  ) : null}
+                </div>
+
                 {editorError ? (
                   <div className="mt-4 rounded-[20px] border border-warning bg-warning-soft px-4 py-3 text-sm text-foreground">
                     {editorError}
@@ -667,11 +1018,17 @@ export default function PosPage() {
                         setEditName("");
                         setEditPrice("");
                         setEditStockOnHand(newProductType === "GOODS" ? "0" : "");
+                        setSelectedRevenueAccountId("");
                       } else if (selectedProduct) {
                         setEditSku(selectedProduct.sku);
                         setEditName(selectedProduct.name);
                         setEditPrice(String(selectedProduct.price));
                         setEditStockOnHand(selectedProduct.track_stock ? String(selectedProduct.stock_on_hand ?? 0) : "");
+                        setSelectedRevenueAccountId(
+                          selectedProduct.revenue_account_id === undefined
+                            ? ""
+                            : String(selectedProduct.revenue_account_id),
+                        );
                       }
                       setEditorMessage(null);
                       setEditorError(null);

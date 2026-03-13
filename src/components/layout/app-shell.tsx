@@ -20,12 +20,12 @@ const navItems: NavItem[] = [
   { href: "/pos", label: "POS", roles: ["OWNER", "ADMIN", "CASHIER"] },
   { href: "/expenses", label: "เงินสดย่อย", roles: ["OWNER", "ADMIN", "CASHIER"] },
   { href: "/members", label: "สมาชิก", roles: ["OWNER", "ADMIN"] },
-  { href: "/coa", label: "ผังบัญชี", roles: ["OWNER"] },
+  { href: "/coa", label: "ผังบัญชี", roles: ["OWNER", "ADMIN"] },
   { href: "/admin/users", label: "จัดการผู้ใช้", roles: ["OWNER", "ADMIN"] },
   { href: "/reports/daily-summary", label: "สรุปรายวัน", roles: ["OWNER", "ADMIN"] },
   { href: "/reports/shift-summary", label: "สรุปกะ", roles: ["OWNER", "ADMIN"] },
   { href: "/reports/profit-loss", label: "กำไรขาดทุน", roles: ["OWNER"] },
-  { href: "/reports/general-ledger", label: "สมุดรายวันแยกประเภท", roles: ["OWNER"] },
+  { href: "/reports/general-ledger", label: "สมุดรายวันแยกประเภท", roles: ["OWNER", "ADMIN"] },
 ];
 
 const roleTone: Record<Role, string> = {

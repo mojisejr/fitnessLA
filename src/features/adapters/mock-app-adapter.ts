@@ -97,6 +97,27 @@ function cloneProduct(product: Product) {
   return { ...product };
 }
 
+function resolveRevenueAccount(accountId: EntityId | undefined) {
+  if (accountId === undefined || accountId === null || accountId === "") {
+    return null;
+  }
+
+  const match = chartOfAccountsState.find((account) => String(account.account_id) === String(accountId));
+  if (!match) {
+    throw createError("REVENUE_ACCOUNT_NOT_FOUND", "ไม่พบบัญชีรายได้ที่ต้องการผูกกับสินค้า");
+  }
+
+  if (match.account_type !== "REVENUE") {
+    throw createError("INVALID_REVENUE_ACCOUNT_TYPE", "บัญชีที่เลือกต้องเป็นหมวด REVENUE เท่านั้น");
+  }
+
+  if (!match.is_active) {
+    throw createError("REVENUE_ACCOUNT_INACTIVE", "บัญชีรายได้ที่เลือกถูกปิดใช้งานอยู่");
+  }
+
+  return match;
+}
+
 function extractSequenceNumber(value: EntityId) {
   if (typeof value === "number") {
     return value;
@@ -209,12 +230,15 @@ export const mockAppAdapter: AppAdapter = {
       throw createError("DUPLICATE_PRODUCT_SKU", "SKU นี้ถูกใช้งานแล้ว");
     }
 
+    const revenueAccount = resolveRevenueAccount(input.revenueAccountId);
+
     const nextProduct: Product = {
       product_id: productSequence,
       sku: input.sku.trim(),
       name: input.name.trim(),
       price: input.price,
       product_type: input.productType,
+      revenue_account_id: revenueAccount?.account_id,
       track_stock: input.productType === "GOODS",
       stock_on_hand: input.productType === "GOODS" ? (input.stockOnHand ?? 0) : null,
     };
@@ -256,6 +280,8 @@ export const mockAppAdapter: AppAdapter = {
       throw createError("INVALID_PRODUCT_STOCK", "จำนวน stock ต้องเป็นศูนย์หรือมากกว่า");
     }
 
+    const revenueAccount = resolveRevenueAccount(input.revenueAccountId);
+
     productsState = productsState.map((product) => {
       if (product.product_id !== input.productId) {
         return product;
@@ -266,6 +292,7 @@ export const mockAppAdapter: AppAdapter = {
         name: input.name.trim(),
         sku: input.sku.trim(),
         price: input.price,
+        revenue_account_id: revenueAccount?.account_id,
         stock_on_hand: product.track_stock ? (input.stockOnHand ?? product.stock_on_hand ?? 0) : product.stock_on_hand,
       } satisfies Product;
     });

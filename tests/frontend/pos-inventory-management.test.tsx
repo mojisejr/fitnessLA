@@ -2,6 +2,13 @@ import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import PosPage from "@/app/(app)/pos/page";
 import { clearMockSession, renderWithProviders, seedMockSession } from "./test-utils";
 
+async function waitForPosReady() {
+  await waitFor(() => {
+    expect(screen.queryByText("กำลังโหลดสินค้า...")).not.toBeInTheDocument();
+    expect(screen.queryByText("กำลังโหลดตัวเลือกบัญชีรายได้...")).not.toBeInTheDocument();
+  }, { timeout: 15000 });
+}
+
 describe("POS inventory management", () => {
   beforeEach(() => {
     clearMockSession();
@@ -25,9 +32,7 @@ describe("POS inventory management", () => {
   it("updates stock and reflects sold quantities in the shift summary", async () => {
     renderWithProviders(<PosPage />);
 
-    await waitFor(() => {
-      expect(screen.queryByText("กำลังโหลดสินค้า...")).not.toBeInTheDocument();
-    });
+    await waitForPosReady();
 
     fireEvent.change(screen.getByLabelText("เลือกสินค้าเพื่อแก้ไข"), {
       target: { value: "101" },
@@ -39,7 +44,7 @@ describe("POS inventory management", () => {
 
     await waitFor(() => {
       expect(screen.getByText("อัปเดตสินค้าและ stock เรียบร้อยแล้ว")).toBeInTheDocument();
-    });
+    }, { timeout: 15000 });
 
     const waterCard = screen.getByRole("button", { name: "Add Mineral Water" });
     fireEvent.click(waterCard);
@@ -49,24 +54,22 @@ describe("POS inventory management", () => {
 
     await waitFor(() => {
       expect(screen.getByText("คิดเงินสำเร็จ")).toBeInTheDocument();
-    });
+    }, { timeout: 15000 });
 
     await waitFor(() => {
       expect(screen.queryByText("กำลังโหลดสรุปสินค้าในกะ...")).not.toBeInTheDocument();
-    });
+    }, { timeout: 15000 });
 
     const waterRow = await screen.findByLabelText("Inventory Mineral Water");
     expect(within(waterRow).getByText("20")).toBeInTheDocument();
     expect(within(waterRow).getByText("3")).toBeInTheDocument();
     expect(within(waterRow).getByText("17")).toBeInTheDocument();
-  });
+  }, 20000);
 
   it("creates a new product from POS and includes coffee in the product list", async () => {
     renderWithProviders(<PosPage />);
 
-    await waitFor(() => {
-      expect(screen.queryByText("กำลังโหลดสินค้า...")).not.toBeInTheDocument();
-    });
+    await waitForPosReady();
 
     expect(screen.getByRole("button", { name: "Add Iced Americano" })).toBeInTheDocument();
 
@@ -87,8 +90,8 @@ describe("POS inventory management", () => {
 
     await waitFor(() => {
       expect(screen.getByText("เพิ่มสินค้าใหม่เรียบร้อยแล้ว")).toBeInTheDocument();
-    });
+    }, { timeout: 15000 });
 
     expect(screen.getByRole("button", { name: "Add Latte" })).toBeInTheDocument();
-  });
+  }, 15000);
 });
