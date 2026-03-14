@@ -104,13 +104,32 @@ export const realAppAdapter: AppAdapter = {
   },
 
   async createProduct(input: CreateProductInput) {
-    void input;
-    return notImplemented("Product create ยังมีเฉพาะ mock adapter ในรอบนี้");
+    return fetchJson<Product>("/api/v1/products", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sku: input.sku,
+        name: input.name,
+        price: input.price,
+        product_type: input.productType,
+        revenue_account_id:
+          input.revenueAccountId === undefined ? undefined : String(input.revenueAccountId),
+      }),
+    });
   },
 
   async updateProduct(input: UpdateProductInput) {
-    void input;
-    return notImplemented("Product edit และ stock edit ยังมีเฉพาะ mock adapter ในรอบนี้");
+    return fetchJson<Product>(`/api/v1/products/${encodeURIComponent(String(input.productId))}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sku: input.sku,
+        name: input.name,
+        price: input.price,
+        revenue_account_id:
+          input.revenueAccountId === undefined ? undefined : String(input.revenueAccountId),
+      }),
+    });
   },
 
   async getShiftInventorySummary(shiftId: string | number) {
@@ -118,20 +137,29 @@ export const realAppAdapter: AppAdapter = {
     return notImplemented("Shift inventory summary ยังมีเฉพาะ mock adapter ในรอบนี้");
   },
 
-  async openShift(startingCash: number) {
+  async openShift(startingCash: number, responsibleName: string) {
     return fetchJson<ShiftOpenResult>("/api/v1/shifts/open", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ starting_cash: startingCash }),
+      body: JSON.stringify({ starting_cash: startingCash, responsible_name: responsibleName }),
     });
   },
 
-  async closeShift(input: { activeShift: MockShiftRecord; actualCash: number }) {
+  async closeShift(input: {
+    activeShift: MockShiftRecord;
+    actualCash: number;
+    closingNote?: string;
+    responsibleName: string;
+  }) {
     void input.activeShift;
     return fetchJson<ShiftCloseResult>("/api/v1/shifts/close", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ actual_cash: input.actualCash }),
+      body: JSON.stringify({
+        actual_cash: input.actualCash,
+        closing_note: input.closingNote,
+        responsible_name: input.responsibleName,
+      }),
     });
   },
 
@@ -174,15 +202,19 @@ export const realAppAdapter: AppAdapter = {
   },
 
   async listChartOfAccounts() {
-    return notImplemented("COA API จริงยังไม่ถูกล็อก contract");
+    return fetchJson("/api/v1/coa");
   },
   async createChartOfAccount(input: CreateChartOfAccountInput) {
-    void input;
-    return notImplemented("COA create API จริงยังไม่ถูกล็อก contract");
+    return fetchJson("/api/v1/coa", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    });
   },
   async toggleChartOfAccount(accountId: EntityId) {
-    void accountId;
-    return notImplemented("COA toggle API จริงยังไม่ถูกล็อก contract");
+    return fetchJson(`/api/v1/coa/${encodeURIComponent(String(accountId))}/toggle`, {
+      method: "PATCH",
+    });
   },
   async createAdminUser(input: CreateAdminUserInput) {
     return fetchJson<AdminUserRecord>("/api/v1/admin/users", {

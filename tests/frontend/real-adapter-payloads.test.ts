@@ -95,18 +95,18 @@ describe("real-app-adapter — request payload shapes", () => {
 
   // ── 2B: Shift Operations ───────────────────────────────────────────────
 
-  it("2B-4: openShift POSTs /api/v1/shifts/open with starting_cash", async () => {
+  it("2B-4: openShift POSTs /api/v1/shifts/open with starting_cash and responsible_name", async () => {
     spyFetch({ shift_id: "101", opened_at: "2026-03-10T08:00:00Z" });
 
-    await realAppAdapter.openShift(500);
+    await realAppAdapter.openShift(500, "Pim Counter");
 
     const [url, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
     expect(url).toBe("/api/v1/shifts/open");
     expect(init.method).toBe("POST");
-    expect(JSON.parse(init.body as string)).toEqual({ starting_cash: 500 });
+    expect(JSON.parse(init.body as string)).toEqual({ starting_cash: 500, responsible_name: "Pim Counter" });
   });
 
-  it("2B-5: closeShift POSTs /api/v1/shifts/close with actual_cash", async () => {
+  it("2B-5: closeShift POSTs /api/v1/shifts/close with actual_cash and responsible_name", async () => {
     spyFetch({
       shift_id: "101",
       expected_cash: 2000,
@@ -123,12 +123,13 @@ describe("real-app-adapter — request payload shapes", () => {
         starting_cash: 500,
       },
       actualCash: 2100,
+      responsibleName: "Pim Counter",
     });
 
     const [url, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
     expect(url).toBe("/api/v1/shifts/close");
     expect(init.method).toBe("POST");
-    expect(JSON.parse(init.body as string)).toEqual({ actual_cash: 2100 });
+    expect(JSON.parse(init.body as string)).toEqual({ actual_cash: 2100, closing_note: undefined, responsible_name: "Pim Counter" });
   });
 
   // ── 2C: Orders ─────────────────────────────────────────────────────────

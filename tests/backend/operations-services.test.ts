@@ -12,14 +12,20 @@ type ShiftState = {
 
 type State = {
   shifts: ShiftState[];
-  products: Array<{ id: string; isActive: boolean; price: number }>;
-  chartOfAccounts: Array<{ id: string; code: string }>;
+  products: Array<{ id: string; isActive: boolean; price: number; revenueAccountId: string | null }>;
+  chartOfAccounts: Array<{ id: string; code: string; type?: string; isActive?: boolean }>;
   documentSequences: Array<{ id: string; type: string; prefix: string; currentNo: number }>;
   orders: Array<{ id: string; orderNumber: string }>;
   orderItems: Array<{ id: string; orderId: string }>;
   taxDocuments: Array<{ id: string; docNumber: string }>;
   journalEntries: Array<{ id: string; sourceType: string }>;
-  journalLines: Array<{ id: string; journalEntryId: string }>;
+  journalLines: Array<{
+    id: string;
+    journalEntryId: string;
+    chartOfAccountId: string;
+    debit: number;
+    credit: number;
+  }>;
   expenses: Array<{ id: string; shiftId: string; amount: number }>;
 };
 
@@ -109,6 +115,7 @@ const mocked = vi.hoisted(() => {
             id: item.id,
             isActive: item.isActive,
             price: new Prisma.Decimal(item.price),
+            revenueAccountId: item.revenueAccountId,
           }));
       },
     },
@@ -206,9 +213,24 @@ const mocked = vi.hoisted(() => {
       },
     },
     journalLine: {
-      createMany: async ({ data }: { data: Array<{ journalEntryId: string }> }) => {
+      createMany: async ({
+        data,
+      }: {
+        data: Array<{
+          journalEntryId: string;
+          chartOfAccountId: string;
+          debit: Prisma.Decimal;
+          credit: Prisma.Decimal;
+        }>;
+      }) => {
         for (const line of data) {
-          state.journalLines.push({ id: nextId("jl"), journalEntryId: line.journalEntryId });
+          state.journalLines.push({
+            id: nextId("jl"),
+            journalEntryId: line.journalEntryId,
+            chartOfAccountId: line.chartOfAccountId,
+            debit: Number(line.debit),
+            credit: Number(line.credit),
+          });
         }
         return { count: data.length };
       },
@@ -267,11 +289,15 @@ const mocked = vi.hoisted(() => {
         expectedCash: null,
       },
     ];
-    state.products = [{ id: "p1", isActive: true, price: 1500 }];
+    state.products = [
+      { id: "p1", isActive: true, price: 1500, revenueAccountId: null },
+      { id: "p2", isActive: true, price: 500, revenueAccountId: "coa_rev_pt" },
+    ];
     state.chartOfAccounts = [
-      { id: "coa_cash", code: "1010" },
-      { id: "coa_rev", code: "4010" },
-      { id: "coa_exp", code: "5010" },
+      { id: "coa_cash", code: "1010", type: "ASSET", isActive: true },
+      { id: "coa_rev", code: "4010", type: "REVENUE", isActive: true },
+      { id: "coa_rev_pt", code: "4110", type: "REVENUE", isActive: true },
+      { id: "coa_exp", code: "5010", type: "EXPENSE", isActive: true },
     ];
     state.documentSequences = [];
     state.orders = [];
@@ -345,5 +371,36 @@ describe("A-3 operations services", () => {
     expect(result.status).toBe("POSTED");
     expect(mocked.state.expenses).toHaveLength(1);
     expect(mocked.state.shifts[0]?.expectedCash).toBe(400);
+  });
+
+  it("credits mixed revenue accounts per product mapping with fallback to 4010", async () => {
+    const result = await createOrderWithJournal("u1", {
+      shift_id: "shift_1",
+      items: [
+        { product_id: "p1", quantity: 1 },
+        { product_id: "p2", quantity: 2 },
+      ],
+      payment_method: "CASH",
+    });
+
+    expect(result.total_amount).toBe(2500);
+
+    const entry = mocked.state.journalEntries[0];
+    const lines = mocked.state.journalLines.filter((line) => line.journalEntryId === entry?.id);
+
+    expect(lines).toHaveLength(3);
+
+    const cashLine = lines.find((line) => line.chartOfAccountId === "coa_cash");
+    const fallbackRevenueLine = lines.find((line) => line.chartOfAccountId === "coa_rev");
+    const mappedRevenueLine = lines.find((line) => line.chartOfAccountId === "coa_rev_pt");
+
+    expect(cashLine?.debit).toBe(2500);
+    expect(cashLine?.credit).toBe(0);
+
+    expect(fallbackRevenueLine?.debit).toBe(0);
+    expect(fallbackRevenueLine?.credit).toBe(1500);
+
+    expect(mappedRevenueLine?.debit).toBe(0);
+    expect(mappedRevenueLine?.credit).toBe(1000);
   });
 });

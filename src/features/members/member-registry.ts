@@ -1,5 +1,4 @@
 import type { MemberSubscriptionRecord } from "@/lib/contracts";
-import { mockMemberSubscriptions } from "@/lib/mock-data";
 
 const memberRegistryStorageKey = "fitnessla.member-registry";
 const memberRegistryEventName = "fitnessla.member-registry.changed";
@@ -8,7 +7,7 @@ let cachedRawState: string | null | undefined;
 let cachedRegistryState: MemberSubscriptionRecord[] = cloneInitialRegistry();
 
 function cloneInitialRegistry() {
-  return mockMemberSubscriptions.map((member) => ({ ...member }));
+  return [] as MemberSubscriptionRecord[];
 }
 
 function cloneRegistry(registry: MemberSubscriptionRecord[]) {

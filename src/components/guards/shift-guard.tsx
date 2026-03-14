@@ -17,7 +17,7 @@ export function ShiftGuard({ children }: { children: ReactNode }) {
         <p className="text-sm uppercase tracking-[0.28em] text-muted">ต้องเปิดกะก่อน</p>
         <h2 className="mt-3 text-2xl font-semibold text-foreground">หน้านี้จะใช้งานได้เมื่อมีกะที่เปิดอยู่</h2>
         <p className="mt-3 text-sm leading-7 text-muted">
-          POS และเงินสดย่อยถูก guard ไว้เพื่อให้ลำดับงานตรงกับกติกาบัญชีของ Phase 1
+          POS และหน้ารายจ่ายถูก guard ไว้เพื่อให้ลำดับงานตรงกับกติกาบัญชีของ Phase 1
         </p>
         <Link
           href="/shift/open"

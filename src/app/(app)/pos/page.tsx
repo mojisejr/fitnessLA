@@ -14,14 +14,116 @@ import {
   removeCartLineAtom,
   updateCartLineAtom,
 } from "@/features/pos/cart-store";
-import type { OrderResult, PaymentMethod, Product, ShiftInventorySummaryRow } from "@/lib/contracts";
-import { formatCurrency, getErrorMessage, formatDate } from "@/lib/utils";
+import type { ChartOfAccountRecord, OrderResult, PaymentMethod, Product, ShiftInventorySummaryRow } from "@/lib/contracts";
+import { formatCurrency, getErrorCode, getErrorMessage, formatDate } from "@/lib/utils";
 
 const paymentMethodLabel: Record<PaymentMethod, string> = {
   CASH: "เงินสด",
-  PROMPTPAY: "PromptPay",
+  PROMPTPAY: "พร้อมเพย์",
   CREDIT_CARD: "บัตรเครดิต",
 };
+
+const membershipPeriodLabel = {
+  DAILY: "รายวัน",
+  MONTHLY: "1 เดือน",
+  QUARTERLY: "3 เดือน",
+  SEMIANNUAL: "6 เดือน",
+  YEARLY: "1 ปี",
+} as const;
+
+type SellCategory = "ALL" | "COFFEE" | "MEMBERSHIP" | "FOOD" | "TRAINING" | "COUNTER";
+
+const sellCategoryLabel: Record<SellCategory, string> = {
+  ALL: "ทุกหมวด",
+  COFFEE: "กาแฟและเครื่องดื่ม",
+  MEMBERSHIP: "สมาชิก",
+  FOOD: "อาหารตามสั่ง",
+  TRAINING: "บริการเทรน",
+  COUNTER: "สินค้าเสริมหน้าเคาน์เตอร์",
+};
+
+const productDisplayLabelBySku: Record<string, { title: string; subtitle?: string }> = {
+  "WATER-01": { title: "น้ำดื่ม", subtitle: "ขวดเล็กแช่เย็น" },
+  "COFFEE-01": { title: "อเมริกาโน่เย็น", subtitle: "สูตรเข้มตามป้ายร้าน" },
+  "SHAKE-01": { title: "โปรตีนเชค", subtitle: "เครื่องดื่มโปรตีนพร้อมขาย" },
+  DAYPASS: { title: "สมาชิกรายวัน", subtitle: "เข้าใช้ได้ 1 วัน" },
+  "MEM-MONTH": { title: "สมาชิกรายเดือน", subtitle: "เข้าใช้ได้ 30 วัน" },
+  "MEM-3MONTH": { title: "สมาชิก 3 เดือน", subtitle: "แพ็กเกจยอดนิยม" },
+  "MEM-6MONTH": { title: "สมาชิก 6 เดือน", subtitle: "แพ็กเกจคุ้มค่าสำหรับลูกค้าประจำ" },
+  "MEM-YEAR": { title: "สมาชิกรายปี", subtitle: "เหมาะสำหรับลูกค้าระยะยาว" },
+  "PT-01": { title: "เทรนเดี่ยว 1 ครั้ง", subtitle: "ครั้งละ 500 บาท" },
+  "PT-10": { title: "เทรน 10 ครั้ง", subtitle: "อายุเทรน 30 วัน" },
+  "PT-20": { title: "เทรน 20 ครั้ง", subtitle: "อายุเทรน 60 วัน" },
+  "PT-MONTH": { title: "เทรนรายเดือน", subtitle: "ไม่จำกัดครั้ง" },
+  "PT-COUPLE": { title: "เทรนคู่รายเดือน", subtitle: "ไม่จำกัดครั้ง" },
+  "TOWEL-01": { title: "บริการผ้าเช็ดตัว", subtitle: "บริการเสริมหน้าเคาน์เตอร์" },
+  "COFFEE-11": { title: "อเมริกาโน่ร้อน", subtitle: "คั่วเข้ม" },
+  "COFFEE-12": { title: "เอสเปรสโซ่ร้อน", subtitle: "ช็อตเข้ม" },
+  "COFFEE-13": { title: "เอสเปรสโซ่เย็น", subtitle: "เข้มและหอม" },
+  "COFFEE-14": { title: "ลาเต้ร้อน", subtitle: "นมนุ่ม ดื่มง่าย" },
+  "COFFEE-15": { title: "ลาเต้เย็น", subtitle: "รสนุ่มตามป้าย" },
+  "COFFEE-16": { title: "คาปูชิโน่ร้อน", subtitle: "ฟองนมนุ่ม" },
+  "COFFEE-17": { title: "คาปูชิโน่เย็น", subtitle: "เข้มขึ้น หวานน้อย" },
+  "COFFEE-18": { title: "อเมริกาโน่มะพร้าว", subtitle: "เมนูพิเศษเย็น" },
+  "COFFEE-19": { title: "ลาเต้โอรีโอ้", subtitle: "เมนูหวานขายดี" },
+  "COFFEE-20": { title: "ฮันนี่มิลค์ร้อน", subtitle: "นมหอมน้ำผึ้ง" },
+  "COFFEE-21": { title: "ฮันนี่มิลค์เย็น", subtitle: "ดื่มง่าย สดชื่น" },
+  "FOOD-01": { title: "กะเพราหมูสับไข่ดาว", subtitle: "จานด่วน 70 บาท" },
+  "FOOD-02": { title: "ผัดซีอิ๊วหมู", subtitle: "เมนูเส้นขายดี" },
+  "FOOD-03": { title: "ข้าวผัดไก่", subtitle: "จานเดียวพร้อมขาย" },
+  "FOOD-04": { title: "หมูกระเทียมไข่ดาว", subtitle: "เมนูครัวหน้าร้าน" },
+  "FOOD-05": { title: "คะน้าหมูกรอบ", subtitle: "จานด่วนยอดนิยม" },
+};
+
+function getProductDisplayTitle(product: Product) {
+  return productDisplayLabelBySku[product.sku]?.title ?? product.name;
+}
+
+function getProductDisplaySubtitle(product: Product) {
+  return productDisplayLabelBySku[product.sku]?.subtitle ?? product.sku;
+}
+
+function getSellCategory(product: Product): Exclude<SellCategory, "ALL"> {
+  if (product.product_type === "MEMBERSHIP") {
+    return "MEMBERSHIP";
+  }
+
+  if (product.sku.startsWith("COFFEE-")) {
+    return "COFFEE";
+  }
+
+  if (product.sku.startsWith("FOOD-")) {
+    return "FOOD";
+  }
+
+  if (product.sku.startsWith("PT-")) {
+    return "TRAINING";
+  }
+
+  return "COUNTER";
+}
+
+function normalizeSearchText(value: string) {
+  return value.toLocaleLowerCase().normalize("NFC").replace(/\s+/g, " ").trim();
+}
+
+function buildProductSearchIndex(product: Product) {
+  const sellCategory = getSellCategory(product);
+  const membershipPeriod = product.membership_period ? membershipPeriodLabel[product.membership_period] : "";
+
+  return normalizeSearchText(
+    [
+      getProductDisplayTitle(product),
+      getProductDisplaySubtitle(product),
+      product.name,
+      product.sku,
+      product.product_type,
+      sellCategory,
+      sellCategoryLabel[sellCategory],
+      membershipPeriod,
+    ].join(" "),
+  );
+}
 
 export default function PosPage() {
   const adapter = useAppAdapter();
@@ -46,6 +148,7 @@ export default function PosPage() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [success, setSuccess] = useState<OrderResult | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isCheckoutConfirmOpen, setIsCheckoutConfirmOpen] = useState(false);
   const [selectedProductId, setSelectedProductId] = useState("");
   const [isCreateMode, setIsCreateMode] = useState(false);
   const [newProductType, setNewProductType] = useState<"GOODS" | "SERVICE">("GOODS");
@@ -56,6 +159,12 @@ export default function PosPage() {
   const [editorMessage, setEditorMessage] = useState<string | null>(null);
   const [editorError, setEditorError] = useState<string | null>(null);
   const [isSavingProduct, setIsSavingProduct] = useState(false);
+  const [chartOfAccounts, setChartOfAccounts] = useState<ChartOfAccountRecord[]>([]);
+  const [revenueAccountsLoading, setRevenueAccountsLoading] = useState(true);
+  const [revenueAccountsError, setRevenueAccountsError] = useState<string | null>(null);
+  const [selectedRevenueAccountId, setSelectedRevenueAccountId] = useState("");
+  const [selectedSellCategory, setSelectedSellCategory] = useState<SellCategory>("ALL");
+  const [selectedSellProductId, setSelectedSellProductId] = useState("");
 
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const checkoutButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -92,11 +201,20 @@ export default function PosPage() {
     () =>
       cartLines.map((line) => ({
         productId: line.product_id,
-        name: line.name,
+        name: getProductDisplayTitle(line),
         quantity: line.quantity,
         total: line.price * line.quantity,
       })),
     [cartLines],
+  );
+
+  const checkoutSummary = useMemo(
+    () => ({
+      lineCount: cartLines.length,
+      itemCount: cartLines.reduce((sum, line) => sum + line.quantity, 0),
+      subtotal: cartSubtotal,
+    }),
+    [cartLines, cartSubtotal],
   );
 
   async function refreshProducts() {
@@ -125,7 +243,7 @@ export default function PosPage() {
       setInventoryError(null);
     } catch (error) {
       setInventorySummary([]);
-      setInventoryError(getErrorMessage(error, "สรุป stock ในกะยังไม่พร้อมใช้งาน"));
+      setInventoryError(getErrorMessage(error, "สรุปสต็อกในกะยังไม่พร้อมใช้งาน"));
     } finally {
       setInventoryLoading(false);
     }
@@ -155,6 +273,37 @@ export default function PosPage() {
   }, [adapter]);
 
   useEffect(() => {
+    let isActive = true;
+
+    async function loadChartOfAccounts() {
+      setRevenueAccountsLoading(true);
+      setRevenueAccountsError(null);
+
+      try {
+        const result = await adapter.listChartOfAccounts();
+        if (isActive) {
+          setChartOfAccounts(result);
+        }
+      } catch (error) {
+        if (isActive) {
+          setChartOfAccounts([]);
+          setRevenueAccountsError(getErrorMessage(error, "ไม่สามารถโหลดรายการบัญชีรายได้ได้"));
+        }
+      } finally {
+        if (isActive) {
+          setRevenueAccountsLoading(false);
+        }
+      }
+    }
+
+    void loadChartOfAccounts();
+
+    return () => {
+      isActive = false;
+    };
+  }, [adapter]);
+
+  useEffect(() => {
     void refreshShiftInventory();
   }, [refreshShiftInventory]);
 
@@ -177,18 +326,25 @@ export default function PosPage() {
     setEditName(selectedProduct.name);
     setEditPrice(String(selectedProduct.price));
     setEditStockOnHand(selectedProduct.track_stock ? String(selectedProduct.stock_on_hand ?? 0) : "");
+    setSelectedRevenueAccountId(
+      selectedProduct.revenue_account_id === undefined ? "" : String(selectedProduct.revenue_account_id),
+    );
   }, [isCreateMode, selectedProduct]);
 
+  useEffect(() => {
+    if (isCreateMode) {
+      setSelectedRevenueAccountId("");
+    }
+  }, [isCreateMode]);
+
   const filteredProducts = useMemo(() => {
-    const normalizedQuery = deferredQuery.trim().toLowerCase();
+    const normalizedQuery = normalizeSearchText(deferredQuery);
 
     if (!normalizedQuery) {
       return products;
     }
 
-    return products.filter((product) =>
-      `${product.name} ${product.sku} ${product.product_type}`.toLowerCase().includes(normalizedQuery),
-    );
+    return products.filter((product) => buildProductSearchIndex(product).includes(normalizedQuery));
   }, [deferredQuery, products]);
 
   const inventoryProducts = useMemo(
@@ -200,6 +356,53 @@ export default function PosPage() {
     () => filteredProducts.filter((product) => product.product_type === "MEMBERSHIP"),
     [filteredProducts],
   );
+
+  const visibleSellProducts = useMemo(
+    () =>
+      selectedSellCategory === "ALL"
+        ? filteredProducts
+        : filteredProducts.filter((product) => getSellCategory(product) === selectedSellCategory),
+    [filteredProducts, selectedSellCategory],
+  );
+
+  const selectedSellProduct = useMemo(
+    () => visibleSellProducts.find((product) => String(product.product_id) === selectedSellProductId) ?? null,
+    [selectedSellProductId, visibleSellProducts],
+  );
+
+  useEffect(() => {
+    if (!visibleSellProducts.some((product) => String(product.product_id) === selectedSellProductId)) {
+      setSelectedSellProductId(visibleSellProducts[0] ? String(visibleSellProducts[0].product_id) : "");
+    }
+  }, [selectedSellProductId, visibleSellProducts]);
+
+  const revenueAccounts = useMemo(
+    () =>
+      chartOfAccounts.filter(
+        (account) => account.account_type === "REVENUE" && account.is_active,
+      ),
+    [chartOfAccounts],
+  );
+
+  const selectedRevenueAccount = useMemo(
+    () =>
+      chartOfAccounts.find(
+        (account) => String(account.account_id) === selectedRevenueAccountId,
+      ) ?? null,
+    [chartOfAccounts, selectedRevenueAccountId],
+  );
+
+  const mappedRevenueAccount = useMemo(() => {
+    if (!selectedProduct?.revenue_account_id) {
+      return null;
+    }
+
+    return (
+      chartOfAccounts.find(
+        (account) => String(account.account_id) === String(selectedProduct.revenue_account_id),
+      ) ?? null
+    );
+  }, [chartOfAccounts, selectedProduct]);
 
   const handleKeyboardShortcut = useEffectEvent((event: KeyboardEvent) => {
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
@@ -240,12 +443,18 @@ export default function PosPage() {
       event.preventDefault();
       checkoutButtonRef.current?.focus();
       if (!isSubmitting && cartLines.length > 0) {
-        void handleCheckout();
+        handleOpenCheckoutConfirm();
       }
       return;
     }
 
     if (event.key === "Escape") {
+      if (isCheckoutConfirmOpen) {
+        event.preventDefault();
+        setIsCheckoutConfirmOpen(false);
+        return;
+      }
+
       if (cartLines.length > 0) {
         event.preventDefault();
         clearCart();
@@ -333,21 +542,25 @@ export default function PosPage() {
 
     try {
       if (isCreateMode) {
-        await adapter.createProduct({
+        const createdProduct = await adapter.createProduct({
           sku: editSku,
           name: editName,
           price: parsedPrice,
           productType: newProductType,
+          revenueAccountId: selectedRevenueAccountId || undefined,
           stockOnHand: newProductType === "GOODS" ? parsedStockOnHand : null,
         });
+        setSelectedProductId(String(createdProduct.product_id));
       } else if (selectedProduct) {
-        await adapter.updateProduct({
+        const updatedProduct = await adapter.updateProduct({
           productId: selectedProduct.product_id,
           sku: editSku,
           name: editName,
           price: parsedPrice,
+          revenueAccountId: selectedRevenueAccountId || undefined,
           stockOnHand: selectedProduct.track_stock ? parsedStockOnHand : null,
         });
+        setSelectedProductId(String(updatedProduct.product_id));
       }
 
       await Promise.all([refreshProducts(), refreshShiftInventory()]);
@@ -359,21 +572,32 @@ export default function PosPage() {
         setEditorMessage("อัปเดตสินค้าและ stock เรียบร้อยแล้ว");
       }
     } catch (error) {
-      setEditorError(getErrorMessage(error, "ไม่สามารถอัปเดตสินค้าได้"));
+      const errorCode = getErrorCode(error);
+      if (errorCode === "REVENUE_ACCOUNT_NOT_FOUND") {
+        setEditorError("ไม่พบบัญชีรายได้ที่เลือก กรุณารีเฟรชรายการบัญชีก่อนลองใหม่");
+      } else if (errorCode === "REVENUE_ACCOUNT_INACTIVE") {
+        setEditorError("บัญชีรายได้ที่เลือกถูกปิดใช้งานอยู่ กรุณาเลือกบัญชีที่ยัง active");
+      } else if (errorCode === "INVALID_REVENUE_ACCOUNT_TYPE") {
+        setEditorError("บัญชีที่เลือกไม่ใช่หมวดรายได้ จึงไม่สามารถผูกกับสินค้าได้");
+      } else {
+        setEditorError(getErrorMessage(error, "ไม่สามารถอัปเดตสินค้าได้"));
+      }
     } finally {
       setIsSavingProduct(false);
     }
   }
 
-  async function handleCheckout() {
+  function getCheckoutValidationError() {
     if (!session?.active_shift_id) {
-      setErrorMessage("กรุณาเปิดกะก่อนคิดเงิน");
-      return;
+      return "กรุณาเปิดกะก่อนคิดเงิน";
+    }
+
+    if (cartLines.length === 0) {
+      return "กรุณาเพิ่มสินค้าอย่างน้อย 1 รายการ";
     }
 
     if (containsMembership && !customerName.trim()) {
-      setErrorMessage("บิลสมาชิกต้องระบุชื่อลูกค้าเพื่อใช้กำหนดวันเริ่มและวันหมดอายุ");
-      return;
+      return "บิลสมาชิกต้องระบุชื่อลูกค้าเพื่อใช้กำหนดวันเริ่มและวันหมดอายุ";
     }
 
     const invalidStockLine = cartLines.find((line) => {
@@ -383,17 +607,51 @@ export default function PosPage() {
 
     if (invalidStockLine) {
       const product = productById.get(invalidStockLine.product_id)!;
-      setErrorMessage(`สต็อก ${product.name} คงเหลือ ${product.stock_on_hand} ชิ้น`);
+      return `สต็อก ${product.name} คงเหลือ ${product.stock_on_hand} ชิ้น`;
+    }
+
+    return null;
+  }
+
+  function handleOpenCheckoutConfirm() {
+    const validationError = getCheckoutValidationError();
+
+    if (validationError) {
+      setIsCheckoutConfirmOpen(false);
+      setErrorMessage(validationError);
+      return;
+    }
+
+    setErrorMessage(null);
+    setSuccess(null);
+    setIsCheckoutConfirmOpen(true);
+  }
+
+  async function handleCheckout() {
+    const validationError = getCheckoutValidationError();
+
+    if (validationError) {
+      setIsCheckoutConfirmOpen(false);
+      setErrorMessage(validationError);
+      return;
+    }
+
+    const activeShiftId = session?.active_shift_id;
+
+    if (activeShiftId == null) {
+      setIsCheckoutConfirmOpen(false);
+      setErrorMessage("กรุณาเปิดกะก่อนคิดเงิน");
       return;
     }
 
     setErrorMessage(null);
     setSuccess(null);
     setIsSubmitting(true);
+    setIsCheckoutConfirmOpen(false);
 
     try {
       const result = await adapter.createOrder({
-        shift_id: session.active_shift_id,
+        shift_id: activeShiftId,
         items: cartLines.map((line) => ({ product_id: line.product_id, quantity: line.quantity })),
         payment_method: paymentMethod,
         customer_info: customerName
@@ -418,12 +676,12 @@ export default function PosPage() {
 
   return (
     <ShiftGuard>
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.42fr)_minmax(360px,0.78fr)] xl:items-start">
-        <section className="rounded-[28px] border border-line bg-surface-strong p-6 md:p-8">
+      <div className="grid gap-6 xl:min-h-0 xl:grid-cols-[minmax(0,1.42fr)_minmax(360px,0.78fr)] xl:items-stretch xl:overflow-hidden xl:[height:calc(100vh-8rem)]">
+        <section className="rounded-[28px] border border-line bg-surface-strong p-6 md:p-8 xl:min-h-0 xl:overflow-y-auto">
           <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
             <div>
-              <p className="text-xs uppercase tracking-[0.18em] text-muted">POS foundation</p>
-              <h1 className="mt-3 text-3xl font-semibold text-foreground">พื้นที่ขายหน้าร้าน</h1>
+              <p className="text-xs uppercase tracking-[0.18em] text-muted">จุดขายหน้าร้าน</p>
+              <h1 className="mt-3 text-3xl font-semibold text-foreground">เคาน์เตอร์ขาย LA GYM</h1>
             </div>
             <div className="rounded-[20px] bg-accent-soft px-4 py-3">
               <p className="text-xs uppercase tracking-[0.16em] text-muted">จำนวนรายการในตะกร้า</p>
@@ -431,17 +689,43 @@ export default function PosPage() {
             </div>
           </div>
 
-          <div className="mt-6 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div className="mt-6 grid gap-3 md:grid-cols-2 2xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.85fr)_minmax(0,0.95fr)]">
             <input
               ref={searchInputRef}
               aria-label="Product search"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="ค้นหาจากชื่อสินค้า, SKU หรือประเภท"
-              className="w-full rounded-[20px] border border-line bg-[#fff8de] px-4 py-3 text-[#17130a] placeholder:text-[#8a7840] outline-none transition focus:border-accent md:max-w-md"
+              placeholder="ค้นหาจากชื่อเมนู รหัสสินค้า หรือหมวดขาย"
+              className="min-w-0 w-full rounded-[20px] border border-line bg-[#fff8de] px-4 py-3 text-[#17130a] placeholder:text-[#8a7840] outline-none transition focus:border-accent md:col-span-2 2xl:col-span-1"
             />
-            <p className="text-sm text-muted">เป้าหมายรอบนี้คือหยิบสินค้า, จัดการตะกร้า และทดสอบขั้นตอนรับเงิน</p>
+            <select
+              aria-label="เลือกหมวดสินค้า"
+              value={selectedSellCategory}
+              onChange={(event) => setSelectedSellCategory(event.target.value as SellCategory)}
+              className="min-w-0 w-full rounded-[20px] border border-line bg-[#fff8de] px-4 py-3 text-[#17130a] outline-none transition focus:border-accent"
+            >
+              {(Object.keys(sellCategoryLabel) as SellCategory[]).map((category) => (
+                <option key={category} value={category}>
+                  {sellCategoryLabel[category]}
+                </option>
+              ))}
+            </select>
+            <select
+              aria-label="เลือกรายการขาย"
+              value={selectedSellProductId}
+              onChange={(event) => setSelectedSellProductId(event.target.value)}
+              className="min-w-0 w-full rounded-[20px] border border-line bg-[#fff8de] px-4 py-3 text-[#17130a] outline-none transition focus:border-accent md:col-span-2 2xl:col-span-1"
+            >
+              {visibleSellProducts.length === 0 ? <option value="">ไม่พบรายการสินค้า</option> : null}
+              {visibleSellProducts.map((product) => (
+                <option key={product.product_id} value={String(product.product_id)}>
+                  {getProductDisplayTitle(product)}
+                </option>
+              ))}
+            </select>
           </div>
+
+          <p className="mt-4 text-sm text-muted">เลือกหมวดสินค้าแบบง่าย ๆ จาก drop-down แล้วเลือกรายการที่ต้องการก่อนกดเพิ่มลงบิล</p>
 
           {productsLoading ? (
             <div className="mt-6 rounded-3xl border border-dashed border-line bg-background p-6 text-sm text-muted">
@@ -449,80 +733,110 @@ export default function PosPage() {
             </div>
           ) : (
             <div className="mt-6 space-y-6 xl:space-y-7">
-              <section className="rounded-3xl border border-line/80 bg-background/60 p-5 md:p-6">
-                <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-                  <div>
-                    <p className="text-xs font-semibold text-muted">สินค้าและบริการ</p>
-                    <h2 className="mt-2 text-2xl font-semibold text-foreground">แยกจากสมาชิกชัดเจน</h2>
-                  </div>
-                  <p className="max-w-2xl text-sm leading-6 text-muted">เฉพาะสินค้า goods จะตรวจสต็อกก่อนเพิ่มเข้าตะกร้า</p>
-                </div>
-                <div className="mt-5 grid auto-rows-fr grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-4">
-                  {inventoryProducts.map((product) => {
-                    const isOutOfStock = product.track_stock && typeof product.stock_on_hand === "number" && product.stock_on_hand <= 0;
-                    return (
+              {selectedSellProduct ? (
+                <section className="rounded-3xl border border-line/80 bg-background/60 p-5 md:p-6">
+                  <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+                    <div>
+                      <p className="text-xs font-semibold text-muted">รายการที่เลือก</p>
+                      <h2 className="mt-2 text-2xl font-semibold text-foreground">{getProductDisplayTitle(selectedSellProduct)}</h2>
+                      <p className="mt-2 text-sm leading-6 text-muted">{getProductDisplaySubtitle(selectedSellProduct)}</p>
+                      <div className="mt-4 flex flex-wrap gap-2 text-xs font-semibold">
+                        <span className="rounded-full bg-accent-soft px-3 py-1 text-foreground">{sellCategoryLabel[getSellCategory(selectedSellProduct)]}</span>
+                        <span className="rounded-full border border-line px-3 py-1 text-foreground">{selectedSellProduct.sku}</span>
+                        <span className="rounded-full border border-line px-3 py-1 text-foreground">
+                          {selectedSellProduct.track_stock ? `คงเหลือ ${selectedSellProduct.stock_on_hand ?? 0}` : "บริการ"}
+                        </span>
+                      </div>
+                      {selectedSellProduct.product_type === "MEMBERSHIP" ? (
+                        <p className="mt-4 text-sm leading-6 text-muted">เริ่มวันนี้ หมดอายุ {getProjectedMembershipEndDate(selectedSellProduct)}</p>
+                      ) : null}
+                    </div>
+                    <div className="min-w-[220px] rounded-[24px] border border-line bg-[#161510] p-5">
+                      <p className="text-sm text-muted">ราคา</p>
+                      <p className="mt-2 text-3xl font-semibold text-foreground">{formatCurrency(selectedSellProduct.price)}</p>
                       <button
-                        key={product.product_id}
                         type="button"
-                        onClick={() => handleAddProduct(product)}
-                        aria-label={`Add ${product.name}`}
-                        disabled={Boolean(isOutOfStock)}
-                        className="group flex h-full flex-col rounded-3xl border border-line bg-[#161510] p-5 text-left transition hover:-translate-y-0.5 hover:border-accent hover:bg-[#f4cf3a] disabled:cursor-not-allowed disabled:opacity-45"
+                        onClick={() => handleAddProduct(selectedSellProduct)}
+                        disabled={Boolean(selectedSellProduct.track_stock && typeof selectedSellProduct.stock_on_hand === "number" && selectedSellProduct.stock_on_hand <= 0)}
+                        className="mt-5 w-full rounded-full bg-accent px-5 py-3 text-sm font-semibold text-black transition hover:bg-accent-strong disabled:cursor-not-allowed disabled:opacity-50"
                       >
-                        <div className="flex items-start justify-between gap-3">
-                          <p className="text-xs uppercase tracking-[0.16em] text-muted transition group-hover:text-[#2c2200]">{product.product_type}</p>
-                          {product.track_stock ? (
-                            <span className={`rounded-full px-3 py-1 text-xs font-semibold ${isOutOfStock ? "bg-warning-soft text-foreground group-hover:bg-[#5a2f04] group-hover:text-[#fff7d6]" : "bg-accent-soft text-foreground group-hover:bg-[#2c2200] group-hover:text-[#fff7d6]"}`}>
-                              คงเหลือ {product.stock_on_hand}
-                            </span>
-                          ) : null}
-                        </div>
-                        <h2 className="mt-3 text-xl font-semibold leading-snug text-foreground text-balance transition group-hover:text-[#201703]">{product.name}</h2>
-                        <p className="mt-1 text-sm text-muted transition group-hover:text-[#4c3a08]">{product.sku}</p>
-                        <p className="mt-auto pt-5 text-2xl font-semibold text-foreground transition group-hover:text-[#201703]">{formatCurrency(product.price)}</p>
+                        เพิ่มลงบิล
                       </button>
-                    );
-                  })}
-                </div>
-              </section>
-
-              <section className="rounded-3xl border border-line/80 bg-background/60 p-5 md:p-6">
-                <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-                  <div>
-                    <p className="text-xs font-semibold text-muted">ระบบสมาชิก</p>
-                    <h2 className="mt-2 text-2xl font-semibold text-foreground">แยกจากสินค้าเพื่อรองรับวันหมดอายุ</h2>
+                    </div>
                   </div>
-                  <p className="max-w-2xl text-sm leading-6 text-muted">daily, monthly, quarterly, semiannual, yearly จะคำนวณช่วงอายุสมาชิกจากวันที่ซื้อ</p>
+                </section>
+              ) : null}
+
+              <section className="overflow-hidden rounded-3xl border border-line/80 bg-background/60 p-5 md:p-6">
+                <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+                  <div>
+                    <p className="text-xs font-semibold text-muted">รายการสินค้าตามเงื่อนไขที่เลือก</p>
+                    <h2 className="mt-2 text-2xl font-semibold text-foreground">ค้นหาเร็วและกดเพิ่มได้จากรายการเดียว</h2>
+                  </div>
+                  <p className="text-sm text-muted">พบ {visibleSellProducts.length} รายการ</p>
                 </div>
-                <div className="mt-5 grid auto-rows-fr grid-cols-[repeat(auto-fit,minmax(240px,1fr))] gap-4">
-                  {membershipProducts.map((product) => (
-                    <button
-                      key={product.product_id}
-                      type="button"
-                      onClick={() => handleAddProduct(product)}
-                      aria-label={`Add ${product.name}`}
-                      className="group flex h-full min-h-64 min-w-0 flex-col overflow-hidden rounded-3xl border border-line bg-[#1a1608] p-5 text-left transition hover:-translate-y-0.5 hover:border-accent hover:bg-[#f4cf3a]"
-                    >
-                      <p className="text-xs uppercase tracking-[0.16em] text-muted transition group-hover:text-[#4c3a08]">{product.membership_period}</p>
-                      <h2 className="mt-3 max-w-full text-[clamp(1.1rem,1.6vw,1.4rem)] font-semibold leading-snug text-foreground text-balance transition group-hover:text-[#201703]">
-                        {product.name}
-                      </h2>
-                      <p className="mt-2 text-sm leading-6 text-muted transition group-hover:text-[#4c3a08]">เริ่มวันนี้ หมดอายุ {getProjectedMembershipEndDate(product)}</p>
-                      <p className="mt-auto break-words pt-5 text-[clamp(1.55rem,2vw,2rem)] font-semibold leading-tight text-foreground transition group-hover:text-[#201703]">
-                        {formatCurrency(product.price)}
-                      </p>
-                    </button>
-                  ))}
-                </div>
+
+                {visibleSellProducts.length > 0 ? (
+                  <div className="mt-5 grid gap-3 lg:grid-cols-2">
+                    {visibleSellProducts.map((product) => {
+                      const isOutOfStock = Boolean(
+                        product.track_stock && typeof product.stock_on_hand === "number" && product.stock_on_hand <= 0,
+                      );
+
+                      return (
+                        <article
+                          key={product.product_id}
+                          className={`rounded-[24px] border p-4 transition ${String(product.product_id) === selectedSellProductId ? "border-accent bg-accent-soft/10" : "border-line bg-[#161510]"}`}
+                        >
+                          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                            <div className="min-w-0 flex-1">
+                              <div className="flex flex-wrap gap-2 text-xs font-semibold">
+                                <span className="rounded-full bg-accent-soft px-3 py-1 text-foreground">{sellCategoryLabel[getSellCategory(product)]}</span>
+                                <span className="rounded-full border border-line px-3 py-1 text-foreground">{product.sku}</span>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => setSelectedSellProductId(String(product.product_id))}
+                                className="mt-3 block text-left text-lg font-semibold text-[#f3e8ba] transition hover:text-accent"
+                              >
+                                {getProductDisplayTitle(product)}
+                              </button>
+                              <p className="mt-2 text-sm leading-6 text-muted">{getProductDisplaySubtitle(product)}</p>
+                              <div className="mt-3 flex flex-wrap gap-3 text-sm text-[#f3e8ba]">
+                                <span>{product.track_stock ? `คงเหลือ ${product.stock_on_hand ?? 0}` : "บริการ"}</span>
+                                {product.product_type === "MEMBERSHIP" ? <span>หมดอายุ {getProjectedMembershipEndDate(product)}</span> : null}
+                              </div>
+                            </div>
+                            <div className="flex shrink-0 flex-col gap-3 sm:items-end">
+                              <p className="text-2xl font-semibold text-[#f3e8ba]">{formatCurrency(product.price)}</p>
+                              <button
+                                type="button"
+                                onClick={() => handleAddProduct(product)}
+                                disabled={isOutOfStock}
+                                className="rounded-full bg-accent px-4 py-2 text-xs font-semibold text-black transition hover:bg-accent-strong disabled:cursor-not-allowed disabled:opacity-50"
+                              >
+                                เพิ่มลงบิล
+                              </button>
+                            </div>
+                          </div>
+                        </article>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="mt-5 rounded-3xl border border-dashed border-line bg-background p-6 text-sm text-muted">
+                    ไม่พบรายการที่ตรงกับคำค้นหรือหมวดที่เลือก
+                  </div>
+                )}
               </section>
 
               <section className="rounded-3xl border border-line bg-background/70 p-5 md:p-6">
                 <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
                   <div>
                     <p className="text-xs font-semibold text-muted">จัดการสินค้าใน POS</p>
-                    <h2 className="mt-2 text-2xl font-semibold text-foreground">เพิ่มสินค้าใหม่ หรือแก้ไขชื่อ, ราคา, SKU และ stock</h2>
+                    <h2 className="mt-2 text-2xl font-semibold text-foreground">เพิ่มสินค้าใหม่ หรือแก้ไขชื่อ ราคา SKU และสต็อก</h2>
                   </div>
-                  <p className="text-sm text-muted">สินค้าที่ track stock จะอัปเดตยอดคงเหลือและสรุปในกะทันทีหลังบันทึก</p>
+                  <p className="text-sm text-muted">สินค้าที่ติดตามสต็อกจะอัปเดตยอดคงเหลือและสรุปในกะทันทีหลังบันทึก</p>
                 </div>
 
                 <div className="mt-4 flex flex-wrap gap-3">
@@ -535,6 +849,7 @@ export default function PosPage() {
                       setEditName("");
                       setEditPrice("");
                       setEditStockOnHand("0");
+                      setSelectedRevenueAccountId("");
                       setEditorMessage(null);
                       setEditorError(null);
                     }}
@@ -551,6 +866,11 @@ export default function PosPage() {
                         setEditName(selectedProduct.name);
                         setEditPrice(String(selectedProduct.price));
                         setEditStockOnHand(selectedProduct.track_stock ? String(selectedProduct.stock_on_hand ?? 0) : "");
+                        setSelectedRevenueAccountId(
+                          selectedProduct.revenue_account_id === undefined
+                            ? ""
+                            : String(selectedProduct.revenue_account_id),
+                        );
                       }
                       setEditorMessage(null);
                       setEditorError(null);
@@ -626,9 +946,9 @@ export default function PosPage() {
                   </label>
 
                   <label className="block">
-                    <span className="text-sm font-medium text-foreground">stock คงเหลือ</span>
+                    <span className="text-sm font-medium text-foreground">สต็อกคงเหลือ</span>
                     <input
-                      aria-label="stock คงเหลือ"
+                      aria-label="สต็อกคงเหลือ"
                       inputMode="numeric"
                       value={editStockOnHand}
                       onChange={(event) => setEditStockOnHand(event.target.value)}
@@ -636,6 +956,72 @@ export default function PosPage() {
                       className="mt-2 w-full rounded-[18px] border border-line bg-[#fff8de] px-4 py-3 text-[#17130a] outline-none transition focus:border-accent disabled:opacity-50"
                     />
                   </label>
+                </div>
+
+                <div className="mt-4 rounded-[24px] border border-line bg-background/70 p-4">
+                  <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-foreground">บัญชีรายได้</p>
+                      <p className="mt-1 text-sm leading-6 text-muted">
+                        ผูกสินค้าเข้ากับหมวดรายได้ เพื่อให้ระบบบันทึกรายได้แยกตามสินค้าได้ตรงตามการตั้งค่า
+                      </p>
+                    </div>
+                    {selectedRevenueAccount ? (
+                      <div className="rounded-[18px] bg-accent-soft px-4 py-3 text-sm text-foreground">
+                        {selectedRevenueAccount.account_code} · {selectedRevenueAccount.account_name}
+                      </div>
+                    ) : null}
+                  </div>
+
+                  <label className="mt-4 block">
+                    <span className="text-sm font-medium text-foreground">เลือกบัญชีรายได้</span>
+                    <select
+                      aria-label="เลือกบัญชีรายได้"
+                      value={selectedRevenueAccountId}
+                      onChange={(event) => setSelectedRevenueAccountId(event.target.value)}
+                      disabled={revenueAccountsLoading}
+                      className="mt-2 w-full rounded-[18px] border border-line bg-[#fff8de] px-4 py-3 text-[#17130a] outline-none transition focus:border-accent disabled:opacity-60"
+                    >
+                      <option value="">ใช้บัญชีรายได้หลักของระบบ</option>
+                      {revenueAccounts.map((account) => (
+                        <option key={account.account_id} value={String(account.account_id)}>
+                          {account.account_code} · {account.account_name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  {revenueAccountsLoading ? (
+                    <div className="mt-4 rounded-[18px] border border-dashed border-line bg-[#161510] px-4 py-3 text-sm text-muted">
+                      กำลังโหลดตัวเลือกบัญชีรายได้...
+                    </div>
+                  ) : null}
+
+                  {revenueAccountsError ? (
+                    <div className="mt-4 rounded-[18px] border border-warning bg-warning-soft px-4 py-3 text-sm text-foreground">
+                      โหลดบัญชีรายได้ไม่สำเร็จ แต่ยังแก้ไข SKU ชื่อ ราคา และสต็อกได้ตามปกติ
+                      <div className="mt-1">{revenueAccountsError}</div>
+                    </div>
+                  ) : null}
+
+                  {!revenueAccountsLoading && !revenueAccountsError && revenueAccounts.length === 0 ? (
+                    <div className="mt-4 rounded-[18px] border border-dashed border-line bg-[#161510] px-4 py-3 text-sm text-muted">
+                      ยังไม่มีบัญชีรายได้ที่เปิดใช้งานให้เลือก หากบันทึกตอนนี้ระบบจะใช้บัญชีรายได้หลักที่ตั้งค่าไว้
+                    </div>
+                  ) : null}
+
+                  {!isCreateMode && mappedRevenueAccount && !mappedRevenueAccount.is_active ? (
+                    <div className="mt-4 rounded-[18px] border border-warning bg-warning-soft px-4 py-3 text-sm text-foreground">
+                      สินค้านี้เคยผูกกับบัญชี {mappedRevenueAccount.account_code} · {mappedRevenueAccount.account_name} ซึ่งตอนนี้ inactive อยู่
+                      กรุณาเลือกบัญชีใหม่ก่อนบันทึกเพื่อหลีกเลี่ยงข้อผิดพลาดระหว่างบันทึกข้อมูล
+                    </div>
+                  ) : null}
+
+                  {!isCreateMode && selectedProduct?.revenue_account_id && !mappedRevenueAccount ? (
+                    <div className="mt-4 rounded-[18px] border border-warning bg-warning-soft px-4 py-3 text-sm text-foreground">
+                      ไม่พบข้อมูลบัญชีรายได้ที่เคยผูกอยู่ในรายการ COA ปัจจุบัน กรุณาเลือกบัญชีใหม่ก่อนบันทึก
+                    </div>
+                  ) : null}
                 </div>
 
                 {editorError ? (
@@ -667,11 +1053,17 @@ export default function PosPage() {
                         setEditName("");
                         setEditPrice("");
                         setEditStockOnHand(newProductType === "GOODS" ? "0" : "");
+                        setSelectedRevenueAccountId("");
                       } else if (selectedProduct) {
                         setEditSku(selectedProduct.sku);
                         setEditName(selectedProduct.name);
                         setEditPrice(String(selectedProduct.price));
                         setEditStockOnHand(selectedProduct.track_stock ? String(selectedProduct.stock_on_hand ?? 0) : "");
+                        setSelectedRevenueAccountId(
+                          selectedProduct.revenue_account_id === undefined
+                            ? ""
+                            : String(selectedProduct.revenue_account_id),
+                        );
                       }
                       setEditorMessage(null);
                       setEditorError(null);
@@ -686,7 +1078,7 @@ export default function PosPage() {
           )}
         </section>
 
-        <section className="rounded-[28px] border border-line bg-surface-strong p-6 md:p-8 xl:sticky xl:top-6">
+        <section className="rounded-[28px] border border-line bg-surface-strong p-6 md:p-8 xl:min-h-0 xl:overflow-y-auto">
           <p className="text-xs uppercase tracking-[0.18em] text-muted">ตะกร้าและการคิดเงิน</p>
           <div className="mt-4 space-y-3">
             {cartLines.length === 0 ? (
@@ -803,15 +1195,34 @@ export default function PosPage() {
                 ยังไม่มีสินค้าในตะกร้า เมื่อเพิ่มสินค้าแล้วจะมีสรุปรายการและยอดต่อบรรทัดแสดงตรงนี้
               </div>
             )}
+
+            <div className="mt-4 flex flex-col gap-3 sm:flex-row">
+              <button
+                type="button"
+                onClick={() => clearCart()}
+                className="rounded-full border border-line px-5 py-3 text-sm font-semibold text-foreground transition hover:border-warning hover:bg-warning-soft"
+              >
+                ล้างตะกร้า
+              </button>
+              <button
+                ref={checkoutButtonRef}
+                type="button"
+                onClick={handleOpenCheckoutConfirm}
+                disabled={isSubmitting || cartLines.length === 0}
+                className="w-full rounded-full bg-accent px-5 py-3 text-sm font-semibold text-black transition hover:bg-accent-strong disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isSubmitting ? "กำลังส่งรายการ..." : "คิดเงิน"}
+              </button>
+            </div>
           </div>
 
-          <div className="mt-6 rounded-3xl border border-line bg-background/70 p-5">
-            <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+          <div className="mt-6 rounded-3xl border border-line bg-background/70 p-4 sm:p-5">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
               <div>
-                <p className="text-sm text-muted">สรุป stock ในกะ</p>
-                <h2 className="mt-2 text-2xl font-semibold text-foreground">มีเท่าไหร่ ขายไปกี่ชิ้น คงเหลือเท่าไร</h2>
+                <p className="text-sm text-muted">สรุปสต็อกในกะ</p>
+                <h2 className="mt-2 text-xl font-semibold leading-tight text-foreground sm:text-2xl">มีเท่าไหร่ ขายไปกี่ชิ้น คงเหลือเท่าไร</h2>
               </div>
-              <p className="text-sm text-muted">สรุปนี้จะอัปเดตทันทีเมื่อแก้ stock หรือกดขายสินค้าในกะปัจจุบัน</p>
+              <p className="max-w-md text-sm leading-6 text-muted">สรุปนี้จะอัปเดตทันทีเมื่อแก้สต็อกหรือกดขายสินค้าในกะปัจจุบัน</p>
             </div>
 
             {inventoryError ? (
@@ -826,9 +1237,9 @@ export default function PosPage() {
               </div>
             ) : inventorySummary.length > 0 ? (
               <>
-                <div className="mt-4 grid gap-3 md:grid-cols-3">
+                <div className="mt-4 grid grid-cols-[repeat(auto-fit,minmax(140px,1fr))] gap-3">
                   <div className="h-full rounded-[22px] border border-line bg-[#161510] p-4">
-                    <p className="text-xs font-semibold text-muted">stock รวมในกะ</p>
+                    <p className="text-xs font-semibold text-muted">สต็อกตั้งต้นรวม</p>
                     <p className="mt-2 text-2xl font-semibold text-foreground">{inventoryTotals.opening_stock}</p>
                   </div>
                   <div className="h-full rounded-[22px] border border-line bg-[#161510] p-4">
@@ -841,34 +1252,37 @@ export default function PosPage() {
                   </div>
                 </div>
 
-                <div className="mt-4 overflow-hidden rounded-3xl border border-line bg-[#161510]">
-                  <table className="min-w-full divide-y divide-line text-sm">
+                <div className="mt-4 rounded-3xl border border-line bg-[#161510] p-3">
+                  <div className="mb-3 text-xs leading-5 text-muted">เลื่อนซ้ายขวาเพื่อดูข้อมูลสต็อกให้ครบทุกคอลัมน์</div>
+                  <div className="overflow-x-auto overscroll-x-contain pb-2">
+                    <table className="min-w-[620px] divide-y divide-line text-sm">
                     <thead className="bg-[#0d0d0a]">
                       <tr>
-                        <th className="px-4 py-3 text-left font-semibold text-muted">สินค้า</th>
-                        <th className="px-4 py-3 text-left font-semibold text-muted">SKU</th>
-                        <th className="px-4 py-3 text-left font-semibold text-muted">มีในกะ</th>
-                        <th className="px-4 py-3 text-left font-semibold text-muted">ขายไป</th>
-                        <th className="px-4 py-3 text-left font-semibold text-muted">คงเหลือ</th>
+                        <th className="min-w-[160px] px-4 py-3 text-left font-semibold text-muted">สินค้า</th>
+                        <th className="min-w-[108px] px-4 py-3 text-left font-semibold text-muted">SKU</th>
+                        <th className="min-w-[72px] px-4 py-3 text-left font-semibold text-muted">มีในกะ</th>
+                        <th className="min-w-[72px] px-4 py-3 text-left font-semibold text-muted">ขายไป</th>
+                        <th className="min-w-[84px] px-4 py-3 text-left font-semibold text-muted">คงเหลือ</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-line">
                       {inventorySummary.map((row) => (
                         <tr key={row.product_id} aria-label={`Inventory ${row.name}`}>
-                          <td className="px-4 py-4 text-[#f3e8ba]">{row.name}</td>
-                          <td className="px-4 py-4 text-[#f3e8ba]">{row.sku}</td>
-                          <td className="px-4 py-4 text-[#f3e8ba]">{row.opening_stock}</td>
-                          <td className="px-4 py-4 text-[#f3e8ba]">{row.sold_quantity}</td>
-                          <td className="px-4 py-4 text-[#f3e8ba]">{row.remaining_stock}</td>
+                          <td className="px-4 py-4 align-top text-[#f3e8ba]">{row.name}</td>
+                          <td className="px-4 py-4 align-top text-[#f3e8ba] break-all">{row.sku}</td>
+                          <td className="px-4 py-4 align-top text-[#f3e8ba] whitespace-nowrap">{row.opening_stock}</td>
+                          <td className="px-4 py-4 align-top text-[#f3e8ba] whitespace-nowrap">{row.sold_quantity}</td>
+                          <td className="px-4 py-4 align-top text-[#f3e8ba] whitespace-nowrap">{row.remaining_stock}</td>
                         </tr>
                       ))}
                     </tbody>
-                  </table>
+                    </table>
+                  </div>
                 </div>
               </>
             ) : (
               <div className="mt-4 rounded-3xl border border-dashed border-line bg-[#161510] p-4 text-sm text-muted">
-                ยังไม่มีข้อมูล stock สำหรับกะนี้
+                ยังไม่มีข้อมูลสต็อกสำหรับกะนี้
               </div>
             )}
           </div>
@@ -888,25 +1302,90 @@ export default function PosPage() {
             </div>
           ) : null}
 
-          <div className="mt-5 flex gap-3">
-            <button
-              type="button"
-              onClick={() => clearCart()}
-              className="rounded-full border border-line px-5 py-3 text-sm font-semibold text-foreground transition hover:border-warning hover:bg-warning-soft"
-            >
-              ล้างตะกร้า
-            </button>
-            <button
-              ref={checkoutButtonRef}
-              type="button"
-              onClick={() => void handleCheckout()}
-              disabled={isSubmitting || cartLines.length === 0}
-              className="rounded-full bg-accent px-5 py-3 text-sm font-semibold text-black transition hover:bg-accent-strong disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {isSubmitting ? "กำลังส่งรายการ..." : "คิดเงิน"}
-            </button>
-          </div>
         </section>
+
+        {isCheckoutConfirmOpen ? (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-6">
+            <div className="w-full max-w-2xl rounded-[28px] border border-line bg-[#12110d] p-6 shadow-[0_30px_80px_rgba(0,0,0,0.45)] md:p-8">
+              <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.18em] text-muted">ยืนยันการคิดเงิน</p>
+                  <h2 className="mt-2 text-3xl font-semibold text-foreground">ตรวจสอบรายการก่อนบันทึกบิล</h2>
+                  <p className="mt-3 text-sm leading-6 text-muted">ตรวจสอบสินค้า จำนวน วิธีรับชำระ และข้อมูลลูกค้าอีกครั้งก่อนยืนยัน</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsCheckoutConfirmOpen(false)}
+                  className="rounded-full border border-line px-4 py-2 text-sm font-semibold text-foreground transition hover:border-accent hover:bg-accent-soft"
+                >
+                  ปิด
+                </button>
+              </div>
+
+              <div className="mt-6 grid gap-4 md:grid-cols-3">
+                <div className="rounded-[22px] border border-line bg-background/70 p-4">
+                  <p className="text-xs text-muted">จำนวนรายการ</p>
+                  <p className="mt-2 text-2xl font-semibold text-foreground">{checkoutSummary.lineCount}</p>
+                </div>
+                <div className="rounded-[22px] border border-line bg-background/70 p-4">
+                  <p className="text-xs text-muted">จำนวนชิ้นรวม</p>
+                  <p className="mt-2 text-2xl font-semibold text-foreground">{checkoutSummary.itemCount}</p>
+                </div>
+                <div className="rounded-[22px] border border-line bg-background/70 p-4">
+                  <p className="text-xs text-muted">ยอดรวมย่อย</p>
+                  <p className="mt-2 text-2xl font-semibold text-foreground">{formatCurrency(checkoutSummary.subtotal)}</p>
+                </div>
+              </div>
+
+              <div className="mt-5 rounded-[24px] border border-line bg-background/70 p-5">
+                <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                  <p className="text-sm font-semibold text-foreground">ข้อมูลการรับชำระ</p>
+                  <p className="text-sm text-muted">{paymentMethodLabel[paymentMethod]}</p>
+                </div>
+                <div className="mt-3 grid gap-3 md:grid-cols-2">
+                  <div className="rounded-[18px] bg-[#161510] px-4 py-3 text-sm text-foreground">
+                    <p className="text-xs text-muted">ลูกค้า</p>
+                    <p className="mt-1">{customerName.trim() || "ลูกค้าทั่วไป"}</p>
+                  </div>
+                  <div className="rounded-[18px] bg-[#161510] px-4 py-3 text-sm text-foreground">
+                    <p className="text-xs text-muted">เลขผู้เสียภาษี</p>
+                    <p className="mt-1">{customerTaxId.trim() || "ไม่ระบุ"}</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-5 max-h-[40vh] space-y-3 overflow-y-auto pr-1">
+                {cartSummaryRows.map((row) => (
+                  <div key={row.productId} className="flex items-start justify-between gap-3 rounded-[20px] border border-line bg-[#161510] px-4 py-4 text-sm">
+                    <div className="min-w-0">
+                      <p className="font-semibold text-foreground">{row.name}</p>
+                      <p className="mt-1 text-muted">จำนวน {row.quantity} ชิ้น</p>
+                    </div>
+                    <p className="shrink-0 font-semibold text-foreground">{formatCurrency(row.total)}</p>
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  onClick={() => setIsCheckoutConfirmOpen(false)}
+                  className="rounded-full border border-line px-5 py-3 text-sm font-semibold text-foreground transition hover:border-warning hover:bg-warning-soft"
+                >
+                  กลับไปแก้รายการ
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleCheckout()}
+                  disabled={isSubmitting}
+                  className="rounded-full bg-accent px-5 py-3 text-sm font-semibold text-black transition hover:bg-accent-strong disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {isSubmitting ? "กำลังบันทึกรายการ..." : "ยืนยันการคิดเงิน"}
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
       </div>
     </ShiftGuard>
   );

@@ -18,6 +18,65 @@ let orderSequence = 1001;
 let expenseSequence = 3001;
 let shiftSequence = 701;
 
+function buildMockDailySalesRows(date: string, summary: Pick<DailySummary, "sales_by_method">): DailySummary["sales_rows"] {
+  return [
+    {
+      order_id: `mock-${date}-1`,
+      order_number: `POS-${date.replaceAll("-", "")}-001`,
+      sold_at: `${date}T09:00:00.000Z`,
+      items_summary: "อเมริกาโน่เย็น x2, น้ำดื่ม x1",
+      cashier_name: "Pim Counter",
+      customer_name: null,
+      payment_method: "CASH",
+      total_amount: summary.sales_by_method.CASH,
+    },
+    {
+      order_id: `mock-${date}-2`,
+      order_number: `POS-${date.replaceAll("-", "")}-002`,
+      sold_at: `${date}T13:20:00.000Z`,
+      items_summary: "สมาชิกรายเดือน x1",
+      cashier_name: "June Desk",
+      customer_name: "Nok Member",
+      payment_method: "PROMPTPAY",
+      total_amount: summary.sales_by_method.PROMPTPAY,
+    },
+    {
+      order_id: `mock-${date}-3`,
+      order_number: `POS-${date.replaceAll("-", "")}-003`,
+      sold_at: `${date}T17:05:00.000Z`,
+      items_summary: "เทรนเดี่ยว 1 ครั้ง x1",
+      cashier_name: "Ton Front",
+      customer_name: "Mild Training",
+      payment_method: "CREDIT_CARD",
+      total_amount: summary.sales_by_method.CREDIT_CARD,
+    },
+  ];
+}
+
+function buildMockDailyShiftRows(date: string, discrepancyTotal: number): DailySummary["shift_rows"] {
+  const overage = Math.max(discrepancyTotal, 0);
+  const shortage = Math.max(-discrepancyTotal, 0);
+
+  return [
+    {
+      shift_id: `mock-shift-${date}-a`,
+      closed_at: `${date}T12:10:00.000Z`,
+      responsible_name: "Pim Counter",
+      expected_cash: Number((3120 + shortage).toFixed(2)),
+      actual_cash: 3120,
+      difference: Number((-shortage).toFixed(2)),
+    },
+    {
+      shift_id: `mock-shift-${date}-b`,
+      closed_at: `${date}T18:30:00.000Z`,
+      responsible_name: "June Desk",
+      expected_cash: 1050,
+      actual_cash: Number((1050 + overage).toFixed(2)),
+      difference: Number(overage.toFixed(2)),
+    },
+  ];
+}
+
 function createError(code: string, message: string, details?: unknown): ApiError {
   return { code, message, details };
 }
@@ -148,7 +207,7 @@ export async function fetchMockDailySummary(date: string): Promise<DailySummary>
   const day = Number(date.split("-").at(-1) ?? 1);
   const offset = day % 4;
 
-  return {
+  const summary = {
     total_sales: mockDailySummary.total_sales + offset * 260,
     sales_by_method: {
       CASH: mockDailySummary.sales_by_method.CASH + offset * 120,
@@ -158,5 +217,11 @@ export async function fetchMockDailySummary(date: string): Promise<DailySummary>
     total_expenses: mockDailySummary.total_expenses + offset * 40,
     net_cash_flow: mockDailySummary.net_cash_flow + offset * 80,
     shift_discrepancies: mockDailySummary.shift_discrepancies + offset * 10,
+  };
+
+  return {
+    ...summary,
+    sales_rows: buildMockDailySalesRows(date, summary),
+    shift_rows: buildMockDailyShiftRows(date, summary.shift_discrepancies),
   };
 }

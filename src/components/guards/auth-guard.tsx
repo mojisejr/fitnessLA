@@ -26,7 +26,7 @@ export function AuthGuard({ children }: { children: ReactNode }) {
           <h1 className="mt-3 text-2xl font-semibold text-foreground">กรุณาเข้าสู่ระบบก่อนใช้งาน</h1>
           <p className="mt-3 text-sm leading-7 text-muted">
             {mode === "mock"
-              ? "ตอนนี้ระบบใช้ mock session เพื่อให้พัฒนา flow ต่อได้ก่อน auth จริงพร้อม"
+              ? "ตอนนี้ระบบใช้ข้อมูลเข้าสู่ระบบแบบทดลอง เพื่อให้ลองใช้งานหน้าหลักได้ก่อนเชื่อมบัญชีจริงครบ"
               : "ตอนนี้ระบบต้องเข้าสู่ระบบจริงก่อน จึงจะเข้าใช้งานหน้าที่ต้องยืนยันตัวตนได้"}
           </p>
           <Link

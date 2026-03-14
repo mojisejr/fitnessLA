@@ -14,10 +14,21 @@ type ShiftState = {
 };
 
 type OrderState = {
+  id: string;
+  orderNumber: string;
+  shiftId: string;
   paymentMethod: "CASH" | "PROMPTPAY" | "CREDIT_CARD";
   totalAmount: number;
   status: "COMPLETED";
   createdAt: Date;
+  customerName: string | null;
+  items: Array<{ quantity: number; productName: string }>;
+};
+
+type UserState = {
+  id: string;
+  name: string;
+  username: string;
 };
 
 type ExpenseState = {
@@ -32,7 +43,17 @@ type State = {
   journalEntries: Array<{ id: string; sourceType: string; sourceId: string }>;
   journalLines: Array<{ id: string; journalEntryId: string; debit: number; credit: number }>;
   orders: OrderState[];
+  users: UserState[];
   expenses: ExpenseState[];
+  generalLedgerLines: Array<{
+    id: string;
+    date: Date;
+    description: string;
+    accountCode: string;
+    accountName: string;
+    debit: number;
+    credit: number;
+  }>;
 };
 
 const mocked = vi.hoisted(() => {
@@ -42,7 +63,9 @@ const mocked = vi.hoisted(() => {
     journalEntries: [],
     journalLines: [],
     orders: [],
+    users: [],
     expenses: [],
+    generalLedgerLines: [],
   };
 
   let idCounter = 1;
@@ -187,23 +210,51 @@ const mocked = vi.hoisted(() => {
     order: {
       findMany: async ({
         where,
+        orderBy,
       }: {
         where: {
           status: "COMPLETED";
           createdAt: { gte: Date; lt: Date };
         };
+        orderBy?: { createdAt: "desc" | "asc" };
       }) => {
-        return state.orders
+        const rows = state.orders
           .filter(
             (order) =>
               order.status === where.status &&
               order.createdAt >= where.createdAt.gte &&
               order.createdAt < where.createdAt.lt,
           )
-          .map((order) => ({
-            paymentMethod: order.paymentMethod,
-            totalAmount: new Prisma.Decimal(order.totalAmount),
-          }));
+          .sort((left, right) =>
+            orderBy?.createdAt === "asc"
+              ? left.createdAt.getTime() - right.createdAt.getTime()
+              : right.createdAt.getTime() - left.createdAt.getTime(),
+          );
+
+        return rows.map((order) => ({
+          id: order.id,
+          orderNumber: order.orderNumber,
+          createdAt: order.createdAt,
+          customerName: order.customerName,
+          paymentMethod: order.paymentMethod,
+          totalAmount: new Prisma.Decimal(order.totalAmount),
+          shift: {
+            staffId: state.shifts.find((shift) => shift.id === order.shiftId)?.staffId ?? order.shiftId,
+          },
+          items: order.items.map((item) => ({
+            quantity: item.quantity,
+            product: {
+              name: item.productName,
+            },
+          })),
+        }));
+      },
+    },
+    user: {
+      findMany: async ({ where }: { where: { id: { in: string[] } } }) => {
+        return state.users
+          .filter((user) => where.id.in.includes(user.id))
+          .map((user) => ({ id: user.id, name: user.name, username: user.username }));
       },
     },
     expense: {
@@ -227,6 +278,34 @@ const mocked = vi.hoisted(() => {
     },
     shift: {
       findMany: txMock.shift.findMany,
+    },
+    journalLine: {
+      findMany: async ({
+        where,
+      }: {
+        where: { journalEntry: { date: { gte: Date; lt: Date } } };
+      }) => {
+        return state.generalLedgerLines
+          .filter(
+            (line) =>
+              line.date >= where.journalEntry.date.gte &&
+              line.date < where.journalEntry.date.lt,
+          )
+          .sort((a, b) => a.date.getTime() - b.date.getTime())
+          .map((line) => ({
+            id: line.id,
+            debit: new Prisma.Decimal(line.debit),
+            credit: new Prisma.Decimal(line.credit),
+            chartOfAccount: {
+              code: line.accountCode,
+              name: line.accountName,
+            },
+            journalEntry: {
+              date: line.date,
+              description: line.description,
+            },
+          }));
+      },
     },
   };
 
@@ -261,29 +340,77 @@ const mocked = vi.hoisted(() => {
     state.journalLines = [];
     state.orders = [
       {
+        id: "ord_1",
+        orderNumber: "ORD-2026-0001",
+        shiftId: "shift_1",
         paymentMethod: "CASH",
         totalAmount: 500,
         status: "COMPLETED",
         createdAt: new Date("2026-03-09T03:00:00.000Z"),
+        customerName: null,
+        items: [{ quantity: 2, productName: "อเมริกาโน่เย็น" }],
       },
       {
+        id: "ord_2",
+        orderNumber: "ORD-2026-0002",
+        shiftId: "shift_2",
         paymentMethod: "PROMPTPAY",
         totalAmount: 700,
         status: "COMPLETED",
         createdAt: new Date("2026-03-09T04:00:00.000Z"),
+        customerName: "Nok Member",
+        items: [{ quantity: 1, productName: "สมาชิกรายเดือน" }],
       },
       {
+        id: "ord_3",
+        orderNumber: "ORD-2026-0003",
+        shiftId: "shift_2",
         paymentMethod: "CREDIT_CARD",
         totalAmount: 300,
         status: "COMPLETED",
         createdAt: new Date("2026-03-09T05:00:00.000Z"),
+        customerName: "Mild Training",
+        items: [{ quantity: 1, productName: "เทรนเดี่ยว 1 ครั้ง" }],
       },
+    ];
+    state.users = [
+      { id: "u1", name: "Pim Counter", username: "pim.counter" },
+      { id: "u2", name: "June Desk", username: "june.desk" },
     ];
     state.expenses = [
       {
         amount: 120,
         status: "POSTED",
         createdAt: new Date("2026-03-09T06:00:00.000Z"),
+      },
+    ];
+    state.generalLedgerLines = [
+      {
+        id: "gl_1",
+        date: new Date("2026-03-09T08:00:00.000Z"),
+        description: "Order ORD-2026-0001",
+        accountCode: "1010",
+        accountName: "Cash",
+        debit: 500,
+        credit: 0,
+      },
+      {
+        id: "gl_2",
+        date: new Date("2026-03-09T08:00:00.000Z"),
+        description: "Order ORD-2026-0001",
+        accountCode: "4010",
+        accountName: "General Revenue",
+        debit: 0,
+        credit: 500,
+      },
+      {
+        id: "gl_3",
+        date: new Date("2026-03-10T08:00:00.000Z"),
+        description: "Expense exp_1",
+        accountCode: "5010",
+        accountName: "Supplies Expense",
+        debit: 200,
+        credit: 0,
       },
     ];
     idCounter = 1;
@@ -299,6 +426,7 @@ vi.mock("../../src/lib/prisma", () => ({
 import {
   closeActiveShiftWithDifference,
   getDailySummaryByDate,
+  getGeneralLedgerReport,
 } from "../../src/features/operations/services";
 
 describe("A-4 services", () => {
@@ -341,9 +469,43 @@ describe("A-4 services", () => {
     expect(summary.total_expenses).toBe(120);
     expect(summary.net_cash_flow).toBe(380);
     expect(summary.shift_discrepancies).toBe(20);
+    expect(summary.sales_rows).toHaveLength(3);
+    expect(summary.shift_rows).toHaveLength(1);
+    expect(summary.sales_rows[0]).toMatchObject({
+      order_number: "ORD-2026-0003",
+      cashier_name: "June Desk",
+      payment_method: "CREDIT_CARD",
+      total_amount: 300,
+    });
+    expect(summary.shift_rows[0]).toMatchObject({
+      responsible_name: "ไม่ระบุผู้รับผิดชอบ",
+      difference: 20,
+    });
   });
 
   it("throws invalid date error when date format is invalid", async () => {
     await expect(getDailySummaryByDate("bad-date")).rejects.toThrow("INVALID_DATE");
+  });
+
+  it("returns GL rows in date range", async () => {
+    const rows = await getGeneralLedgerReport("2026-03-09", "2026-03-09");
+
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toMatchObject({
+      date: "2026-03-09",
+      account_code: "1010",
+      debit: 500,
+      credit: 0,
+    });
+
+    const totalDebit = rows.reduce((sum, row) => sum + row.debit, 0);
+    const totalCredit = rows.reduce((sum, row) => sum + row.credit, 0);
+    expect(totalDebit).toBe(totalCredit);
+  });
+
+  it("throws invalid date range when start_date is after end_date", async () => {
+    await expect(getGeneralLedgerReport("2026-03-10", "2026-03-09")).rejects.toThrow(
+      "INVALID_DATE_RANGE",
+    );
   });
 });

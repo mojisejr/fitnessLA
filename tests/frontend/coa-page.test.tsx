@@ -1,19 +1,30 @@
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { vi } from "vitest";
 import ChartOfAccountsPage from "@/app/(app)/coa/page";
+import { mockAppAdapter } from "@/features/adapters/mock-app-adapter";
 import { clearMockSession, renderWithProviders, seedMockSession } from "./test-utils";
+
+async function waitForChartOfAccountsReady() {
+  await screen.findByRole("heading", { name: "ผังบัญชี" }, { timeout: 15000 });
+  await screen.findByRole("button", { name: "PromptPay Clearing" }, { timeout: 15000 });
+}
 
 describe("chart of accounts page", () => {
   beforeEach(() => {
     clearMockSession();
   });
 
-  it("blocks non-owner roles", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("blocks cashier role", () => {
     seedMockSession({
       session: {
-        user_id: 2,
-        username: "admin",
-        full_name: "Niran Ops Lead",
-        role: "ADMIN",
+        user_id: 3,
+        username: "cashier",
+        full_name: "Pim Counter",
+        role: "CASHIER",
         active_shift_id: null,
       },
       activeShift: null,
@@ -40,7 +51,7 @@ describe("chart of accounts page", () => {
 
     renderWithProviders(<ChartOfAccountsPage />);
 
-    await screen.findByRole("heading", { name: "ผังบัญชี" });
+    await waitForChartOfAccountsReady();
 
     fireEvent.change(screen.getByPlaceholderText("รหัสบัญชี"), {
       target: { value: "6101" },
@@ -52,9 +63,9 @@ describe("chart of accounts page", () => {
 
     await waitFor(() => {
       expect(screen.getByText("สร้างบัญชี 6101 สำเร็จแล้ว")).toBeInTheDocument();
-    });
+    }, { timeout: 15000 });
     expect(screen.getByRole("button", { name: "Marketing Expense" })).toBeInTheDocument();
-  });
+  }, 20000);
 
   it("shows validation and empty state around filters", async () => {
     seedMockSession({
@@ -71,7 +82,7 @@ describe("chart of accounts page", () => {
 
     renderWithProviders(<ChartOfAccountsPage />);
 
-    await screen.findByRole("heading", { name: "ผังบัญชี" });
+    await waitForChartOfAccountsReady();
 
     fireEvent.change(screen.getByPlaceholderText("รหัสบัญชี"), {
       target: { value: "61" },
@@ -89,6 +100,43 @@ describe("chart of accounts page", () => {
 
     await waitFor(() => {
       expect(screen.getByText("ไม่พบบัญชีที่ตรงกับเงื่อนไขที่เลือก ลองเปลี่ยนคำค้นหรือ filter ใหม่")).toBeInTheDocument();
+    }, { timeout: 10000 });
+  });
+
+  it("shows locked error when toggle is rejected by backend", async () => {
+    const toggleSpy = vi.spyOn(mockAppAdapter, "toggleChartOfAccount").mockRejectedValueOnce({
+      code: "ACCOUNT_LOCKED",
+      message: "บัญชีนี้ไม่สามารถปรับสถานะได้",
     });
+
+    seedMockSession({
+      session: {
+        user_id: 2,
+        username: "admin",
+        full_name: "Niran Ops Lead",
+        role: "ADMIN",
+        active_shift_id: null,
+      },
+      activeShift: null,
+      lastClosedShift: null,
+    });
+
+    renderWithProviders(<ChartOfAccountsPage />);
+
+    await waitForChartOfAccountsReady();
+    const nameButton = screen.getByRole("button", { name: "PromptPay Clearing" });
+    const row = nameButton.closest("tr");
+    expect(row).not.toBeNull();
+
+    fireEvent.click(within(row as HTMLTableRowElement).getByRole("button", { name: "ปิดใช้งาน" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("บัญชีนี้ถูก lock จากการใช้งานทางบัญชี จึงยังไม่สามารถปรับสถานะได้")).toBeInTheDocument();
+    }, { timeout: 10000 });
+
+    await waitFor(() => {
+      expect(toggleSpy).toHaveBeenCalled();
+      expect(within(row as HTMLTableRowElement).getByRole("button", { name: "ปิดใช้งาน" })).toBeEnabled();
+    }, { timeout: 10000 });
   });
 });

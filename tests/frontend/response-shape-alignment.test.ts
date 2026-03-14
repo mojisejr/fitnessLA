@@ -75,6 +75,7 @@ describe("real-app-adapter — response shape alignment", () => {
     const result = await realAppAdapter.closeShift({
       activeShift: { shift_id: "201", opened_at: "2026-03-10T08:00:00Z", starting_cash: 500 },
       actualCash: 2100,
+      responsibleName: "Pim Counter",
     });
 
     expect(result.shift_id).toBe("201");
@@ -99,6 +100,7 @@ describe("real-app-adapter — response shape alignment", () => {
     const result = await realAppAdapter.closeShift({
       activeShift: { shift_id: "202", opened_at: "2026-03-10T08:00:00Z", starting_cash: 500 },
       actualCash: 1850,
+      responsibleName: "Pim Counter",
     });
 
     expect(result.difference).toBe(-150);
@@ -118,6 +120,30 @@ describe("real-app-adapter — response shape alignment", () => {
       total_expenses: 1200,
       net_cash_flow: 13800,
       shift_discrepancies: -50,
+      shift_rows: [
+        {
+          shift_id: "SHIFT-001",
+          closed_at: "2026-03-10T21:00:00.000Z",
+          responsible_name: "Pim Counter",
+          expected_cash: 8000,
+          actual_cash: 7950,
+          difference: -50,
+        },
+      ],
+      sales_rows: [
+        {
+          order_id: "ORD-001",
+          shift_id: "SHIFT-001",
+          order_number: "POS-20260310-0001",
+          sold_at: "2026-03-10T09:00:00.000Z",
+          items_summary: "อเมริกาโน่เย็น x2",
+          cashier_name: "Pim Counter",
+          responsible_name: "Pim Counter",
+          customer_name: null,
+          payment_method: "CASH",
+          total_amount: 15000,
+        },
+      ],
     };
     mockFetchOk(mockResponse);
 
@@ -130,6 +156,8 @@ describe("real-app-adapter — response shape alignment", () => {
     expect(result.total_expenses).toBe(1200);
     expect(result.net_cash_flow).toBe(13800);
     expect(result.shift_discrepancies).toBe(-50);
+    expect(result.shift_rows[0]?.difference).toBe(-50);
+    expect(result.sales_rows[0]?.cashier_name).toBe("Pim Counter");
   });
 
   // ── 4C: OrderResult ────────────────────────────────────────────────────
@@ -205,7 +233,7 @@ describe("real-app-adapter — response shape alignment", () => {
     });
 
     await expect(
-      realAppAdapter.openShift(500),
+      realAppAdapter.openShift(500, "Pim Counter"),
     ).rejects.toMatchObject({
       code: "SHIFT_ALREADY_OPEN",
       message: "มีกะที่เปิดอยู่แล้ว",
@@ -216,9 +244,141 @@ describe("real-app-adapter — response shape alignment", () => {
     mockFetchNonJson(500);
 
     await expect(
-      realAppAdapter.openShift(500),
+      realAppAdapter.openShift(500, "Pim Counter"),
     ).rejects.toMatchObject({
       message: "Request failed",
+    });
+  });
+
+  // ── 4F: COA ───────────────────────────────────────────────────────────
+
+  it("4F-9: listChartOfAccounts returns full account list shape", async () => {
+    const mockResponse = [
+      {
+        account_id: "coa-1",
+        account_code: "4101",
+        account_name: "Membership Revenue",
+        account_type: "REVENUE",
+        is_active: true,
+        description: "รายได้ค่าสมาชิก",
+      },
+    ];
+    mockFetchOk(mockResponse);
+
+    const result = await realAppAdapter.listChartOfAccounts();
+
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({
+      account_id: "coa-1",
+      account_code: "4101",
+      account_name: "Membership Revenue",
+      account_type: "REVENUE",
+      is_active: true,
+    });
+  });
+
+  it("4F-10: createChartOfAccount returns created account shape", async () => {
+    const mockResponse = {
+      account_id: "coa-2",
+      account_code: "5209",
+      account_name: "Utilities Expense",
+      account_type: "EXPENSE",
+      is_active: true,
+      description: "ค่าน้าและไฟ",
+    };
+    mockFetchOk(mockResponse);
+
+    const result = await realAppAdapter.createChartOfAccount({
+      account_code: "5209",
+      account_name: "Utilities Expense",
+      account_type: "EXPENSE",
+      description: "ค่าน้าและไฟ",
+    });
+
+    expect(result).toMatchObject({
+      account_id: "coa-2",
+      account_code: "5209",
+      account_name: "Utilities Expense",
+      account_type: "EXPENSE",
+      is_active: true,
+    });
+  });
+
+  it("4F-11: toggleChartOfAccount returns updated account shape", async () => {
+    const mockResponse = {
+      account_id: "coa-3",
+      account_code: "5201",
+      account_name: "Cleaning Supplies",
+      account_type: "EXPENSE",
+      is_active: false,
+      locked_reason: "ใช้งานแล้ว",
+    };
+    mockFetchOk(mockResponse);
+
+    const result = await realAppAdapter.toggleChartOfAccount("coa-3");
+
+    expect(result).toMatchObject({
+      account_id: "coa-3",
+      account_code: "5201",
+      account_name: "Cleaning Supplies",
+      account_type: "EXPENSE",
+      is_active: false,
+      locked_reason: "ใช้งานแล้ว",
+    });
+  });
+
+  // ── 4G: Product Mapping ───────────────────────────────────────────────
+
+  it("4G-12: createProduct returns product with revenue_account_id", async () => {
+    const mockResponse = {
+      product_id: "prod-1",
+      sku: "MEM-001",
+      name: "Monthly Membership",
+      price: 1500,
+      product_type: "MEMBERSHIP",
+      revenue_account_id: "coa-4101",
+    };
+    mockFetchOk(mockResponse);
+
+    const result = await realAppAdapter.createProduct({
+      sku: "MEM-001",
+      name: "Monthly Membership",
+      price: 1500,
+      productType: "SERVICE",
+      revenueAccountId: "coa-4101",
+    });
+
+    expect(result).toMatchObject({
+      product_id: "prod-1",
+      sku: "MEM-001",
+      name: "Monthly Membership",
+      revenue_account_id: "coa-4101",
+    });
+  });
+
+  it("4G-13: updateProduct returns updated product mapping", async () => {
+    const mockResponse = {
+      product_id: "prod-1",
+      sku: "MEM-001",
+      name: "Monthly Membership Plus",
+      price: 1800,
+      product_type: "MEMBERSHIP",
+      revenue_account_id: "coa-4102",
+    };
+    mockFetchOk(mockResponse);
+
+    const result = await realAppAdapter.updateProduct({
+      productId: "prod-1",
+      sku: "MEM-001",
+      name: "Monthly Membership Plus",
+      price: 1800,
+      revenueAccountId: "coa-4102",
+    });
+
+    expect(result).toMatchObject({
+      product_id: "prod-1",
+      name: "Monthly Membership Plus",
+      revenue_account_id: "coa-4102",
     });
   });
 });
