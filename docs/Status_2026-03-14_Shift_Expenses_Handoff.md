@@ -4,6 +4,8 @@
 
 สถานะล่าสุดของงานฝั่ง frontend และ integration หลังรอบแก้ POS, shift, members, expenses, และ reports:
 
+- แก้ deploy blocker บน Vercel แล้ว: `src/lib/mock-api.ts` คืน `DailySummary` ครบ `shift_rows` ตาม contract และ `npm run build` ผ่านแล้วบน local
+
 - หน้า POS แยกกรอบสินค้าและกรอบตะกร้า/คิดเงินให้เลื่อนอิสระจากกันแล้ว
 - ค้นหาสินค้าบน POS ใช้งานได้กับชื่อไทยที่ผู้ใช้เห็นจริงบนจอ ไม่ได้จำกัดแค่ชื่อดิบในข้อมูล
 - layout หลักของแอปขยายเต็มพื้นที่มากขึ้น ลดปัญหาการ์ดตรงกลางอัดกัน
@@ -19,6 +21,11 @@
 - หน้า `รายจ่าย` กลับมาบันทึกได้ใน mock mode เพราะมี expense account ที่ active ให้เลือกแล้ว และมี regression test ครอบ flow นี้
 
 ## What Was Done
+
+0. แก้ deploy blocker ที่ชนบน Vercel
+   - เพิ่ม `shift_rows` ให้ `fetchMockDailySummary()` ใน `src/lib/mock-api.ts`
+   - ทำให้ response shape ตรงกับ `DailySummary`
+   - ยืนยันด้วย `npm run build` ว่าผ่านแล้ว
 
 1. แก้หน้า POS ให้ใช้งานหน้างานจริงมากขึ้น
    - แยก scroll ของฝั่งรายการขายกับฝั่งตะกร้า/คิดเงิน
@@ -73,9 +80,10 @@
 ## Risks And Notes
 
 - ข้อมูล `เงินสดเกิน/ขาด` ในหน้าสรุปกะตอนนี้ขึ้นกับ `shift_rows` ของ daily summary ถ้า backend fixture หรือ schema จริงไม่ส่งข้อมูลกะปิดครบ รายงานจะเห็นเท่าที่ backend ให้มา
+- มีบทเรียนจาก deploy รอบนี้ว่า mock API ต้องคืน `DailySummary` ครบทั้ง `sales_rows` และ `shift_rows` ไม่เช่นนั้น TypeScript build จะ fail บน Vercel แม้ runtime ฝั่ง mock จะดูใช้งานได้
 - backend fixture บางตัวไม่มีชื่อผู้รับผิดชอบใน shift ปิดกะ จึงต้องมี fallback เป็น `ไม่ระบุผู้รับผิดชอบ`
 - ถ้าฝั่งธุรกิจต้องการตรวจตาม `คนรับผิดชอบกะ` ที่ไม่เท่ากับ `staffId` ของ user ปัจจุบัน ต้องทำ schema migration เพิ่ม
-- branch ปัจจุบันสำหรับ push คือ `staging-frontA`
+- branch ปัจจุบันที่มี deploy-fix ล่าสุดคือ `staging`
 
 ## Validation
 
@@ -111,4 +119,4 @@ validation ที่ผ่านก่อนหน้านี้ในรอบ
 ## Push Target
 
 - Remote: `origin`
-- Branch: `staging-frontA`
+- Branch: `staging`

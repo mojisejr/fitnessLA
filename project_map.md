@@ -48,9 +48,9 @@
 
 ## 🚩 Status & Signals
 - **Current Phase:** Phase 2 Completed (Accounting Soul backend complete, Agent B integration in progress)
-- **Latest Update:** 2026-03-12 (Dynamic Revenue Journaling + GL CSV export complete, hard gate passed 89/89)
+- **Latest Update:** 2026-03-14 (Deploy blocker from `DailySummary` mock contract fixed on `staging`; frontend handoff for Agent A updated)
 - **Shared Agreement:** ยึด `API_Contract.md` เป็นหัวใจหลักในการคุยกัน และให้ Agent B เดินงานต่อผ่าน `real-app-adapter.ts` เป็นจุดเชื่อมเดียว
-- **Handoff Doc (Agent B):** [docs/Handoff_2026-03-12_Agent-B_Phase2-Ready.md](docs/Handoff_2026-03-12_Agent-B_Phase2-Ready.md)
+- **Latest Handoff Docs:** [docs/Status_2026-03-14_Shift_Expenses_Handoff.md](docs/Status_2026-03-14_Shift_Expenses_Handoff.md), [docs/Handoff_2026-03-14_Agent-A_Next_After_Deploy_Fix.md](docs/Handoff_2026-03-14_Agent-A_Next_After_Deploy_Fix.md)
 
 ## 🤝 Implementation Integration Matrix (Agent A ⬌ Agent B)
 *(Use this matrix to track feature handoffs from Mock to Real)*
@@ -116,3 +116,21 @@
 1. Agent B ต่อปุ่ม export CSV ที่หน้า General Ledger แล้วทำ smoke test บน owner account
 2. Agent B ต่อฟอร์ม Product create/edit ให้เลือก revenue account จาก `/api/v1/coa`
 3. รัน regression frontend tests และเพิ่ม test สำหรับ GL download interaction
+
+## 🔄 2026-03-14 Grounding Delta (For Agent A)
+
+### ✅ Done ล่าสุด (ล็อกแล้ว)
+- แก้ deploy blocker ที่ Vercel พบใน `src/lib/mock-api.ts` โดยทำให้ `fetchMockDailySummary()` คืน `shift_rows` ครบตาม `DailySummary`
+- ยืนยัน `npm run build` ผ่านหลังแก้ และ push แล้วบน branch `staging`
+- งาน frontend/integration ฝั่ง shift, expenses, reports อยู่ในสถานะที่ Agent A รับไปต่อที่ backend/data layer ได้โดยไม่ต้องย้อนแก้ UI รอบใหญ่
+
+### 🟡 Remaining สำหรับ Agent A
+- persist `responsible_name` ลง DB จริงของ `Shift`
+- ออกแบบและเปิด endpoint `shift summary` โดยตรงแทนการให้ UI ประกอบจาก `daily summary`
+- ยืนยัน real-mode dataset สำหรับ expense accounts และ smoke-test users
+- แก้ production secret hygiene ของ `BETTER_AUTH_SECRET`
+
+### 🔴 Must Not Forget
+- ถ้าเปลี่ยน contract ของ `DailySummary` ต้อง sync `contracts`, `mock-api`, `mock-data`, adapters, และ report pages พร้อมกัน
+- deploy รอบนี้ล้มเพราะ mock response shape ไม่ครบ ไม่ใช่เพราะ route จริงพัง
+- ให้ใช้ `docs/Handoff_2026-03-14_Agent-A_Next_After_Deploy_Fix.md` เป็น starting point ของ Agent A รอบถัดไป
