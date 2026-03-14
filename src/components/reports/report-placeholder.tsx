@@ -21,19 +21,19 @@ export function ReportPlaceholder({
   description,
   waitingFor,
   filters,
-  integrationStatus = "รอ API",
-  demoNote = "demo shell นี้ใช้ทดสอบ layout, filter hierarchy, permission guard และตำแหน่ง export ก่อนต่อ backend จริง",
+  integrationStatus = "รอข้อมูลรายงาน",
+  demoNote = "หน้านี้จัดวางโครงรายงาน, ตัวกรอง, สิทธิ์การเข้าถึง และตำแหน่งการส่งออกไฟล์ไว้แล้ว เพื่อให้ต่อข้อมูลจริงได้ต่อเนื่องเมื่อ backend พร้อม",
   exportFormats = ["CSV", "XLSX"],
   metrics = [
-    { label: "ตัวชี้วัดหลัก", value: "รอ API" },
-    { label: "ตัวชี้วัดผลต่าง", value: "รอ API", tone: "warning" },
-    { label: "ตัวชี้วัดสถานะ", value: "รอ API", tone: "neutral" },
+    { label: "ตัวชี้วัดหลัก", value: "รอข้อมูล" },
+    { label: "ตัวชี้วัดผลต่าง", value: "รอข้อมูล", tone: "warning" },
+    { label: "ตัวชี้วัดสถานะ", value: "รอข้อมูล", tone: "neutral" },
   ],
   previewColumns = ["คอลัมน์ตัวอย่าง", "สถานะ", "หมายเหตุ"],
   previewRows = [
-    ["กำลังรอ contract", "pending", "โครงตารางพร้อมแล้ว"],
-    ["กำลังรอ query params", "pending", "filter พร้อมเสียบ API"],
-    ["กำลังรอ export", "pending", "ปุ่ม export อยู่ในตำแหน่งจริง"],
+    ["กำลังรอรายละเอียดข้อมูล", "รอดำเนินการ", "โครงตารางพร้อมแล้ว"],
+    ["กำลังรอเงื่อนไขตัวกรอง", "รอดำเนินการ", "ตัวกรองพร้อมเชื่อมข้อมูล"],
+    ["กำลังรอรูปแบบส่งออก", "รอดำเนินการ", "ปุ่มส่งออกอยู่ในตำแหน่งใช้งานจริง"],
   ],
   children,
 }: ReportPlaceholderProps) {
@@ -74,7 +74,7 @@ export function ReportPlaceholder({
       </section>
 
       <section className="rounded-[28px] border border-line bg-surface-strong p-6">
-        <p className="text-xs uppercase tracking-[0.16em] text-muted">Demo readiness</p>
+        <p className="text-xs uppercase tracking-[0.16em] text-muted">สถานะหน้ารายงาน</p>
         <p className="mt-3 text-sm leading-7 text-foreground">{demoNote}</p>
       </section>
 
@@ -127,7 +127,7 @@ export function ReportPlaceholder({
           </div>
 
           <div className="mt-5 rounded-3xl border border-dashed border-line bg-background p-6">
-            <p className="text-sm font-semibold text-foreground">กำลังรอ backend contract</p>
+            <p className="text-sm font-semibold text-foreground">รายการที่ยังรอข้อมูลเพิ่ม</p>
             <ul className="mt-3 space-y-2 text-sm leading-7 text-muted">
               {waitingFor.map((item) => (
                 <li key={item}>{item}</li>

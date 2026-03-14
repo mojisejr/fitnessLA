@@ -1,4 +1,4 @@
-import { screen } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import ShiftSummaryPage from "@/app/(app)/reports/shift-summary/page";
 import { clearMockSession, renderWithProviders, seedMockSession } from "./test-utils";
 
@@ -7,7 +7,7 @@ describe("report placeholders", () => {
     clearMockSession();
   });
 
-  it("renders shift summary shell for owner or admin", () => {
+  it("renders shift summary with responsible filter and separated payment totals", async () => {
     seedMockSession({
       session: {
         user_id: 1,
@@ -22,10 +22,23 @@ describe("report placeholders", () => {
 
     renderWithProviders(<ShiftSummaryPage />);
 
+    await waitFor(() => {
+      expect(screen.queryByText("กำลังโหลดสรุปกะ...")).not.toBeInTheDocument();
+    }, { timeout: 10000 });
+
     expect(screen.getByRole("heading", { name: "สรุปกะ" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "ส่งออก CSV" })).toBeInTheDocument();
-    expect(screen.getByText("กำลังรอ backend contract")).toBeInTheDocument();
-    expect(screen.getByText("demo shell พร้อมต่อ shift summary API")).toBeInTheDocument();
-    expect(screen.getAllByText("SHIFT-1001").length).toBeGreaterThan(0);
+    expect(screen.getByText("ยอดขายเงินสด")).toBeInTheDocument();
+    expect(screen.getByText("ยอดขายพร้อมเพย์")).toBeInTheDocument();
+    expect(screen.getAllByText("ยอดปิดกะเงินสด").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("เงินสดเกิน").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("เงินสดขาด").length).toBeGreaterThan(0);
+    expect(screen.getByRole("option", { name: "Pim Counter" })).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("ผู้รับผิดชอบ"), {
+      target: { value: "Pim Counter" },
+    });
+
+    expect(screen.getAllByText("Pim Counter").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("เงินสด").length).toBeGreaterThan(0);
   });
 });

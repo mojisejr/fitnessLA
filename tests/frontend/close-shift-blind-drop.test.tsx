@@ -1,7 +1,20 @@
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import PosPage from "@/app/(app)/pos/page";
 import CloseShiftPage from "@/app/(app)/shift/close/page";
 import { clearMockSession, renderWithProviders, seedMockSession } from "./test-utils";
+
+async function waitForPosReady() {
+  await waitFor(() => {
+    expect(screen.queryByText("กำลังโหลดสินค้า...")).not.toBeInTheDocument();
+    expect(screen.queryByText("กำลังโหลดตัวเลือกบัญชีรายได้...")).not.toBeInTheDocument();
+  }, { timeout: 10000 });
+}
+
+async function waitForCloseShiftReady() {
+  await waitFor(() => {
+    expect(screen.queryByText("กำลังโหลดรายการขายของกะ...")).not.toBeInTheDocument();
+  }, { timeout: 10000 });
+}
 
 describe("close shift blind drop", () => {
   beforeEach(() => {
@@ -26,42 +39,51 @@ describe("close shift blind drop", () => {
   it("keeps expected cash hidden until submit completes", async () => {
     renderWithProviders(<CloseShiftPage />);
 
+    await waitForCloseShiftReady();
+
     expect(screen.getByText("ยอดคาดหวังยังถูกซ่อนไว้ตามตั้งใจ")).toBeInTheDocument();
     expect(screen.queryByText("ยอดคาดหวัง")).not.toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText("เงินสดที่นับได้จริง"), {
       target: { value: "2100" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "ส่งผล blind drop" }));
+    fireEvent.click(screen.getByRole("button", { name: "ส่งผลการนับเงิน" }));
 
     await waitFor(() => {
       expect(screen.getByText("ยอดคาดหวัง")).toBeInTheDocument();
-    });
-  });
+    }, { timeout: 10000 });
+  }, 10000);
 
   it("shows shift inventory summary on the close shift page", async () => {
     const posView = renderWithProviders(<PosPage />);
 
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Add Mineral Water" })).toBeInTheDocument();
-    });
+    await waitForPosReady();
+    fireEvent.click(screen.getByRole("button", { name: "น้ำดื่ม" }));
 
-    fireEvent.click(screen.getByRole("button", { name: "Add Mineral Water" }));
+    const selectedProductPanel = screen.getByRole("heading", { name: "น้ำดื่ม", level: 2 }).closest("section");
+
+    expect(selectedProductPanel).not.toBeNull();
+
+    fireEvent.click(within(selectedProductPanel as HTMLElement).getByRole("button", { name: "เพิ่มลงบิล" }));
     fireEvent.click(screen.getByRole("button", { name: "คิดเงิน" }));
+    fireEvent.click(screen.getByRole("button", { name: "ยืนยันการคิดเงิน" }));
 
     await waitFor(() => {
       expect(screen.getByText("คิดเงินสำเร็จ")).toBeInTheDocument();
-    });
+    }, { timeout: 10000 });
 
     posView.unmount();
 
     renderWithProviders(<CloseShiftPage />);
 
-    await waitFor(() => {
-      expect(screen.getByText("Mineral Water")).toBeInTheDocument();
-    });
+    await waitForCloseShiftReady();
 
-    expect(screen.getByText("summary สินค้าในกะนี้")).toBeInTheDocument();
-    expect(screen.getByText("ขายรวมทั้งกะ")).toBeInTheDocument();
-  });
+    await waitFor(() => {
+      expect(screen.getByText("Mineral Water x1")).toBeInTheDocument();
+    }, { timeout: 10000 });
+
+    expect(screen.getByText("รายการขายในกะนี้")).toBeInTheDocument();
+    expect(screen.getByText("ยอดขายรวมทั้งกะ")).toBeInTheDocument();
+    expect(screen.getByText("เงินสด")).toBeInTheDocument();
+  }, 10000);
 });

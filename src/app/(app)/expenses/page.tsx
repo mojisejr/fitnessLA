@@ -99,7 +99,7 @@ export default function ExpensesPage() {
     const parsedAmount = Number(amount);
 
     if (!session?.active_shift_id) {
-      setErrorMessage("กรุณาเปิดกะก่อนบันทึกเงินสดย่อย");
+      setErrorMessage("กรุณาเปิดกะก่อนบันทึกรายจ่าย");
       return;
     }
 
@@ -109,7 +109,7 @@ export default function ExpensesPage() {
     }
 
     if (availabilityMessage) {
-      setErrorMessage("ยังไม่สามารถบันทึกเงินสดย่อยในโหมด real ได้ เพราะ backend ยังไม่มี COA API สำหรับโหลดบัญชีรายจ่าย");
+      setErrorMessage("ยังไม่สามารถบันทึกรายจ่ายในโหมด real ได้ เพราะ backend ยังไม่มี COA API สำหรับโหลดบัญชีรายจ่าย");
       return;
     }
 
@@ -148,7 +148,7 @@ export default function ExpensesPage() {
       setAmount("120");
       setReceiptFile(null);
     } catch (error) {
-      setErrorMessage(getErrorMessage(error, "ไม่สามารถบันทึกเงินสดย่อยได้"));
+      setErrorMessage(getErrorMessage(error, "ไม่สามารถบันทึกรายจ่ายได้"));
     } finally {
       setIsSubmitting(false);
     }
@@ -158,15 +158,24 @@ export default function ExpensesPage() {
     <ShiftGuard>
       <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
         <section className="rounded-[28px] border border-line bg-surface-strong p-6 md:p-8">
-          <p className="text-xs uppercase tracking-[0.28em] text-muted">Receipt-required flow</p>
-          <h1 className="mt-3 text-3xl font-semibold text-foreground">เงินสดย่อย</h1>
+          <p className="text-xs uppercase tracking-[0.28em] text-muted">ขั้นตอนรายจ่ายพร้อมใบเสร็จ</p>
+          <h1 className="mt-3 text-3xl font-semibold text-foreground">รายจ่าย</h1>
           <p className="mt-3 text-sm leading-7 text-muted">
-            ฟอร์มนี้ยึดตามกฎหลักของงานบัญชี: ต้องมีกะ, ต้องเลือกบัญชีรายจ่าย และต้องแนบใบเสร็จก่อนบันทึก
+            หน้านี้ใช้สำหรับบันทึกรายจ่ายที่เกิดขึ้นระหว่างกะ เช่น ของใช้หน้าร้าน วัสดุสิ้นเปลือง ค่าน้ำดื่ม หรือค่าใช้จ่ายย่อยที่ต้องมีใบเสร็จอ้างอิง
+          </p>
+          <p className="mt-2 text-sm leading-7 text-muted">
+            ฟอร์มนี้ยึดตามกฎหลักของงานบัญชี: ต้องมีกะ, ต้องเลือกบัญชีรายจ่าย, ใส่รายละเอียด และต้องแนบใบเสร็จก่อนบันทึก
           </p>
 
           {availabilityMessage ? (
             <div className="mt-5 rounded-[20px] border border-warning bg-warning-soft px-4 py-3 text-sm text-foreground">
               {availabilityMessage}
+            </div>
+          ) : null}
+
+          {!availabilityMessage && expenseAccounts.length === 0 ? (
+            <div className="mt-5 rounded-[20px] border border-warning bg-warning-soft px-4 py-3 text-sm text-foreground">
+              ยังไม่มีบัญชีรายจ่ายที่เปิดใช้งานอยู่ จึงยังบันทึกรายจ่ายไม่ได้จนกว่าจะมีบัญชีให้เลือก
             </div>
           ) : null}
 
@@ -238,7 +247,7 @@ export default function ExpensesPage() {
               disabled={isSubmitting || isSubmissionBlocked}
               className="rounded-full bg-accent px-5 py-3 text-sm font-semibold text-black transition hover:bg-accent-strong disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {isSubmitting ? "กำลังบันทึกรายจ่าย..." : "บันทึกเงินสดย่อย"}
+              {isSubmitting ? "กำลังบันทึกรายจ่าย..." : "บันทึกรายจ่าย"}
             </button>
           </form>
         </section>

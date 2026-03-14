@@ -4,7 +4,13 @@ import { useEffect, useMemo, useState } from "react";
 import { RoleGuard } from "@/components/guards/role-guard";
 import { useAppAdapter } from "@/features/adapters/adapter-provider";
 import type { DailySummary } from "@/lib/contracts";
-import { formatCurrency, getErrorMessage } from "@/lib/utils";
+import { formatCurrency, formatDateTime, getErrorMessage } from "@/lib/utils";
+
+const paymentMethodLabel = {
+  CASH: "เงินสด",
+  PROMPTPAY: "พร้อมเพย์",
+  CREDIT_CARD: "บัตรเครดิต",
+} as const;
 
 function todayAsInput() {
   return new Date().toISOString().slice(0, 10);
@@ -87,7 +93,7 @@ export default function DailySummaryPage() {
               <p className="text-xs uppercase tracking-[0.28em] text-muted">ภาพรวมสำหรับเจ้าของและแอดมิน</p>
               <h1 className="mt-3 text-3xl font-semibold text-foreground">สรุปรายวัน</h1>
               <p className="mt-3 text-sm leading-7 text-muted">
-                หน้านี้อิงกับ report contract ที่ล็อกแล้ว จึงสลับจาก mock ไป real API ได้โดยไม่ต้องเปลี่ยนโครงสร้างหน้าจอ
+                หน้านี้สรุปยอดประจำวันพร้อมรายการขายรายบิล เพื่อให้เห็นว่าขายอะไร ใครเป็นผู้ขาย รับชำระแบบไหน และยอดต่อรายการเป็นเท่าไร
               </p>
             </div>
 
@@ -171,11 +177,59 @@ export default function DailySummaryPage() {
               <div className="mt-5 grid gap-4 md:grid-cols-3">
                 {Object.entries(summary.sales_by_method).map(([method, amount]) => (
                   <div key={method} className="rounded-3xl border border-line bg-[#161510] p-5">
-                    <p className="text-sm text-muted">{method}</p>
+                    <p className="text-sm text-muted">{paymentMethodLabel[method as keyof typeof paymentMethodLabel]}</p>
                     <p className="mt-3 text-2xl font-semibold text-foreground">{formatCurrency(amount)}</p>
                   </div>
                 ))}
               </div>
+            </section>
+
+            <section className="rounded-[28px] border border-line bg-surface-strong p-6 md:p-8">
+              <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.28em] text-muted">รายการขายประจำวัน</p>
+                  <h2 className="mt-2 text-2xl font-semibold text-foreground">ขายอะไรไปบ้าง ใครขาย รับเงินแบบไหน</h2>
+                </div>
+                <p className="text-sm text-muted">แสดงตามบิลที่บันทึกในวันที่เลือก</p>
+              </div>
+
+              {summary.sales_rows.length > 0 ? (
+                <div className="mt-5 overflow-x-auto rounded-3xl border border-line bg-[#161510]">
+                  <table className="min-w-full divide-y divide-line text-sm">
+                    <thead className="bg-[#0d0d0a]">
+                      <tr>
+                        <th className="px-4 py-3 text-left font-semibold text-muted">เวลา</th>
+                        <th className="px-4 py-3 text-left font-semibold text-muted">รายการที่ขาย</th>
+                        <th className="px-4 py-3 text-left font-semibold text-muted">ผู้รับผิดชอบ</th>
+                        <th className="px-4 py-3 text-left font-semibold text-muted">ผู้ขาย</th>
+                        <th className="px-4 py-3 text-left font-semibold text-muted">ลูกค้า</th>
+                        <th className="px-4 py-3 text-left font-semibold text-muted">รับชำระ</th>
+                        <th className="px-4 py-3 text-left font-semibold text-muted">ยอดเงิน</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-line">
+                      {summary.sales_rows.map((row) => (
+                        <tr key={String(row.order_id)}>
+                          <td className="px-4 py-4 text-[#f3e8ba]">
+                            <p>{formatDateTime(row.sold_at)}</p>
+                            <p className="mt-1 text-xs text-muted">{row.order_number}</p>
+                          </td>
+                          <td className="px-4 py-4 text-[#f3e8ba]">{row.items_summary}</td>
+                          <td className="px-4 py-4 text-[#f3e8ba]">{row.responsible_name ?? row.cashier_name}</td>
+                          <td className="px-4 py-4 text-[#f3e8ba]">{row.cashier_name}</td>
+                          <td className="px-4 py-4 text-[#f3e8ba]">{row.customer_name ?? "ลูกค้าทั่วไป"}</td>
+                          <td className="px-4 py-4 text-[#f3e8ba]">{paymentMethodLabel[row.payment_method]}</td>
+                          <td className="px-4 py-4 text-[#f3e8ba]">{formatCurrency(row.total_amount)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="mt-5 rounded-3xl border border-dashed border-line bg-background p-6 text-sm text-muted">
+                  ยังไม่มีรายการขายในวันที่เลือก
+                </div>
+              )}
             </section>
           </>
         ) : (

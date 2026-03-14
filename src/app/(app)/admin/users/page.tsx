@@ -71,10 +71,10 @@ export default function AdminUsersPage() {
     <RoleGuard allowedRoles={["OWNER", "ADMIN"]}>
       <div className="space-y-6">
         <section className="rounded-[28px] border border-line bg-surface-strong p-6 md:p-8">
-          <p className="text-xs uppercase tracking-[0.16em] text-muted">Admin onboarding</p>
+          <p className="text-xs uppercase tracking-[0.16em] text-muted">จัดการผู้ใช้สำหรับผู้ดูแลระบบ</p>
           <h1 className="mt-3 text-3xl font-semibold text-foreground">จัดการผู้ใช้</h1>
           <p className="mt-3 max-w-3xl text-sm leading-7 text-muted">
-            หน้านี้ถูกปรับให้ตรงกับ backend ปัจจุบันแล้ว โดยใช้ flow สร้างผู้ใช้โดยตรงแทน request queue ชั่วคราว
+            หน้านี้ใช้สร้างผู้ใช้ใหม่ในระบบโดยตรง พร้อมแสดงข้อมูลผู้ใช้ที่เพิ่งบันทึกในรอบนี้เพื่อให้ตรวจสอบได้ทันที
           </p>
         </section>
 
@@ -135,11 +135,11 @@ export default function AdminUsersPage() {
             ) : null}
 
             <div className="mt-6 rounded-3xl border border-line bg-background/70 p-5">
-              <p className="text-xs uppercase tracking-[0.16em] text-muted">สถานะ contract ปัจจุบัน</p>
+              <p className="text-xs uppercase tracking-[0.16em] text-muted">แนวทางการทำงานปัจจุบัน</p>
               <ul className="mt-3 space-y-2 text-sm leading-7 text-foreground">
-                <li>Backend ตอนนี้รองรับการสร้างผู้ใช้โดยตรงผ่าน POST /api/v1/admin/users</li>
-                <li>Flow แบบ request queue และ approve/reject ยังไม่ใช่ contract ปัจจุบัน</li>
-                <li>ถ้าทีมจะกลับไปใช้ approval workflow ต้องขยาย backend contract เพิ่มอีกชุด</li>
+                <li>ระบบรองรับการสร้างผู้ใช้ใหม่ได้โดยตรงจากหน้านี้</li>
+                <li>การอนุมัติหลายขั้นยังไม่ถูกเปิดใช้งานในรอบปัจจุบัน</li>
+                <li>หากจะกลับไปใช้ขั้นตอนอนุมัติ ต้องเพิ่มการรองรับจากระบบส่วนกลางอีกชุด</li>
               </ul>
             </div>
           </section>
@@ -157,7 +157,7 @@ export default function AdminUsersPage() {
 
             {createdUsers.length === 0 ? (
               <div className="mt-6 rounded-3xl border border-dashed border-line bg-background p-6 text-sm leading-7 text-muted">
-                ยังไม่มีผู้ใช้ที่สร้างใน session นี้ เมื่อสร้างสำเร็จ ระบบจะแสดงข้อมูล response จาก backend ไว้ตรงนี้เพื่อใช้ตรวจสอบ field mapping
+                ยังไม่มีผู้ใช้ที่สร้างในรอบนี้ เมื่อสร้างสำเร็จ ระบบจะแสดงข้อมูลล่าสุดไว้ตรงนี้เพื่อตรวจสอบรายละเอียด
               </div>
             ) : (
               <div className="mt-6 grid gap-4 xl:grid-cols-2 2xl:grid-cols-1">

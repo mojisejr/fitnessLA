@@ -38,6 +38,7 @@ export type OpenShiftResultDto = {
   shift_id: string;
   opened_at: string;
   journal_entry_id: string;
+  responsible_name?: string;
 };
 
 type PaymentMethod = "CASH" | "PROMPTPAY" | "CREDIT_CARD";
@@ -80,6 +81,7 @@ export type CreateExpenseResultDto = {
 export type CloseShiftInput = {
   actual_cash: number;
   closing_note?: string;
+  responsible_name?: string;
 };
 
 export type CloseShiftResultDto = {
@@ -89,6 +91,7 @@ export type CloseShiftResultDto = {
   difference: number;
   status: "CLOSED";
   journal_entry_id: string;
+  responsible_name?: string;
 };
 
 export type DailySummaryDto = {
@@ -101,6 +104,26 @@ export type DailySummaryDto = {
   total_expenses: number;
   net_cash_flow: number;
   shift_discrepancies: number;
+  sales_rows: Array<{
+    order_id: string;
+    shift_id?: string;
+    order_number: string;
+    sold_at: string;
+    items_summary: string;
+    cashier_name: string;
+    responsible_name?: string;
+    customer_name: string | null;
+    payment_method: PaymentMethod;
+    total_amount: number;
+  }>;
+  shift_rows: Array<{
+    shift_id: string;
+    closed_at: string;
+    responsible_name: string;
+    expected_cash: number;
+    actual_cash: number;
+    difference: number;
+  }>;
 };
 
 export type GeneralLedgerRowDto = {
@@ -886,9 +909,32 @@ export async function getDailySummaryByDate(date: string): Promise<DailySummaryD
           lt: to,
         },
       },
+      orderBy: {
+        createdAt: "desc",
+      },
       select: {
+        id: true,
+        orderNumber: true,
+        createdAt: true,
+        customerName: true,
         paymentMethod: true,
         totalAmount: true,
+        shift: {
+          select: {
+            id: true,
+            staffId: true,
+          },
+        },
+        items: {
+          select: {
+            quantity: true,
+            product: {
+              select: {
+                name: true,
+              },
+            },
+          },
+        },
       },
     }),
     prisma.expense.findMany({
@@ -912,10 +958,36 @@ export async function getDailySummaryByDate(date: string): Promise<DailySummaryD
         },
       },
       select: {
+        id: true,
+        endTime: true,
+        expectedCash: true,
+        actualCash: true,
         difference: true,
+        staffId: true,
       },
     }),
   ]);
+
+  const staffIds = Array.from(new Set([
+    ...orders.map((order) => order.shift.staffId),
+    ...closedShifts.map((shift) => shift.staffId),
+  ]));
+  const users = staffIds.length
+    ? await prisma.user.findMany({
+        where: {
+          id: { in: staffIds },
+        },
+        select: {
+          id: true,
+          name: true,
+          username: true,
+        },
+      })
+    : [];
+
+  const staffNameById = new Map(
+    users.map((user) => [user.id, user.name || user.username || user.id]),
+  );
 
   const salesByMethod = {
     CASH: 0,
@@ -937,6 +1009,31 @@ export async function getDailySummaryByDate(date: string): Promise<DailySummaryD
     0,
   );
 
+  const salesRows = orders.map((order) => ({
+    order_id: order.id,
+    shift_id: order.shift.id,
+    order_number: order.orderNumber,
+    sold_at: order.createdAt.toISOString(),
+    items_summary:
+      order.items
+        .map((item) => `${item.product.name} x${item.quantity}`)
+        .join(", ") || order.orderNumber,
+    cashier_name: staffNameById.get(order.shift.staffId) ?? order.shift.staffId,
+    responsible_name: staffNameById.get(order.shift.staffId) ?? order.shift.staffId,
+    customer_name: order.customerName ?? null,
+    payment_method: assertPaymentMethod(order.paymentMethod),
+    total_amount: Number(Number(order.totalAmount).toFixed(2)),
+  }));
+
+  const shiftRows = closedShifts.map((shift) => ({
+    shift_id: shift.id ?? `${shift.staffId}-${shift.endTime?.toISOString() ?? from.toISOString()}`,
+    closed_at: shift.endTime?.toISOString() ?? from.toISOString(),
+    responsible_name: staffNameById.get(shift.staffId) ?? shift.staffId ?? "ไม่ระบุผู้รับผิดชอบ",
+    expected_cash: Number(Number(shift.expectedCash ?? 0).toFixed(2)),
+    actual_cash: Number(Number(shift.actualCash ?? 0).toFixed(2)),
+    difference: Number(Number(shift.difference ?? 0).toFixed(2)),
+  }));
+
   return {
     total_sales: Number(totalSales.toFixed(2)),
     sales_by_method: {
@@ -947,6 +1044,8 @@ export async function getDailySummaryByDate(date: string): Promise<DailySummaryD
     total_expenses: Number(totalExpenses.toFixed(2)),
     net_cash_flow: Number((salesByMethod.CASH - totalExpenses).toFixed(2)),
     shift_discrepancies: Number(shiftDiscrepancies.toFixed(2)),
+    sales_rows: salesRows,
+    shift_rows: shiftRows,
   };
 }
 

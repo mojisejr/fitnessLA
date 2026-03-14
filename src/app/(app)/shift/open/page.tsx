@@ -1,16 +1,21 @@
 "use client";
 
 import Link from "next/link";
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { useAuth } from "@/features/auth/auth-provider";
 import { formatCurrency, formatDateTime, getErrorMessage } from "@/lib/utils";
 
 export default function OpenShiftPage() {
-  const { activeShift, openShift } = useAuth();
+  const { activeShift, openShift, session } = useAuth();
   const [startingCash, setStartingCash] = useState("500");
+  const [responsibleName, setResponsibleName] = useState("");
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    setResponsibleName(activeShift?.responsible_name ?? session?.full_name ?? "");
+  }, [activeShift?.responsible_name, session?.full_name]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -24,10 +29,15 @@ export default function OpenShiftPage() {
       return;
     }
 
+    if (!responsibleName.trim()) {
+      setErrorMessage("กรุณาระบุชื่อผู้รับผิดชอบก่อนเปิดกะ");
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
-      const result = await openShift(parsed);
+      const result = await openShift(parsed, responsibleName.trim());
       setSuccessMessage(`เปิดกะ #${result.shift_id} เมื่อ ${formatDateTime(result.opened_at)} เรียบร้อยแล้ว`);
     } catch (error) {
       setErrorMessage(getErrorMessage(error, "ไม่สามารถเปิดกะได้"));
@@ -37,7 +47,7 @@ export default function OpenShiftPage() {
   }
 
   return (
-    <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
+    <div>
       <section className="rounded-[28px] border border-line bg-surface-strong p-6 md:p-8">
         <p className="text-xs uppercase tracking-[0.28em] text-muted">จุดเริ่มต้นของกะ</p>
         <h1 className="mt-3 text-3xl font-semibold text-foreground">เปิดกะ</h1>
@@ -51,6 +61,7 @@ export default function OpenShiftPage() {
             <p className="mt-2 text-sm leading-7 text-muted">
               เปิดเมื่อ {formatDateTime(activeShift.opened_at)} ด้วยเงินทอน {formatCurrency(activeShift.starting_cash)}
             </p>
+            <p className="mt-2 text-sm leading-7 text-muted">ผู้รับผิดชอบ: {activeShift.responsible_name ?? session?.full_name ?? "-"}</p>
             <div className="mt-4 flex flex-wrap gap-3">
               <Link href="/pos" className="rounded-full bg-accent px-5 py-3 text-sm font-semibold text-black">
                 ไปหน้า POS
@@ -62,6 +73,16 @@ export default function OpenShiftPage() {
           </div>
         ) : (
           <form className="mt-6 space-y-5" onSubmit={handleSubmit}>
+            <label className="block">
+              <span className="text-sm font-medium text-foreground">ชื่อผู้รับผิดชอบ</span>
+              <input
+                value={responsibleName}
+                onChange={(event) => setResponsibleName(event.target.value)}
+                placeholder="ลงชื่อผู้รับผิดชอบกะนี้"
+                className="mt-2 w-full rounded-[20px] border border-line bg-[#fff8de] px-4 py-3 text-[#17130a] placeholder:text-[#8a7840] outline-none transition focus:border-accent"
+              />
+            </label>
+
             <label className="block">
               <span className="text-sm font-medium text-foreground">เงินทอนตั้งต้น</span>
               <input
@@ -93,15 +114,6 @@ export default function OpenShiftPage() {
             </button>
           </form>
         )}
-      </section>
-
-      <section className="rounded-[28px] border border-line bg-surface-strong p-6 md:p-8">
-        <p className="text-xs uppercase tracking-[0.28em] text-muted">หมายเหตุการเชื่อมต่อ</p>
-        <ul className="mt-4 space-y-3 text-sm leading-7 text-muted">
-          <li>เมื่อเปิดกะสำเร็จ session จะถูกอัปเดตทันทีเพื่อปลดล็อกหน้าที่ guard ไว้</li>
-          <li>เงินทอนตั้งต้นถูกเก็บไว้เพื่อให้หน้าปิดกะคำนวณยอดคาดหวังได้ภายหลัง</li>
-          <li>flow นี้ย้ายมาใช้ adapter แล้ว จึงสลับไป API จริงได้โดยไม่ต้องรื้อ UI อีกก้อน</li>
-        </ul>
       </section>
     </div>
   );
