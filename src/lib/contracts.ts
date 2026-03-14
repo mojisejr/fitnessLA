@@ -27,6 +27,7 @@ export interface UserSession {
 export interface ShiftOpenResult {
   shift_id: EntityId;
   opened_at: string;
+  responsible_name?: string;
 }
 
 export interface ShiftCloseResult {
@@ -36,6 +37,7 @@ export interface ShiftCloseResult {
   difference: number;
   status: "CLOSED";
   journal_entry_id: EntityId;
+  responsible_name?: string;
 }
 
 export interface Product {
@@ -77,6 +79,28 @@ export interface ExpenseResult {
   status: "POSTED";
 }
 
+export interface DailySalesRow {
+  order_id: EntityId;
+  shift_id?: EntityId;
+  order_number: string;
+  sold_at: string;
+  items_summary: string;
+  cashier_name: string;
+  responsible_name?: string;
+  customer_name: string | null;
+  payment_method: PaymentMethod;
+  total_amount: number;
+}
+
+export interface DailyShiftRow {
+  shift_id: EntityId;
+  closed_at: string;
+  responsible_name: string;
+  expected_cash: number;
+  actual_cash: number;
+  difference: number;
+}
+
 export interface DailySummary {
   total_sales: number;
   sales_by_method: {
@@ -87,6 +111,8 @@ export interface DailySummary {
   total_expenses: number;
   net_cash_flow: number;
   shift_discrepancies: number;
+  sales_rows: DailySalesRow[];
+  shift_rows: DailyShiftRow[];
 }
 
 export interface MemberSubscriptionRecord {
@@ -153,4 +179,5 @@ export interface MockShiftRecord {
   shift_id: EntityId;
   opened_at: string;
   starting_cash: number;
+  responsible_name?: string;
 }

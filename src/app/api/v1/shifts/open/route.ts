@@ -6,6 +6,7 @@ import { resolveSessionFromRequest } from "@/lib/session";
 
 const openShiftSchema = z.object({
   starting_cash: z.number().min(0),
+  responsible_name: z.string().trim().min(1).max(120),
 });
 
 export async function POST(request: Request) {
@@ -40,6 +41,7 @@ export async function POST(request: Request) {
         shift_id: result.shift_id,
         opened_at: result.opened_at,
         journal_entry_id: result.journal_entry_id,
+        responsible_name: parseResult.data.responsible_name,
       },
       { status: 201 },
     );

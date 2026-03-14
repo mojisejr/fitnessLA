@@ -13,31 +13,13 @@ export default function DashboardPage() {
 
   const quickLinks = [
     { href: "/shift/open", label: "เปิดกะ", description: "เริ่มงานแคชเชียร์ด้วยเงินทอนตั้งต้น" },
-    { href: "/pos", label: "POS", description: "ทดสอบ flow ขาย, cart และการชำระเงิน" },
-    { href: "/members", label: "สมาชิก", description: "ดูสมาชิก daily, monthly, yearly พร้อมวันเริ่มและวันหมดอายุ" },
-    { href: "/expenses", label: "เงินสดย่อย", description: "บันทึกรายจ่ายผ่าน expense API และตรวจสถานะบัญชีรายจ่าย" },
-    { href: "/coa", label: "ผังบัญชี", description: "พร้อมต่อ COA API และจะแจ้งชัดเจนถ้า environment นี้ยังไม่มี route" },
-    { href: "/admin/users", label: "จัดการผู้ใช้", description: "สร้างผู้ใช้ใหม่ตรงกับ backend ปัจจุบันผ่าน API โดยตรง" },
-    { href: "/reports/daily-summary", label: "สรุปรายวัน", description: "ดูยอดรวมที่ map กับ contract ที่ล็อกแล้ว" },
-    { href: "/reports/shift-summary", label: "สรุปกะ", description: "เตรียม layout กระทบยอดกะระหว่างรอ API เพิ่ม" },
-  ];
-
-  const readinessGroups = [
-    {
-      title: "พร้อมทดสอบตอนนี้",
-      tone: "border-accent bg-accent-soft",
-      items: ["dashboard", "open shift", "close shift", "POS + stock check", "daily summary + comparison chart", "admin create user", "mock membership registry"],
-    },
-    {
-      title: "พร้อมบางส่วน แต่ยังติด backend route",
-      tone: "border-warning bg-warning-soft",
-      items: ["expenses ในโหมด real ยังติด COA API", "COA page พร้อม UI แต่ backend ยังไม่มี route จริง"],
-    },
-    {
-      title: "ยังเป็น placeholder",
-      tone: "border-line bg-background",
-      items: ["shift summary", "profit & loss", "general ledger", "export reports"],
-    },
+    { href: "/pos", label: "POS", description: "จัดการการขาย, ตะกร้า และการชำระเงินหน้าเคาน์เตอร์" },
+    { href: "/members", label: "สมาชิก", description: "ดูข้อมูลสมาชิก แพ็กเกจ วันเริ่มใช้ และวันหมดอายุ" },
+    { href: "/expenses", label: "รายจ่าย", description: "บันทึกรายจ่ายและตรวจสอบบัญชีรายจ่ายที่ใช้งานอยู่" },
+    { href: "/coa", label: "ผังบัญชี", description: "ดูผังบัญชีและตรวจสถานะการเชื่อมข้อมูลบัญชี" },
+    { href: "/admin/users", label: "จัดการผู้ใช้", description: "สร้างผู้ใช้ใหม่และติดตามข้อมูลผู้ใช้ที่เพิ่งบันทึก" },
+    { href: "/reports/daily-summary", label: "สรุปรายวัน", description: "ดูยอดรวมรายวันและเทียบข้อมูลกับวันก่อนหน้า" },
+    { href: "/reports/shift-summary", label: "สรุปกะ", description: "ดูโครงรายงานกระทบยอดกะและสถานะข้อมูลที่เชื่อมแล้ว" },
   ];
 
   return (
@@ -48,7 +30,7 @@ export default function DashboardPage() {
           <div>
             <h1 className="text-3xl font-semibold text-foreground md:text-4xl">สวัสดี {session.full_name}</h1>
             <p className="mt-3 max-w-2xl text-sm leading-7 text-muted">
-              หน้านี้ถูกจัดให้เป็นฐานของ Frontend Owner โดยตรง เพื่อให้เห็นบทบาทปัจจุบัน, สถานะกะ และ flow ที่เริ่มสร้างได้ทันทีแม้ backend ยังไม่ครบ
+              หน้านี้สรุปบทบาทปัจจุบัน สถานะกะ และทางลัดหลักของระบบ เพื่อให้เริ่มงานประจำวันและตรวจความพร้อมของแต่ละหน้าจอได้ทันที
             </p>
           </div>
           <div className="rounded-3xl border border-accent bg-accent-soft px-5 py-4">
@@ -67,7 +49,7 @@ export default function DashboardPage() {
           <p className="mt-3 text-sm leading-7 text-muted">
             {activeShift
               ? `เปิดเมื่อ ${formatDateTime(activeShift.opened_at)} ด้วยเงินทอน ${formatCurrency(activeShift.starting_cash)}`
-              : "เปิดกะเพื่อปลดล็อกหน้า POS และเงินสดย่อย"}
+              : "เปิดกะเพื่อปลดล็อกหน้า POS และรายจ่าย"}
           </p>
 
           {lastClosedShift ? (
@@ -92,30 +74,15 @@ export default function DashboardPage() {
         </div>
 
         <div className="rounded-[28px] border border-line bg-surface-strong p-6">
-          <p className="text-xs uppercase tracking-[0.16em] text-muted">หมายเหตุสำหรับ Frontend Owner</p>
+          <p className="text-xs uppercase tracking-[0.16em] text-muted">หมายเหตุการใช้งาน</p>
           <ul className="mt-4 space-y-3 text-sm leading-7 text-muted">
-            <li>มี guard ครบทั้งตามบทบาทและตามสถานะกะ</li>
-            <li>หน้าปิดกะยังซ่อนยอดคาดหวังก่อนกดยืนยันตามกติกา blind drop</li>
-            <li>POS ใช้ Jotai และ response ผ่าน adapter ที่สลับ mock กับ real ได้</li>
-            <li>รายงานที่เกิน daily summary ยังต้องรอการขยาย contract จาก backend</li>
+            <li>ระบบจำกัดสิทธิ์ตามบทบาทและสถานะกะก่อนเข้าแต่ละหน้า</li>
+            <li>หน้าปิดกะยังซ่อนยอดคาดหวังก่อนยืนยันตามกติกาการนับเงินแบบไม่เห็นยอดคาดหวัง</li>
+            <li>หน้า POS และหน้าหลักอื่น ๆ พร้อมสลับระหว่างข้อมูลทดลองกับข้อมูลจริงตามโหมดที่เลือก</li>
+            <li>รายงานบางชุดยังอยู่ระหว่างขยายข้อมูลฝั่งระบบส่วนกลาง</li>
           </ul>
         </div>
       </section>
-
-      <section className="grid gap-4 xl:grid-cols-3">
-        {readinessGroups.map((group) => (
-          <div key={group.title} className={`rounded-[28px] border p-6 ${group.tone}`}>
-            <p className="text-xs uppercase tracking-[0.16em] text-muted">สถานะ integration</p>
-            <h2 className="mt-3 text-2xl font-semibold text-foreground">{group.title}</h2>
-            <ul className="mt-4 space-y-2 text-sm leading-7 text-foreground">
-              {group.items.map((item) => (
-                <li key={item}>{item}</li>
-              ))}
-            </ul>
-          </div>
-        ))}
-      </section>
-
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {quickLinks
           .filter((item) => item.href !== "/reports/daily-summary" || session.role !== "CASHIER")

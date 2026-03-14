@@ -75,6 +75,7 @@ describe("real-app-adapter — response shape alignment", () => {
     const result = await realAppAdapter.closeShift({
       activeShift: { shift_id: "201", opened_at: "2026-03-10T08:00:00Z", starting_cash: 500 },
       actualCash: 2100,
+      responsibleName: "Pim Counter",
     });
 
     expect(result.shift_id).toBe("201");
@@ -99,6 +100,7 @@ describe("real-app-adapter — response shape alignment", () => {
     const result = await realAppAdapter.closeShift({
       activeShift: { shift_id: "202", opened_at: "2026-03-10T08:00:00Z", starting_cash: 500 },
       actualCash: 1850,
+      responsibleName: "Pim Counter",
     });
 
     expect(result.difference).toBe(-150);
@@ -118,6 +120,30 @@ describe("real-app-adapter — response shape alignment", () => {
       total_expenses: 1200,
       net_cash_flow: 13800,
       shift_discrepancies: -50,
+      shift_rows: [
+        {
+          shift_id: "SHIFT-001",
+          closed_at: "2026-03-10T21:00:00.000Z",
+          responsible_name: "Pim Counter",
+          expected_cash: 8000,
+          actual_cash: 7950,
+          difference: -50,
+        },
+      ],
+      sales_rows: [
+        {
+          order_id: "ORD-001",
+          shift_id: "SHIFT-001",
+          order_number: "POS-20260310-0001",
+          sold_at: "2026-03-10T09:00:00.000Z",
+          items_summary: "อเมริกาโน่เย็น x2",
+          cashier_name: "Pim Counter",
+          responsible_name: "Pim Counter",
+          customer_name: null,
+          payment_method: "CASH",
+          total_amount: 15000,
+        },
+      ],
     };
     mockFetchOk(mockResponse);
 
@@ -130,6 +156,8 @@ describe("real-app-adapter — response shape alignment", () => {
     expect(result.total_expenses).toBe(1200);
     expect(result.net_cash_flow).toBe(13800);
     expect(result.shift_discrepancies).toBe(-50);
+    expect(result.shift_rows[0]?.difference).toBe(-50);
+    expect(result.sales_rows[0]?.cashier_name).toBe("Pim Counter");
   });
 
   // ── 4C: OrderResult ────────────────────────────────────────────────────
@@ -205,7 +233,7 @@ describe("real-app-adapter — response shape alignment", () => {
     });
 
     await expect(
-      realAppAdapter.openShift(500),
+      realAppAdapter.openShift(500, "Pim Counter"),
     ).rejects.toMatchObject({
       code: "SHIFT_ALREADY_OPEN",
       message: "มีกะที่เปิดอยู่แล้ว",
@@ -216,7 +244,7 @@ describe("real-app-adapter — response shape alignment", () => {
     mockFetchNonJson(500);
 
     await expect(
-      realAppAdapter.openShift(500),
+      realAppAdapter.openShift(500, "Pim Counter"),
     ).rejects.toMatchObject({
       message: "Request failed",
     });

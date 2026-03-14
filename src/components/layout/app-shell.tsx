@@ -18,7 +18,7 @@ const navItems: NavItem[] = [
   { href: "/shift/open", label: "เปิดกะ", roles: ["OWNER", "ADMIN", "CASHIER"] },
   { href: "/shift/close", label: "ปิดกะ", roles: ["OWNER", "ADMIN", "CASHIER"] },
   { href: "/pos", label: "POS", roles: ["OWNER", "ADMIN", "CASHIER"] },
-  { href: "/expenses", label: "เงินสดย่อย", roles: ["OWNER", "ADMIN", "CASHIER"] },
+  { href: "/expenses", label: "รายจ่าย", roles: ["OWNER", "ADMIN", "CASHIER"] },
   { href: "/members", label: "สมาชิก", roles: ["OWNER", "ADMIN"] },
   { href: "/coa", label: "ผังบัญชี", roles: ["OWNER", "ADMIN"] },
   { href: "/admin/users", label: "จัดการผู้ใช้", roles: ["OWNER", "ADMIN"] },
@@ -52,7 +52,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen px-4 py-4 md:px-6 md:py-6">
-      <div className="mx-auto grid min-h-[calc(100vh-2rem)] max-w-7xl gap-4 md:grid-cols-[280px_minmax(0,1fr)]">
+      <div className="grid min-h-[calc(100vh-2rem)] w-full gap-4 md:grid-cols-[280px_minmax(0,1fr)]">
         <aside className="rounded-4xl border border-line bg-surface p-5 shadow-(--shadow) backdrop-blur md:p-6">
           <div className="rounded-3xl border border-[#f6d94a]/18 bg-[#0f0f0f] px-5 py-5 text-white">
             <LogoSlot />
@@ -60,8 +60,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <h1 className="mt-3 text-2xl font-semibold">ศูนย์ควบคุมงานหน้าร้าน</h1>
             <p className="mt-2 text-sm leading-6 text-white/72">
               {mode === "mock"
-                ? "โหมดทดลองใช้งานทันทีสำหรับคุมกะ, POS และเงินสดย่อย"
-                : "โหมดใช้งานจริงด้วย Better-Auth และ Cookie Session"}
+                ? "โหมดทดลองใช้งานทันทีสำหรับคุมกะ, POS และรายจ่าย"
+                : "โหมดใช้งานจริงด้วยบัญชีผู้ใช้และสิทธิ์ตามระบบ"}
             </p>
           </div>
 
@@ -85,7 +85,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <p className="mt-1 text-sm text-muted">
                 {activeShift
                   ? `${formatDateTime(activeShift.opened_at)} · ${formatCurrency(activeShift.starting_cash)}`
-                  : "เปิดกะก่อนเข้าใช้งาน POS หรือเงินสดย่อย"}
+                  : "เปิดกะก่อนเข้าใช้งาน POS หรือหน้ารายจ่าย"}
               </p>
             </div>
           </div>
@@ -115,7 +115,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <div className="mt-5 rounded-3xl border border-line bg-surface-strong p-4">
             {mode === "mock" ? (
               <>
-                <p className="text-xs uppercase tracking-[0.16em] text-muted">สลับบทบาทใน mock</p>
+                <p className="text-xs uppercase tracking-[0.16em] text-muted">สลับบทบาทในโหมดทดลอง</p>
                 <div className="mt-3 grid grid-cols-3 gap-2">
                   {(["OWNER", "ADMIN", "CASHIER"] as Role[]).map((role) => (
                     <button
@@ -144,12 +144,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               onClick={logout}
               className="mt-3 w-full rounded-2xl border border-line px-4 py-3 text-sm font-semibold text-foreground transition hover:border-warning hover:bg-warning-soft"
             >
-              {mode === "mock" ? "ออกจากระบบ mock" : "ออกจากระบบ"}
+              {mode === "mock" ? "ออกจากโหมดทดลอง" : "ออกจากระบบ"}
             </button>
           </div>
         </aside>
 
-        <main className="rounded-4xl border border-line bg-surface p-4 shadow-(--shadow) backdrop-blur md:p-6">
+        <main className="min-w-0 rounded-4xl border border-line bg-surface p-4 shadow-(--shadow) backdrop-blur md:p-6">
           {children}
         </main>
       </div>

@@ -24,7 +24,7 @@ export function RoleGuard({
         <p className="text-sm uppercase tracking-[0.28em] text-muted">ไม่มีสิทธิ์</p>
         <h2 className="mt-3 text-2xl font-semibold text-foreground">บทบาทของคุณยังเข้าใช้งานหน้านี้ไม่ได้</h2>
         <p className="mt-3 text-sm leading-7 text-muted">
-          guard ฝั่ง frontend ยังอยู่เพื่อคุม flow แต่สุดท้าย backend ต้องบังคับสิทธิ์ซ้ำด้วย
+          ระบบตรวจสิทธิ์ที่หน้านี้ไว้ก่อน และจะตรวจสิทธิ์ซ้ำอีกชั้นเมื่อมีการบันทึกหรือดึงข้อมูลจริง
         </p>
         <Link
           href="/dashboard"

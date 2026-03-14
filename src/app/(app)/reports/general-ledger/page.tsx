@@ -15,7 +15,7 @@ function firstDayOfCurrentMonth() {
 }
 
 async function getDownloadErrorMessage(response: Response) {
-  const fallback = "ไม่สามารถดาวน์โหลดรายงาน GL ได้";
+  const fallback = "ไม่สามารถดาวน์โหลดสมุดรายวันแยกประเภทได้";
 
   const contentType = response.headers.get("Content-Type") ?? "";
   if (contentType.includes("application/json")) {
@@ -118,22 +118,21 @@ export default function GeneralLedgerPage() {
               <p className="text-xs uppercase tracking-[0.28em] text-muted">รายงานบัญชีสำหรับเจ้าของและแอดมิน</p>
               <h1 className="mt-3 text-3xl font-semibold text-foreground">สมุดรายวันแยกประเภท</h1>
               <p className="mt-3 max-w-3xl text-sm leading-7 text-muted">
-                ส่งออกรายการ GL เป็นไฟล์ CSV ตามช่วงวันที่ที่เลือก โดยยิงตรงไปยัง report contract จริงของ backend
-                และใช้ cookie session ปัจจุบันในการยืนยันสิทธิ์
+                ส่งออกรายการบัญชีเป็นไฟล์ CSV ตามช่วงวันที่ที่เลือก โดยใช้สิทธิ์ของผู้ใช้ปัจจุบันในการยืนยันการดาวน์โหลด
               </p>
             </div>
 
             <div className="rounded-[20px] bg-accent-soft px-4 py-3 text-sm text-foreground">
-              <p className="text-xs uppercase tracking-[0.16em] text-muted">Contract</p>
+              <p className="text-xs uppercase tracking-[0.16em] text-muted">ปลายทางข้อมูล</p>
               <p className="mt-2 font-semibold">GET /api/v1/reports/gl</p>
-              <p className="text-xs text-muted">ใช้ query: start_date, end_date</p>
+              <p className="text-xs text-muted">ใช้พารามิเตอร์: start_date, end_date</p>
             </div>
           </div>
         </section>
 
         <section className="grid gap-6 xl:grid-cols-[minmax(0,1.05fr)_minmax(320px,0.95fr)]">
           <div className="rounded-[28px] border border-line bg-surface-strong p-6 md:p-8">
-            <p className="text-xs uppercase tracking-[0.18em] text-muted">Export CSV</p>
+            <p className="text-xs uppercase tracking-[0.18em] text-muted">ดาวน์โหลดไฟล์ CSV</p>
             <h2 className="mt-3 text-2xl font-semibold text-foreground">เลือกช่วงวันที่ก่อนดาวน์โหลด</h2>
             <p className="mt-3 text-sm leading-7 text-muted">
               ระบบจะส่งออกไฟล์ CSV ของสมุดรายวันแยกประเภทตามช่วงวันที่ที่เลือก ถ้าช่วงวันไม่ถูกต้องหรือสิทธิ์ไม่พอ
@@ -181,7 +180,7 @@ export default function GeneralLedgerPage() {
                 disabled={isDownloading}
                 className="rounded-full bg-accent px-5 py-3 text-sm font-semibold text-black transition hover:bg-accent-strong disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {isDownloading ? "กำลังดาวน์โหลด..." : "Download CSV"}
+                {isDownloading ? "กำลังดาวน์โหลด..." : "ดาวน์โหลด CSV"}
               </button>
               <button
                 type="button"
@@ -201,7 +200,7 @@ export default function GeneralLedgerPage() {
 
           <aside className="space-y-6">
             <section className="rounded-[28px] border border-line bg-surface-strong p-6 md:p-8">
-              <p className="text-xs uppercase tracking-[0.18em] text-muted">Validation</p>
+              <p className="text-xs uppercase tracking-[0.18em] text-muted">เงื่อนไขก่อนดาวน์โหลด</p>
               <div className="mt-4 space-y-3 text-sm leading-7 text-muted">
                 <p>ต้องกรอกทั้งวันเริ่มต้นและวันสิ้นสุด</p>
                 <p>รูปแบบวันที่ต้องเป็น YYYY-MM-DD ตาม input date ของ browser</p>

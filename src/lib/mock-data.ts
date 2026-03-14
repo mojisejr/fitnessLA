@@ -1,8 +1,6 @@
 import type {
   DailySummary,
-  MemberSubscriptionRecord,
   MockChartOfAccount,
-  MockExpenseAccount,
   MockPendingUser,
   Product,
   Role,
@@ -325,71 +323,6 @@ export const mockProducts: Product[] = [
   },
 ];
 
-export const mockMemberSubscriptions: MemberSubscriptionRecord[] = [
-  {
-    member_id: "MEM-0001",
-    member_code: "MBR-24001",
-    full_name: "Anan Wattanakul",
-    phone: "081-222-4455",
-    membership_product_id: 105,
-    membership_name: "Monthly Membership",
-    membership_period: "MONTHLY",
-    started_at: "2026-02-10T09:05:00.000Z",
-    expires_at: "2026-03-12T23:59:59.000Z",
-    checked_in_at: "2026-03-10T07:10:00.000Z",
-    renewed_at: null,
-    renewal_status: "ACTIVE",
-  },
-  {
-    member_id: "MEM-0002",
-    member_code: "MBR-24002",
-    full_name: "Ploy Srisuk",
-    phone: "089-454-1188",
-    membership_product_id: 104,
-    membership_name: "Daily Pass",
-    membership_period: "DAILY",
-    started_at: "2026-03-10T08:30:00.000Z",
-    expires_at: "2026-03-10T23:59:59.000Z",
-    checked_in_at: "2026-03-10T08:35:00.000Z",
-    renewed_at: null,
-    renewal_status: "EXPIRES_TODAY",
-  },
-  {
-    member_id: "MEM-0003",
-    member_code: "MBR-24003",
-    full_name: "Thanawat Khem",
-    phone: "094-882-1109",
-    membership_product_id: 110,
-    membership_name: "Yearly Membership",
-    membership_period: "YEARLY",
-    started_at: "2025-03-09T11:00:00.000Z",
-    expires_at: "2026-03-09T23:59:59.000Z",
-    checked_in_at: "2026-03-08T18:20:00.000Z",
-    renewed_at: null,
-    renewal_status: "EXPIRED_NOT_RENEWED",
-  },
-  {
-    member_id: "MEM-0004",
-    member_code: "MBR-24004",
-    full_name: "Mali Prasert",
-    phone: "082-991-5500",
-    membership_product_id: 105,
-    membership_name: "Monthly Membership",
-    membership_period: "MONTHLY",
-    started_at: "2026-02-09T15:40:00.000Z",
-    expires_at: "2026-03-09T23:59:59.000Z",
-    checked_in_at: "2026-03-09T19:15:00.000Z",
-    renewed_at: "2026-03-10T09:00:00.000Z",
-    renewal_status: "RENEWED",
-  },
-];
-
-export const mockExpenseAccounts: MockExpenseAccount[] = [
-  { account_id: 201, account_code: "5201", account_name: "Cleaning Supplies" },
-  { account_id: 202, account_code: "5202", account_name: "Small Equipment" },
-  { account_id: 203, account_code: "5203", account_name: "Office Snacks" },
-  { account_id: 204, account_code: "5204", account_name: "Maintenance Expense" },
-];
 
 export const mockChartOfAccounts: MockChartOfAccount[] = [
   {
@@ -474,6 +407,14 @@ export const mockChartOfAccounts: MockChartOfAccount[] = [
     description: "หมวดค่าใช้จ่ายอุปกรณ์ทำความสะอาดที่เก็บไว้เพื่ออ้างอิงประวัติการตรวจสอบย้อนหลัง",
     locked_reason: "เคยถูกใช้งานในประวัติเงินสดย่อย จึงยังต้องคงไว้สำหรับการตรวจสอบ",
   },
+  {
+    account_id: 11,
+    account_code: "5205",
+    account_name: "Front Desk Expenses",
+    account_type: "EXPENSE",
+    is_active: true,
+    description: "ใช้บันทึกรายจ่ายหน้าร้านและค่าใช้จ่ายย่อยระหว่างกะที่ยังใช้งานอยู่",
+  },
 ];
 
 export const mockPendingUsers: MockPendingUser[] = [
@@ -507,4 +448,54 @@ export const mockDailySummary: DailySummary = {
   total_expenses: 640,
   net_cash_flow: 2480,
   shift_discrepancies: -60,
+  shift_rows: [
+    {
+      shift_id: "shift-20260314-a",
+      closed_at: "2026-03-14T12:10:00.000Z",
+      responsible_name: "Pim Counter",
+      expected_cash: 3250,
+      actual_cash: 3120,
+      difference: -130,
+    },
+    {
+      shift_id: "shift-20260314-b",
+      closed_at: "2026-03-14T18:30:00.000Z",
+      responsible_name: "June Desk",
+      expected_cash: 1050,
+      actual_cash: 1120,
+      difference: 70,
+    },
+  ],
+  sales_rows: [
+    {
+      order_id: "mock-20260314-001",
+      order_number: "POS-20260314-001",
+      sold_at: "2026-03-14T09:00:00.000Z",
+      items_summary: "อเมริกาโน่เย็น x2, น้ำดื่ม x1",
+      cashier_name: "Pim Counter",
+      customer_name: null,
+      payment_method: "CASH",
+      total_amount: 3120,
+    },
+    {
+      order_id: "mock-20260314-002",
+      order_number: "POS-20260314-002",
+      sold_at: "2026-03-14T13:20:00.000Z",
+      items_summary: "สมาชิกรายเดือน x1",
+      cashier_name: "June Desk",
+      customer_name: "Nok Member",
+      payment_method: "PROMPTPAY",
+      total_amount: 2580,
+    },
+    {
+      order_id: "mock-20260314-003",
+      order_number: "POS-20260314-003",
+      sold_at: "2026-03-14T17:05:00.000Z",
+      items_summary: "เทรนเดี่ยว 1 ครั้ง x1",
+      cashier_name: "Ton Front",
+      customer_name: "Mild Training",
+      payment_method: "CREDIT_CARD",
+      total_amount: 2720,
+    },
+  ],
 };

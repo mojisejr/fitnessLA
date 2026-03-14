@@ -55,8 +55,13 @@ export interface AppAdapter {
   createProduct: (input: CreateProductInput) => Promise<Product>;
   updateProduct: (input: UpdateProductInput) => Promise<Product>;
   getShiftInventorySummary: (shiftId: EntityId) => Promise<ShiftInventorySummaryRow[]>;
-  openShift: (startingCash: number) => Promise<ShiftOpenResult>;
-  closeShift: (input: { activeShift: MockShiftRecord; actualCash: number }) => Promise<ShiftCloseResult>;
+  openShift: (startingCash: number, responsibleName: string) => Promise<ShiftOpenResult>;
+  closeShift: (input: {
+    activeShift: MockShiftRecord;
+    actualCash: number;
+    closingNote?: string;
+    responsibleName: string;
+  }) => Promise<ShiftCloseResult>;
   createOrder: (request: CreateOrderRequest) => Promise<OrderResult>;
   createExpense: (input: {
     shift_id: EntityId;

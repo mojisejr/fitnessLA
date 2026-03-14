@@ -51,10 +51,10 @@ export default function MembersPage() {
         <section className="rounded-[28px] border border-line bg-surface-strong p-6 md:p-8">
           <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
             <div>
-              <p className="text-xs font-semibold text-muted">Mock membership registry</p>
+              <p className="text-xs font-semibold text-muted">ทะเบียนสมาชิก</p>
               <h1 className="mt-3 text-3xl font-semibold text-foreground">สมาชิกและวันหมดอายุ</h1>
               <p className="mt-3 max-w-3xl text-sm leading-7 text-muted">
-                หน้านี้เป็น mockup data ที่เตรียมไว้สำหรับต่อ API และฐานข้อมูลในรอบถัดไป โดยแยก daily, monthly, 3-month, 6-month, yearly และจะเพิ่มสมาชิกใหม่ทันทีเมื่อขายแพ็กเกจจากหน้า POS สำเร็จ
+                หน้านี้สรุปรายชื่อสมาชิกตามแพ็กเกจ วันเริ่มใช้ วันหมดอายุ และสถานะการต่ออายุ โดยข้อมูลจะอัปเดตตามรายการสมาชิกที่ถูกเพิ่มจากขั้นตอนขายแพ็กเกจในระบบ
               </p>
             </div>
 
@@ -86,8 +86,13 @@ export default function MembersPage() {
         </section>
 
         <section className="rounded-[28px] border border-line bg-surface-strong p-6 md:p-8">
-          <div className="overflow-hidden rounded-3xl border border-line bg-[#161510]">
-            <table className="min-w-full divide-y divide-line text-sm">
+          {memberRows.length === 0 ? (
+            <div className="rounded-3xl border border-dashed border-line bg-[#161510] p-8 text-sm leading-7 text-muted">
+              ยังไม่มีสมาชิกในระบบตอนนี้ เมื่อขายแพ็กเกจสมาชิกผ่านหน้า POS แล้ว รายชื่อสมาชิกจะมาแสดงที่หน้านี้อัตโนมัติ
+            </div>
+          ) : (
+            <div className="overflow-hidden rounded-3xl border border-line bg-[#161510]">
+              <table className="min-w-full divide-y divide-line text-sm">
               <thead className="bg-[#0d0d0a]">
                 <tr>
                   <th className="px-4 py-3 text-left font-semibold text-muted">สมาชิก</th>
@@ -117,8 +122,9 @@ export default function MembersPage() {
                   </tr>
                 ))}
               </tbody>
-            </table>
-          </div>
+              </table>
+            </div>
+          )}
         </section>
       </div>
     </RoleGuard>

@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import MembersPage from "@/app/(app)/members/page";
 import PosPage from "@/app/(app)/pos/page";
 import { clearMockSession, renderWithProviders, seedMockSession } from "./test-utils";
@@ -35,11 +35,18 @@ describe("Members page", () => {
 
     await waitForPosReady();
 
-    fireEvent.click(screen.getByRole("button", { name: "Add 3-Month Membership" }));
+    fireEvent.click(screen.getByRole("button", { name: "สมาชิก 3 เดือน" }));
+
+    const selectedProductPanel = screen.getByRole("heading", { name: "สมาชิก 3 เดือน", level: 2 }).closest("section");
+
+    expect(selectedProductPanel).not.toBeNull();
+
+    fireEvent.click(within(selectedProductPanel as HTMLElement).getByRole("button", { name: "เพิ่มลงบิล" }));
     fireEvent.change(screen.getByPlaceholderText("ชื่อลูกค้าสมาชิก"), {
       target: { value: "Somchai Member" },
     });
     fireEvent.click(screen.getByRole("button", { name: "คิดเงิน" }));
+    fireEvent.click(screen.getByRole("button", { name: "ยืนยันการคิดเงิน" }));
 
     await waitFor(() => {
       expect(screen.getByText("คิดเงินสำเร็จ")).toBeInTheDocument();

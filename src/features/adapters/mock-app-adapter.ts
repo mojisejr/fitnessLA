@@ -38,6 +38,81 @@ let chartOfAccountsState = mockChartOfAccounts.map((item) => ({ ...item }));
 let productsState = mockProducts.map((item) => ({ ...item }));
 let managedUsersState: AdminUserRecord[] = [];
 let shiftInventoryState = new Map<string, Map<string, { product_id: EntityId; opening_stock: number; sold_quantity: number }>>();
+let salesRowsState: DailySummary["sales_rows"] = [];
+
+function buildBaseDailyShiftRows(date: string, discrepancyTotal: number): DailySummary["shift_rows"] {
+  const overage = Math.max(discrepancyTotal, 0);
+  const shortage = Math.max(-discrepancyTotal, 0);
+
+  return [
+    {
+      shift_id: `SHIFT-${date}-A`,
+      closed_at: `${date}T12:15:00.000Z`,
+      responsible_name: "Pim Counter",
+      expected_cash: Number((1860 + shortage).toFixed(2)),
+      actual_cash: 1860,
+      difference: Number((-shortage).toFixed(2)),
+    },
+    {
+      shift_id: `SHIFT-${date}-B`,
+      closed_at: `${date}T18:45:00.000Z`,
+      responsible_name: "June Desk",
+      expected_cash: 1260,
+      actual_cash: Number((1260 + overage).toFixed(2)),
+      difference: Number(overage.toFixed(2)),
+    },
+  ];
+}
+
+function buildBaseDailySalesRows(date: string, summary: Pick<DailySummary, "sales_by_method">): DailySummary["sales_rows"] {
+  return [
+    {
+      order_id: `MOCK-${date}-001`,
+      shift_id: `BASE-${date}`,
+      order_number: `POS-${date.replaceAll("-", "")}-001`,
+      sold_at: `${date}T09:15:00.000Z`,
+      items_summary: "อเมริกาโน่เย็น x2, น้ำดื่ม x1",
+      cashier_name: "Pim Counter",
+      responsible_name: "Pim Counter",
+      customer_name: "ลูกค้าทั่วไป",
+      payment_method: "CASH",
+      total_amount: summary.sales_by_method.CASH,
+    },
+    {
+      order_id: `MOCK-${date}-002`,
+      shift_id: `BASE-${date}`,
+      order_number: `POS-${date.replaceAll("-", "")}-002`,
+      sold_at: `${date}T12:40:00.000Z`,
+      items_summary: "สมาชิกรายเดือน x1",
+      cashier_name: "June Desk",
+      responsible_name: "June Desk",
+      customer_name: "Nok Member",
+      payment_method: "PROMPTPAY",
+      total_amount: summary.sales_by_method.PROMPTPAY,
+    },
+    {
+      order_id: `MOCK-${date}-003`,
+      shift_id: `BASE-${date}`,
+      order_number: `POS-${date.replaceAll("-", "")}-003`,
+      sold_at: `${date}T17:25:00.000Z`,
+      items_summary: "เทรนเดี่ยว 1 ครั้ง x1",
+      cashier_name: "Ton Front",
+      responsible_name: "Ton Front",
+      customer_name: "Mild Training",
+      payment_method: "CREDIT_CARD",
+      total_amount: summary.sales_by_method.CREDIT_CARD,
+    },
+  ];
+}
+
+function buildOrderItemsSummary(request: Parameters<AppAdapter["createOrder"]>[0]) {
+  return request.items
+    .map((line) => {
+      const product = productsState.find((candidate) => candidate.product_id === line.product_id);
+      return `${product?.name ?? `สินค้า ${line.product_id}`} x${line.quantity}`;
+    })
+    .join(", ");
+}
 
 function createError(code: string, message: string, details?: unknown): ApiError {
   return { code, message, details };
@@ -185,6 +260,7 @@ export function resetMockAdapterState() {
   productsState = mockProducts.map((item) => ({ ...item }));
   managedUsersState = [];
   shiftInventoryState = new Map();
+  salesRowsState = [];
 }
 
 export const mockAppAdapter: AppAdapter = {
@@ -344,11 +420,15 @@ export const mockAppAdapter: AppAdapter = {
       });
   },
 
-  async openShift(startingCash) {
+  async openShift(startingCash, responsibleName) {
     await sleep(220);
 
     if (startingCash < 0) {
       throw createError("INVALID_STARTING_CASH", "เงินทอนตั้งต้นต้องเป็นศูนย์หรือมากกว่า");
+    }
+
+    if (!responsibleName.trim()) {
+      throw createError("RESPONSIBLE_NAME_REQUIRED", "กรุณาระบุชื่อผู้รับผิดชอบก่อนเปิดกะ");
     }
 
     const shift_id = shiftSequence;
@@ -358,11 +438,16 @@ export const mockAppAdapter: AppAdapter = {
     return {
       shift_id,
       opened_at: new Date().toISOString(),
+      responsible_name: responsibleName.trim(),
     } satisfies ShiftOpenResult;
   },
 
-  async closeShift({ activeShift, actualCash }) {
+  async closeShift({ activeShift, actualCash, responsibleName }) {
     await sleep(240);
+
+    if (!responsibleName.trim()) {
+      throw createError("RESPONSIBLE_NAME_REQUIRED", "กรุณาระบุชื่อผู้รับผิดชอบก่อนปิดกะ");
+    }
 
     const expected_cash = calculateExpectedCash(activeShift.starting_cash);
     const difference = Number((actualCash - expected_cash).toFixed(2));
@@ -373,6 +458,7 @@ export const mockAppAdapter: AppAdapter = {
       actual_cash: actualCash,
       difference,
       status: "CLOSED",
+      responsible_name: responsibleName.trim(),
       journal_entry_id:
         typeof activeShift.shift_id === "number"
           ? activeShift.shift_id + 9000
@@ -455,6 +541,22 @@ export const mockAppAdapter: AppAdapter = {
       prependMemberRegistry(createdMemberships);
     }
 
+    salesRowsState = [
+      {
+        order_id: currentSequence,
+        shift_id: request.shift_id,
+        order_number: `POS-${new Date().getFullYear()}-${String(currentSequence).padStart(4, "0")}`,
+        sold_at: purchasedAt,
+        items_summary: buildOrderItemsSummary(request),
+        cashier_name: "แคชเชียร์หน้าร้าน",
+        responsible_name: "แคชเชียร์หน้าร้าน",
+        customer_name: request.customer_info?.name?.trim() || null,
+        payment_method: request.payment_method,
+        total_amount,
+      },
+      ...salesRowsState,
+    ];
+
     return {
       order_id: currentSequence,
       order_number: `POS-${new Date().getFullYear()}-${String(currentSequence).padStart(4, "0")}`,
@@ -492,7 +594,7 @@ export const mockAppAdapter: AppAdapter = {
     const day = Number(date.split("-").at(-1) ?? 1);
     const offset = day % 4;
 
-    return {
+    const baseSummary = {
       total_sales: mockDailySummary.total_sales + offset * 260,
       sales_by_method: {
         CASH: mockDailySummary.sales_by_method.CASH + offset * 120,
@@ -502,6 +604,29 @@ export const mockAppAdapter: AppAdapter = {
       total_expenses: mockDailySummary.total_expenses + offset * 40,
       net_cash_flow: mockDailySummary.net_cash_flow + offset * 80,
       shift_discrepancies: mockDailySummary.shift_discrepancies + offset * 10,
+    };
+
+    const appendedRows = salesRowsState.filter((row) => row.sold_at.slice(0, 10) === date);
+    const appendedByMethod = appendedRows.reduce(
+      (summary, row) => {
+        summary[row.payment_method] += row.total_amount;
+        return summary;
+      },
+      { CASH: 0, PROMPTPAY: 0, CREDIT_CARD: 0 },
+    );
+
+    return {
+      total_sales: Number((baseSummary.total_sales + appendedRows.reduce((sum, row) => sum + row.total_amount, 0)).toFixed(2)),
+      sales_by_method: {
+        CASH: Number((baseSummary.sales_by_method.CASH + appendedByMethod.CASH).toFixed(2)),
+        PROMPTPAY: Number((baseSummary.sales_by_method.PROMPTPAY + appendedByMethod.PROMPTPAY).toFixed(2)),
+        CREDIT_CARD: Number((baseSummary.sales_by_method.CREDIT_CARD + appendedByMethod.CREDIT_CARD).toFixed(2)),
+      },
+      total_expenses: baseSummary.total_expenses,
+      net_cash_flow: Number((baseSummary.net_cash_flow + appendedByMethod.CASH).toFixed(2)),
+      shift_discrepancies: baseSummary.shift_discrepancies,
+      shift_rows: buildBaseDailyShiftRows(date, baseSummary.shift_discrepancies),
+      sales_rows: [...appendedRows, ...buildBaseDailySalesRows(date, baseSummary)],
     } satisfies DailySummary;
   },
 

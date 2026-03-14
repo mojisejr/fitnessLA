@@ -87,7 +87,7 @@ describe("A-2 operations routes", () => {
       new Request("http://localhost/api/v1/shifts/open", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ starting_cash: 500 }),
+        body: JSON.stringify({ starting_cash: 500, responsible_name: "Pim Counter" }),
       }),
     );
     const body = await response.json();
@@ -194,7 +194,7 @@ describe("A-2 operations routes", () => {
       new Request("http://localhost/api/v1/shifts/close", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ actual_cash: 2550, closing_note: "counted at close" }),
+        body: JSON.stringify({ actual_cash: 2550, closing_note: "counted at close", responsible_name: "Pim Counter" }),
       }),
     );
     const body = await response.json();
@@ -231,6 +231,7 @@ describe("A-2 operations routes", () => {
       total_expenses: 640,
       net_cash_flow: 2480,
       shift_discrepancies: -60,
+      sales_rows: [],
     });
 
     const response = await dailySummaryGET(

@@ -16,7 +16,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "fitnessLA",
-  description: "ระบบหน้าจอแบบ mock-first สำหรับการขาย, กะ, เงินสดย่อย และงานบัญชีพื้นฐาน",
+  description: "ระบบหน้าจอแบบ mock-first สำหรับการขาย, กะ, รายจ่าย และงานบัญชีพื้นฐาน",
 };
 
 export default function RootLayout({

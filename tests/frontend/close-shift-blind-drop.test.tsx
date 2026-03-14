@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import PosPage from "@/app/(app)/pos/page";
 import CloseShiftPage from "@/app/(app)/shift/close/page";
 import { clearMockSession, renderWithProviders, seedMockSession } from "./test-utils";
@@ -12,7 +12,7 @@ async function waitForPosReady() {
 
 async function waitForCloseShiftReady() {
   await waitFor(() => {
-    expect(screen.queryByText("กำลังโหลดสรุปสินค้าในกะ...")).not.toBeInTheDocument();
+    expect(screen.queryByText("กำลังโหลดรายการขายของกะ...")).not.toBeInTheDocument();
   }, { timeout: 10000 });
 }
 
@@ -47,7 +47,7 @@ describe("close shift blind drop", () => {
     fireEvent.change(screen.getByLabelText("เงินสดที่นับได้จริง"), {
       target: { value: "2100" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "ส่งผล blind drop" }));
+    fireEvent.click(screen.getByRole("button", { name: "ส่งผลการนับเงิน" }));
 
     await waitFor(() => {
       expect(screen.getByText("ยอดคาดหวัง")).toBeInTheDocument();
@@ -58,10 +58,15 @@ describe("close shift blind drop", () => {
     const posView = renderWithProviders(<PosPage />);
 
     await waitForPosReady();
-    expect(screen.getByRole("button", { name: "Add Mineral Water" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "น้ำดื่ม" }));
 
-    fireEvent.click(screen.getByRole("button", { name: "Add Mineral Water" }));
+    const selectedProductPanel = screen.getByRole("heading", { name: "น้ำดื่ม", level: 2 }).closest("section");
+
+    expect(selectedProductPanel).not.toBeNull();
+
+    fireEvent.click(within(selectedProductPanel as HTMLElement).getByRole("button", { name: "เพิ่มลงบิล" }));
     fireEvent.click(screen.getByRole("button", { name: "คิดเงิน" }));
+    fireEvent.click(screen.getByRole("button", { name: "ยืนยันการคิดเงิน" }));
 
     await waitFor(() => {
       expect(screen.getByText("คิดเงินสำเร็จ")).toBeInTheDocument();
@@ -74,10 +79,11 @@ describe("close shift blind drop", () => {
     await waitForCloseShiftReady();
 
     await waitFor(() => {
-      expect(screen.getByText("Mineral Water")).toBeInTheDocument();
+      expect(screen.getByText("Mineral Water x1")).toBeInTheDocument();
     }, { timeout: 10000 });
 
-    expect(screen.getByText("summary สินค้าในกะนี้")).toBeInTheDocument();
-    expect(screen.getByText("ขายรวมทั้งกะ")).toBeInTheDocument();
+    expect(screen.getByText("รายการขายในกะนี้")).toBeInTheDocument();
+    expect(screen.getByText("ยอดขายรวมทั้งกะ")).toBeInTheDocument();
+    expect(screen.getByText("เงินสด")).toBeInTheDocument();
   }, 10000);
 });

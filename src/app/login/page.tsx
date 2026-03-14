@@ -19,7 +19,7 @@ export default function LoginPage() {
   const mockPresets = [
     ["owner", "มุมมองเจ้าของ"],
     ["admin", "งานปฏิบัติการแอดมิน"],
-    ["cashier", "flow แคชเชียร์"],
+    ["cashier", "งานแคชเชียร์"],
   ] as const;
 
   useEffect(() => {
@@ -37,7 +37,7 @@ export default function LoginPage() {
       await login(username, password);
       router.replace("/dashboard");
     } catch (error) {
-      setErrorMessage(getErrorMessage(error, "ไม่สามารถเริ่ม session mock ได้"));
+      setErrorMessage(getErrorMessage(error, "ไม่สามารถเริ่มการเข้าสู่ระบบแบบทดลองได้"));
     } finally {
       setIsSubmitting(false);
     }
@@ -55,14 +55,14 @@ export default function LoginPage() {
             ระบบหน้าร้านโทนดำเหลือง ที่มองง่าย ใช้งานง่าย และเห็นสถานะงานชัด
           </h1>
           <p className="mt-5 max-w-xl text-base leading-8 text-white/75">
-            ใช้โหมด mock เพื่อทดลอง flow หลักได้ทันที และสลับไปล็อกอินจริงด้วย username/password เมื่อ backend พร้อม
+            ใช้โหมดทดลองเพื่อเข้าใช้งานงานหลักได้ทันที และสลับไปใช้บัญชีจริงเมื่อระบบยืนยันตัวตนพร้อม
           </p>
 
           <div className="mt-10 grid gap-4 md:grid-cols-3">
             {[
-              ["Shell ตามบทบาท", "เมนูด้านข้าง, badge ผู้ใช้, สถานะกะ และจุดวางโลโก้"],
+              ["โครงหน้าตามบทบาท", "เมนูด้านข้าง ป้ายผู้ใช้ สถานะกะ และจุดวางโลโก้"],
               ["Blind drop", "ยอดเงินคาดหวังจะยังไม่แสดงจนกว่าจะปิดกะสำเร็จ"],
-              ["POS พร้อมทดสอบ", "มี cart, flow การจ่ายเงิน และเชื่อม adapter ตามโหมดที่เลือก"],
+              ["POS พร้อมใช้งาน", "มีตะกร้า ขั้นตอนรับชำระเงิน และเชื่อมข้อมูลตามโหมดที่เลือก"],
             ].map(([title, description]) => (
               <div key={title} className="rounded-3xl border border-white/10 bg-white/5 p-5">
                 <h2 className="text-lg font-semibold">{title}</h2>
@@ -74,7 +74,7 @@ export default function LoginPage() {
 
         <section className="rounded-[36px] border border-line bg-surface p-8 shadow-[var(--shadow)] backdrop-blur md:p-10">
           <p className="text-xs uppercase tracking-[0.32em] text-muted">
-            {mode === "mock" ? "เข้าสู่ระบบแบบ mock" : "เข้าสู่ระบบแบบ real auth"}
+            {mode === "mock" ? "เข้าสู่ระบบแบบทดลอง" : "เข้าสู่ระบบด้วยบัญชีจริง"}
           </p>
           <h2 className="mt-4 text-3xl font-semibold text-foreground">เข้าสู่หน้าควบคุมงาน</h2>
           <p className="mt-3 text-sm leading-7 text-muted">
@@ -142,7 +142,7 @@ export default function LoginPage() {
               disabled={isSubmitting}
               className="w-full rounded-full bg-accent px-5 py-3 text-sm font-semibold text-black transition hover:bg-accent-strong disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {isSubmitting ? "กำลังเข้าสู่ระบบ..." : mode === "mock" ? "เริ่มใช้งาน mock" : "เข้าสู่ระบบจริง"}
+              {isSubmitting ? "กำลังเข้าสู่ระบบ..." : mode === "mock" ? "เริ่มใช้งานโหมดทดลอง" : "เข้าสู่ระบบ"}
             </button>
           </form>
         </section>

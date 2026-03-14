@@ -137,20 +137,29 @@ export const realAppAdapter: AppAdapter = {
     return notImplemented("Shift inventory summary ยังมีเฉพาะ mock adapter ในรอบนี้");
   },
 
-  async openShift(startingCash: number) {
+  async openShift(startingCash: number, responsibleName: string) {
     return fetchJson<ShiftOpenResult>("/api/v1/shifts/open", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ starting_cash: startingCash }),
+      body: JSON.stringify({ starting_cash: startingCash, responsible_name: responsibleName }),
     });
   },
 
-  async closeShift(input: { activeShift: MockShiftRecord; actualCash: number }) {
+  async closeShift(input: {
+    activeShift: MockShiftRecord;
+    actualCash: number;
+    closingNote?: string;
+    responsibleName: string;
+  }) {
     void input.activeShift;
     return fetchJson<ShiftCloseResult>("/api/v1/shifts/close", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ actual_cash: input.actualCash }),
+      body: JSON.stringify({
+        actual_cash: input.actualCash,
+        closing_note: input.closingNote,
+        responsible_name: input.responsibleName,
+      }),
     });
   },
 

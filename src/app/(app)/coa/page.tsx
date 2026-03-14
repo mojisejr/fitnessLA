@@ -28,7 +28,7 @@ function getChartOfAccountsErrorMessage(error: unknown, fallback: string) {
   }
 
   if (errorCode === "ACCOUNT_LOCKED") {
-    return "บัญชีนี้ถูก lock จากการใช้งานทางบัญชี จึงยังไม่สามารถปรับสถานะได้";
+    return "บัญชีนี้ถูกล็อกจากการใช้งานทางบัญชี จึงยังไม่สามารถปรับสถานะได้";
   }
 
   return getErrorMessage(error, fallback);
@@ -75,7 +75,7 @@ export default function ChartOfAccountsPage() {
           if (getErrorCode(error) === "NOT_IMPLEMENTED") {
             setAccounts([]);
             setSelectedAccountId(null);
-            setAvailabilityMessage("backend ปัจจุบันยังไม่มี COA API จริง หน้านี้จึงอยู่ในสถานะพร้อมต่อ แต่ยังจัดการข้อมูลจริงไม่ได้");
+            setAvailabilityMessage("ระบบที่เชื่อมอยู่ยังไม่เปิดข้อมูลผังบัญชีจริง หน้านี้จึงยังแสดงได้เฉพาะโครงงานและสถานะล่าสุด");
           } else {
             setErrorMessage(getChartOfAccountsErrorMessage(error, "ไม่สามารถโหลดผังบัญชีได้"));
           }
@@ -125,7 +125,7 @@ export default function ChartOfAccountsPage() {
     setErrorMessage(null);
 
     if (isReadOnlyMode) {
-      setErrorMessage("ยังไม่สามารถสร้างบัญชีได้ เพราะ backend ยังไม่มี COA API จริง");
+      setErrorMessage("ยังไม่สามารถสร้างบัญชีได้ เพราะระบบที่เชื่อมอยู่ยังไม่เปิดข้อมูลผังบัญชีจริง");
       return;
     }
 
@@ -171,7 +171,7 @@ export default function ChartOfAccountsPage() {
     setErrorMessage(null);
 
     if (isReadOnlyMode) {
-      setErrorMessage("ยังไม่สามารถเปลี่ยนสถานะบัญชีได้ เพราะ backend ยังไม่มี COA API จริง");
+      setErrorMessage("ยังไม่สามารถเปลี่ยนสถานะบัญชีได้ เพราะระบบที่เชื่อมอยู่ยังไม่เปิดข้อมูลผังบัญชีจริง");
       return;
     }
 
@@ -196,10 +196,10 @@ export default function ChartOfAccountsPage() {
     <RoleGuard allowedRoles={["OWNER", "ADMIN"]}>
       <div className="space-y-6">
         <section className="rounded-[28px] border border-line bg-surface-strong p-6 md:p-8">
-          <p className="text-xs uppercase tracking-[0.16em] text-muted">Owner and admin management</p>
+          <p className="text-xs uppercase tracking-[0.16em] text-muted">จัดการโดยเจ้าของและผู้ดูแลระบบ</p>
           <h1 className="mt-3 text-3xl font-semibold text-foreground">ผังบัญชี</h1>
           <p className="mt-3 max-w-3xl text-sm leading-7 text-muted">
-            หน้านี้รองรับ flow ดูรายการบัญชี, สร้างบัญชี, ปรับสถานะใช้งาน และจะบอกสถานะชัดเจนทันทีถ้า backend environment ปัจจุบันยังไม่มี COA API จริง
+            หน้านี้ใช้ดูรายการบัญชี สร้างบัญชีใหม่ และปรับสถานะการใช้งาน พร้อมแจ้งทันทีหากระบบที่เชื่อมอยู่ยังไม่เปิดข้อมูลผังบัญชีจริง
           </p>
         </section>
 
@@ -214,7 +214,7 @@ export default function ChartOfAccountsPage() {
             <div className="flex items-center justify-between gap-4">
               <div>
                 <p className="text-xs uppercase tracking-[0.16em] text-muted">รายการบัญชี</p>
-                <h2 className="mt-2 text-2xl font-semibold text-foreground">พื้นที่ตรวจสอบสำหรับเจ้าของ</h2>
+                <h2 className="mt-2 text-2xl font-semibold text-foreground">พื้นที่ตรวจสอบบัญชี</h2>
               </div>
               <div className="rounded-[20px] bg-accent-soft px-4 py-3 text-sm font-semibold text-foreground">
                 {filteredAccounts.length} / {accounts.length} บัญชี

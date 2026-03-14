@@ -31,8 +31,8 @@ type AuthContextValue = {
   login: (username: string, password: string) => Promise<void>;
   logout: () => void;
   switchRole: (role: Role) => void;
-  openShift: (startingCash: number) => Promise<ShiftOpenResult>;
-  closeShift: (actualCash: number, closingNote?: string) => Promise<ShiftCloseResult>;
+  openShift: (startingCash: number, responsibleName: string) => Promise<ShiftOpenResult>;
+  closeShift: (actualCash: number, closingNote?: string, responsibleName?: string) => Promise<ShiftCloseResult>;
   clearLastClosedShift: () => void;
 };
 
@@ -76,7 +76,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             ...refreshedSession,
             active_shift_id: resolvedActiveShift?.shift_id ?? refreshedSession.active_shift_id ?? null,
           },
-          activeShift: resolvedActiveShift,
+          activeShift:
+            resolvedActiveShift && activeShift && String(resolvedActiveShift.shift_id) === String(activeShift.shift_id)
+              ? { ...resolvedActiveShift, responsible_name: activeShift.responsible_name }
+              : resolvedActiveShift,
           lastClosedShift,
         });
       } catch {
@@ -144,7 +147,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
   };
 
-  const openShift = async (startingCash: number) => {
+  const openShift = async (startingCash: number, responsibleName: string) => {
     if (!session) {
       throw { code: "UNAUTHENTICATED", message: "กรุณาเข้าสู่ระบบก่อนเปิดกะ" };
     }
@@ -153,11 +156,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       throw { code: "SHIFT_ALREADY_OPEN", message: "มีกะที่เปิดอยู่แล้ว" };
     }
 
-    const result = await adapter.openShift(startingCash);
+    const result = await adapter.openShift(startingCash, responsibleName);
     const nextShift: MockShiftRecord = {
       shift_id: result.shift_id,
       opened_at: result.opened_at,
       starting_cash: startingCash,
+      responsible_name: result.responsible_name ?? responsibleName.trim(),
     };
 
     writeAuthState({
@@ -169,22 +173,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return result;
   };
 
-  const closeShift = async (actualCash: number, closingNote?: string) => {
-    void closingNote;
-
+  const closeShift = async (actualCash: number, closingNote?: string, responsibleName?: string) => {
     if (!session || !activeShift) {
       throw { code: "NO_ACTIVE_SHIFT", message: "กรุณาเปิดกะก่อนปิดกะ" };
     }
 
-    const result = await adapter.closeShift({ activeShift, actualCash });
+    const resolvedResponsibleName = responsibleName?.trim() || activeShift.responsible_name || session.full_name;
+    const result = await adapter.closeShift({
+      activeShift,
+      actualCash,
+      closingNote,
+      responsibleName: resolvedResponsibleName,
+    });
+
+    const persistedResult = {
+      ...result,
+      responsible_name: result.responsible_name ?? resolvedResponsibleName,
+    };
 
     writeAuthState({
       session: { ...session, active_shift_id: null },
       activeShift: null,
-      lastClosedShift: result,
+      lastClosedShift: persistedResult,
     });
 
-    return result;
+    return persistedResult;
   };
 
   const clearLastClosedShift = () => {
