@@ -47,8 +47,8 @@
 - **Strict Blind Drop:** การคุมพนักงานตอนปิดกะ (`shifts.expected_cash` vs `shifts.actual_cash`) เพื่อตรวจจับส่วนต่าง (`difference`)
 
 ## 🚩 Status & Signals
-- **Current Phase:** Phase 5 Ready for Final Handoff (Agent A backend closure executed through Phase 4 hard gate)
-- **Latest Update:** 2026-03-15 (Phase 1-4 complete with full hard gate pass `24 files / 113 tests`, Phase 5 doc-lock + handoff packaging in progress)
+- **Current Phase:** Agent A Final 100% Closure Completed (Phase 1-5 done)
+- **Latest Update:** 2026-03-15 (Phase 1-5 complete with full hard gate pass and final handoff package locked for Agent B)
 - **Shared Agreement:** ยึด `API_Contract.md` เป็นหัวใจหลักในการคุยกัน และให้ Agent B เดินงานต่อผ่าน `real-app-adapter.ts` เป็นจุดเชื่อมเดียว พร้อมใช้ smoke checklist จาก handoff final
 - **Latest Handoff Docs:** [docs/Handoff_2026-03-15_Agent-A_Final_100_to_Agent-B.md](docs/Handoff_2026-03-15_Agent-A_Final_100_to_Agent-B.md), [docs/Status_2026-03-14_Shift_Expenses_Handoff.md](docs/Status_2026-03-14_Shift_Expenses_Handoff.md)
 

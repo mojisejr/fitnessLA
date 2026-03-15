@@ -16,7 +16,7 @@
 - `2d22d04` - `#fitnessla-agent-a-final-100 phase2 shift-summary contract and gate stabilization`
 - `5f209c4` - `#fitnessla-agent-a-final-100 phase3 shift-inventory-summary backend support`
 - `9cb3936` - `#fitnessla-agent-a-final-100 phase4 hard-gate coverage elevation`
-- `TBD` - `#fitnessla-agent-a-final-100 phase5 final docs lock and handoff package` (commit will be created in this run)
+- `2dd6c83` - `#fitnessla-agent-a-final-100 phase5 final docs lock and handoff package`
 
 ## Backend Surfaces Ready For Agent B
 | Surface | Endpoint | Status | Agent B Next Action |
