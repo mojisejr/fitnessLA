@@ -32,13 +32,14 @@ export type ActiveShiftDto = {
   opened_at: string;
   starting_cash: number;
   status: "OPEN";
+  responsible_name?: string;
 };
 
 export type OpenShiftResultDto = {
   shift_id: string;
   opened_at: string;
   journal_entry_id: string;
-  responsible_name?: string;
+  responsible_name: string;
 };
 
 type PaymentMethod = "CASH" | "PROMPTPAY" | "CREDIT_CARD";
@@ -91,7 +92,7 @@ export type CloseShiftResultDto = {
   difference: number;
   status: "CLOSED";
   journal_entry_id: string;
-  responsible_name?: string;
+  responsible_name: string;
 };
 
 export type DailySummaryDto = {
@@ -427,10 +428,15 @@ export async function getActiveShiftByStaff(staffId: string): Promise<ActiveShif
     opened_at: shift.startTime.toISOString(),
     starting_cash: Number(shift.startingCash),
     status: "OPEN",
+    responsible_name: shift.responsibleName ?? undefined,
   };
 }
 
-export async function openShiftWithJournal(staffId: string, startingCash: number): Promise<OpenShiftResultDto> {
+export async function openShiftWithJournal(
+  staffId: string,
+  startingCash: number,
+  responsibleName: string,
+): Promise<OpenShiftResultDto> {
   const existing = await getActiveShiftByStaff(staffId);
   if (existing) {
     throw new Error("SHIFT_ALREADY_OPEN");
@@ -464,6 +470,7 @@ export async function openShiftWithJournal(staffId: string, startingCash: number
         staffId,
         startingCash: amount,
         status: "OPEN",
+        responsibleName,
       },
     });
 
@@ -496,6 +503,7 @@ export async function openShiftWithJournal(staffId: string, startingCash: number
       shift_id: shift.id,
       opened_at: shift.startTime.toISOString(),
       journal_entry_id: journalEntry.id,
+      responsible_name: shift.responsibleName ?? responsibleName,
     };
   });
 }
@@ -876,6 +884,7 @@ export async function closeActiveShiftWithDifference(
         expectedCash,
         actualCash,
         difference,
+        responsibleName: input.responsible_name?.trim() || shift.responsibleName,
       },
     });
 
@@ -886,6 +895,7 @@ export async function closeActiveShiftWithDifference(
       difference: Number(difference),
       status: "CLOSED",
       journal_entry_id: journalEntry.id,
+      responsible_name: closed.responsibleName ?? "ไม่ระบุผู้รับผิดชอบ",
     };
   });
 }
@@ -923,6 +933,7 @@ export async function getDailySummaryByDate(date: string): Promise<DailySummaryD
           select: {
             id: true,
             staffId: true,
+            responsibleName: true,
           },
         },
         items: {
@@ -964,6 +975,7 @@ export async function getDailySummaryByDate(date: string): Promise<DailySummaryD
         actualCash: true,
         difference: true,
         staffId: true,
+        responsibleName: true,
       },
     }),
   ]);
@@ -1019,7 +1031,10 @@ export async function getDailySummaryByDate(date: string): Promise<DailySummaryD
         .map((item) => `${item.product.name} x${item.quantity}`)
         .join(", ") || order.orderNumber,
     cashier_name: staffNameById.get(order.shift.staffId) ?? order.shift.staffId,
-    responsible_name: staffNameById.get(order.shift.staffId) ?? order.shift.staffId,
+    responsible_name:
+      order.shift.responsibleName ??
+      staffNameById.get(order.shift.staffId) ??
+      order.shift.staffId,
     customer_name: order.customerName ?? null,
     payment_method: assertPaymentMethod(order.paymentMethod),
     total_amount: Number(Number(order.totalAmount).toFixed(2)),
@@ -1028,7 +1043,11 @@ export async function getDailySummaryByDate(date: string): Promise<DailySummaryD
   const shiftRows = closedShifts.map((shift) => ({
     shift_id: shift.id ?? `${shift.staffId}-${shift.endTime?.toISOString() ?? from.toISOString()}`,
     closed_at: shift.endTime?.toISOString() ?? from.toISOString(),
-    responsible_name: staffNameById.get(shift.staffId) ?? shift.staffId ?? "ไม่ระบุผู้รับผิดชอบ",
+    responsible_name:
+      shift.responsibleName ??
+      staffNameById.get(shift.staffId) ??
+      shift.staffId ??
+      "ไม่ระบุผู้รับผิดชอบ",
     expected_cash: Number(Number(shift.expectedCash ?? 0).toFixed(2)),
     actual_cash: Number(Number(shift.actualCash ?? 0).toFixed(2)),
     difference: Number(Number(shift.difference ?? 0).toFixed(2)),

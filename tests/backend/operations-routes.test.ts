@@ -75,12 +75,33 @@ describe("A-2 operations routes", () => {
     expect(body.code).toBe("SHIFT_NOT_FOUND");
   });
 
+  it("returns active shift with persisted responsible_name", async () => {
+    mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "CASHIER" });
+    mockGetActiveShiftByStaff.mockResolvedValue({
+      shift_id: "shift_1",
+      opened_at: "2026-03-08T16:00:00.000Z",
+      starting_cash: 500,
+      status: "OPEN",
+      responsible_name: "Pim Counter",
+    });
+
+    const response = await activeShiftGET(new Request("http://localhost/api/v1/shifts/active"));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toMatchObject({
+      shift_id: "shift_1",
+      responsible_name: "Pim Counter",
+    });
+  });
+
   it("opens shift and returns journal reference", async () => {
     mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "CASHIER" });
     mockOpenShiftWithJournal.mockResolvedValue({
       shift_id: "shift_1",
       opened_at: "2026-03-08T16:00:00.000Z",
       journal_entry_id: "journal_1",
+      responsible_name: "Persisted Pim",
     });
 
     const response = await openShiftPOST(
@@ -93,9 +114,11 @@ describe("A-2 operations routes", () => {
     const body = await response.json();
 
     expect(response.status).toBe(201);
+    expect(mockOpenShiftWithJournal).toHaveBeenCalledWith("u1", 500, "Pim Counter");
     expect(body).toMatchObject({
       shift_id: "shift_1",
       journal_entry_id: "journal_1",
+      responsible_name: "Persisted Pim",
     });
   });
 
@@ -188,6 +211,7 @@ describe("A-2 operations routes", () => {
       difference: -50,
       status: "CLOSED",
       journal_entry_id: "je_1",
+      responsible_name: "Persisted Pim",
     });
 
     const response = await closeShiftPOST(
@@ -200,10 +224,16 @@ describe("A-2 operations routes", () => {
     const body = await response.json();
 
     expect(response.status).toBe(200);
+    expect(mockCloseActiveShiftWithDifference).toHaveBeenCalledWith("u1", {
+      actual_cash: 2550,
+      closing_note: "counted at close",
+      responsible_name: "Pim Counter",
+    });
     expect(body).toMatchObject({
       shift_id: "shift_1",
       difference: -50,
       status: "CLOSED",
+      responsible_name: "Persisted Pim",
     });
   });
 

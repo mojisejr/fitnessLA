@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 type ShiftState = {
   id: string;
   staffId: string;
+  responsibleName: string | null;
   status: "OPEN" | "CLOSED";
   startTime: Date;
   endTime: Date | null;
@@ -93,6 +94,7 @@ const mocked = vi.hoisted(() => {
           ...found,
           startingCash: new Prisma.Decimal(found.startingCash),
           expectedCash: found.expectedCash === null ? null : new Prisma.Decimal(found.expectedCash),
+          responsibleName: found.responsibleName,
         };
       },
       update: async ({
@@ -106,6 +108,7 @@ const mocked = vi.hoisted(() => {
           expectedCash: Prisma.Decimal;
           actualCash: Prisma.Decimal;
           difference: Prisma.Decimal;
+          responsibleName?: string;
         };
       }) => {
         const target = state.shifts.find((shift) => shift.id === where.id);
@@ -118,6 +121,7 @@ const mocked = vi.hoisted(() => {
         target.expectedCash = Number(data.expectedCash);
         target.actualCash = Number(data.actualCash);
         target.difference = Number(data.difference);
+        target.responsibleName = data.responsibleName ?? target.responsibleName;
 
         return {
           ...target,
@@ -125,6 +129,7 @@ const mocked = vi.hoisted(() => {
           expectedCash: target.expectedCash === null ? null : new Prisma.Decimal(target.expectedCash),
           actualCash: target.actualCash === null ? null : new Prisma.Decimal(target.actualCash),
           difference: target.difference === null ? null : new Prisma.Decimal(target.difference),
+          responsibleName: target.responsibleName,
         };
       },
       findMany: async ({
@@ -144,8 +149,15 @@ const mocked = vi.hoisted(() => {
               shift.endTime < where.endTime.lt,
           )
           .map((shift) => ({
+            id: shift.id,
+            endTime: shift.endTime,
+            expectedCash:
+              shift.expectedCash === null ? null : new Prisma.Decimal(shift.expectedCash),
+            actualCash: shift.actualCash === null ? null : new Prisma.Decimal(shift.actualCash),
             difference:
               shift.difference === null ? null : new Prisma.Decimal(shift.difference),
+            staffId: shift.staffId,
+            responsibleName: shift.responsibleName,
           }));
       },
     },
@@ -239,7 +251,10 @@ const mocked = vi.hoisted(() => {
           paymentMethod: order.paymentMethod,
           totalAmount: new Prisma.Decimal(order.totalAmount),
           shift: {
+            id: order.shiftId,
             staffId: state.shifts.find((shift) => shift.id === order.shiftId)?.staffId ?? order.shiftId,
+            responsibleName:
+              state.shifts.find((shift) => shift.id === order.shiftId)?.responsibleName ?? null,
           },
           items: order.items.map((item) => ({
             quantity: item.quantity,
@@ -314,6 +329,7 @@ const mocked = vi.hoisted(() => {
       {
         id: "shift_1",
         staffId: "u1",
+        responsibleName: "Pim Counter",
         status: "OPEN",
         startTime: new Date("2026-03-09T08:00:00.000Z"),
         endTime: null,
@@ -325,6 +341,7 @@ const mocked = vi.hoisted(() => {
       {
         id: "shift_2",
         staffId: "u2",
+        responsibleName: "June Desk",
         status: "CLOSED",
         startTime: new Date("2026-03-09T07:00:00.000Z"),
         endTime: new Date("2026-03-09T11:30:00.000Z"),
@@ -439,15 +456,18 @@ describe("A-4 services", () => {
     const result = await closeActiveShiftWithDifference("u1", {
       actual_cash: 850,
       closing_note: "counted by cashier",
+      responsible_name: "Pim Counter Updated",
     });
 
     expect(result.status).toBe("CLOSED");
     expect(result.expected_cash).toBe(900);
     expect(result.actual_cash).toBe(850);
     expect(result.difference).toBe(-50);
+    expect(result.responsible_name).toBe("Pim Counter Updated");
 
     const closed = mocked.state.shifts.find((shift) => shift.id === "shift_1");
     expect(closed?.status).toBe("CLOSED");
+    expect(closed?.responsibleName).toBe("Pim Counter Updated");
     expect(mocked.state.journalEntries).toHaveLength(1);
     expect(mocked.state.journalLines).toHaveLength(2);
 
@@ -474,11 +494,12 @@ describe("A-4 services", () => {
     expect(summary.sales_rows[0]).toMatchObject({
       order_number: "ORD-2026-0003",
       cashier_name: "June Desk",
+      responsible_name: "June Desk",
       payment_method: "CREDIT_CARD",
       total_amount: 300,
     });
     expect(summary.shift_rows[0]).toMatchObject({
-      responsible_name: "ไม่ระบุผู้รับผิดชอบ",
+      responsible_name: "June Desk",
       difference: 20,
     });
   });
