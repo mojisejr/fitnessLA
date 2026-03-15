@@ -47,10 +47,10 @@
 - **Strict Blind Drop:** การคุมพนักงานตอนปิดกะ (`shifts.expected_cash` vs `shifts.actual_cash`) เพื่อตรวจจับส่วนต่าง (`difference`)
 
 ## 🚩 Status & Signals
-- **Current Phase:** Phase 2 Completed (Accounting Soul backend complete, Agent B integration in progress)
-- **Latest Update:** 2026-03-12 (Dynamic Revenue Journaling + GL CSV export complete, hard gate passed 89/89)
-- **Shared Agreement:** ยึด `API_Contract.md` เป็นหัวใจหลักในการคุยกัน และให้ Agent B เดินงานต่อผ่าน `real-app-adapter.ts` เป็นจุดเชื่อมเดียว
-- **Handoff Doc (Agent B):** [docs/Handoff_2026-03-12_Agent-B_Phase2-Ready.md](docs/Handoff_2026-03-12_Agent-B_Phase2-Ready.md)
+- **Current Phase:** Agent A Final 100% Closure Completed (Phase 1-5 done)
+- **Latest Update:** 2026-03-15 (Phase 1-5 complete with full hard gate pass and final handoff package locked for Agent B)
+- **Shared Agreement:** ยึด `API_Contract.md` เป็นหัวใจหลักในการคุยกัน และให้ Agent B เดินงานต่อผ่าน `real-app-adapter.ts` เป็นจุดเชื่อมเดียว พร้อมใช้ smoke checklist จาก handoff final
+- **Latest Handoff Docs:** [docs/Handoff_2026-03-15_Agent-A_Final_100_to_Agent-B.md](docs/Handoff_2026-03-15_Agent-A_Final_100_to_Agent-B.md), [docs/Status_2026-03-14_Shift_Expenses_Handoff.md](docs/Status_2026-03-14_Shift_Expenses_Handoff.md)
 
 ## 🤝 Implementation Integration Matrix (Agent A ⬌ Agent B)
 *(Use this matrix to track feature handoffs from Mock to Real)*
@@ -64,9 +64,31 @@
 | **Petty Cash** | ✅ DONE (`POST /api/v1/expenses`) | 🏗️ Mocked | Agent B ผูก `real-app-adapter.ts` |
 | **Close Shift** | ✅ DONE (`POST /api/v1/shifts/close`) | 🏗️ Mocked | Agent B switch close flow to real adapter endpoint |
 | **Daily Summary** | ✅ DONE (`GET /api/v1/reports/daily-summary`) | 🏗️ Mocked | Agent B switch report page to real adapter endpoint |
+| **Shift Inventory Summary** | ✅ DONE (`GET /api/v1/shifts/:shiftId/inventory-summary`) | ✅ Real adapter wired | Agent B run smoke for cashier-owner boundary + no-data fallback |
 | **COA Management** | ✅ DONE (`GET/POST /api/v1/coa`, `PATCH /api/v1/coa/:id/toggle`) | 🏗️ Shell ready | Agent B ต่อหน้า COA กับ real adapter และจัดการ error state |
 | **Product-COA Mapping** | ✅ DONE (`POST/PATCH /api/v1/products` + `revenue_account_id`) | 🏗️ Partial | Agent B เพิ่ม UI เลือกบัญชีรายได้ตอน create/edit product |
 | **General Ledger CSV** | ✅ DONE (`GET /api/v1/reports/gl`) | 🏗️ Placeholder | Agent B ต่อปุ่ม Download CSV ด้วย `start_date/end_date` |
+
+## 🔄 2026-03-15 Grounding Delta (For Agent B Final Integration)
+
+### ✅ Done ล่าสุด (ล็อกแล้ว)
+- Agent A ปิด Phase 1-4 ตาม blueprint `#fitnessla-agent-a-final-100` พร้อม commit chain และ evidence ครบ
+- Endpoint รายงานหลักพร้อมใช้งาน: `daily-summary`, `shift-summary`, `gl`, `shifts/:shiftId/inventory-summary`
+- Real adapter ไม่เหลือ `NOT_IMPLEMENTED` สำหรับ `getShiftInventorySummary()` แล้ว
+- Hard gate ล่าสุดผ่านครบ 2 รอบติดกัน: `npm run build`, `npm run lint`, `npx vitest run` (`24 files / 113 tests`)
+
+### 🟡 Remaining สำหรับ Agent B
+- รัน smoke ตามลำดับจาก handoff final (open -> order -> expense -> close -> daily/shift/gl)
+- ยืนยัน UX/error state ใน real mode สำหรับ `SHIFT_OWNER_MISMATCH`, `SHIFT_NOT_FOUND`, และ no-data inventory (`[]`)
+- เตรียม release checklist ของฝั่ง UI (download CSV, report filters, close-shift inventory visibility)
+
+### 🔴 Must Not Forget
+- ทุก request real mode ต้อง `credentials: include`
+- `GET /api/v1/reports/gl` ต้องใช้ `start_date/end_date` format `YYYY-MM-DD`
+- `GET /api/v1/shifts/:shiftId/inventory-summary`:
+  - OWNER/ADMIN ดูได้ทุกกะ
+  - CASHIER ดูได้เฉพาะกะตัวเอง
+  - no-data ต้องคืน `[]` แบบ deterministic
 
 ## 🔄 2026-03-11 Grounding Delta (For Agent B)
 
@@ -116,3 +138,21 @@
 1. Agent B ต่อปุ่ม export CSV ที่หน้า General Ledger แล้วทำ smoke test บน owner account
 2. Agent B ต่อฟอร์ม Product create/edit ให้เลือก revenue account จาก `/api/v1/coa`
 3. รัน regression frontend tests และเพิ่ม test สำหรับ GL download interaction
+
+## 🔄 2026-03-14 Grounding Delta (For Agent A)
+
+### ✅ Done ล่าสุด (ล็อกแล้ว)
+- แก้ deploy blocker ที่ Vercel พบใน `src/lib/mock-api.ts` โดยทำให้ `fetchMockDailySummary()` คืน `shift_rows` ครบตาม `DailySummary`
+- ยืนยัน `npm run build` ผ่านหลังแก้ และ push แล้วบน branch `staging`
+- งาน frontend/integration ฝั่ง shift, expenses, reports อยู่ในสถานะที่ Agent A รับไปต่อที่ backend/data layer ได้โดยไม่ต้องย้อนแก้ UI รอบใหญ่
+
+### 🟡 Remaining สำหรับ Agent A
+- persist `responsible_name` ลง DB จริงของ `Shift`
+- ออกแบบและเปิด endpoint `shift summary` โดยตรงแทนการให้ UI ประกอบจาก `daily summary`
+- ยืนยัน real-mode dataset สำหรับ expense accounts และ smoke-test users
+- แก้ production secret hygiene ของ `BETTER_AUTH_SECRET`
+
+### 🔴 Must Not Forget
+- ถ้าเปลี่ยน contract ของ `DailySummary` ต้อง sync `contracts`, `mock-api`, `mock-data`, adapters, และ report pages พร้อมกัน
+- deploy รอบนี้ล้มเพราะ mock response shape ไม่ครบ ไม่ใช่เพราะ route จริงพัง
+- ให้ใช้ `docs/Handoff_2026-03-14_Agent-A_Next_After_Deploy_Fix.md` เป็น starting point ของ Agent A รอบถัดไป

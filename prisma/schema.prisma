@@ -134,6 +134,7 @@ model DocumentSequence {
 model Shift {
   id           String    @id @default(cuid())
   staffId      String
+  responsibleName String?
   startTime    DateTime  @default(now())
   endTime      DateTime?
   startingCash Decimal   @db.Decimal(12, 2)

@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 type ShiftState = {
   id: string;
   staffId: string;
+  responsibleName: string | null;
   status: "OPEN" | "CLOSED";
   startTime: Date;
   endTime: Date | null;
@@ -22,7 +23,13 @@ type OrderState = {
   status: "COMPLETED";
   createdAt: Date;
   customerName: string | null;
-  items: Array<{ quantity: number; productName: string }>;
+  items: Array<{
+    quantity: number;
+    productId: string;
+    productSku: string;
+    productName: string;
+    productType: "GOODS" | "SERVICE" | "MEMBERSHIP";
+  }>;
 };
 
 type UserState = {
@@ -93,6 +100,7 @@ const mocked = vi.hoisted(() => {
           ...found,
           startingCash: new Prisma.Decimal(found.startingCash),
           expectedCash: found.expectedCash === null ? null : new Prisma.Decimal(found.expectedCash),
+          responsibleName: found.responsibleName,
         };
       },
       update: async ({
@@ -106,6 +114,7 @@ const mocked = vi.hoisted(() => {
           expectedCash: Prisma.Decimal;
           actualCash: Prisma.Decimal;
           difference: Prisma.Decimal;
+          responsibleName?: string;
         };
       }) => {
         const target = state.shifts.find((shift) => shift.id === where.id);
@@ -118,6 +127,7 @@ const mocked = vi.hoisted(() => {
         target.expectedCash = Number(data.expectedCash);
         target.actualCash = Number(data.actualCash);
         target.difference = Number(data.difference);
+        target.responsibleName = data.responsibleName ?? target.responsibleName;
 
         return {
           ...target,
@@ -125,6 +135,7 @@ const mocked = vi.hoisted(() => {
           expectedCash: target.expectedCash === null ? null : new Prisma.Decimal(target.expectedCash),
           actualCash: target.actualCash === null ? null : new Prisma.Decimal(target.actualCash),
           difference: target.difference === null ? null : new Prisma.Decimal(target.difference),
+          responsibleName: target.responsibleName,
         };
       },
       findMany: async ({
@@ -133,6 +144,7 @@ const mocked = vi.hoisted(() => {
         where: {
           status: "CLOSED";
           endTime: { gte: Date; lt: Date };
+          responsibleName?: string;
         };
       }) => {
         return state.shifts
@@ -141,11 +153,19 @@ const mocked = vi.hoisted(() => {
               shift.status === where.status &&
               shift.endTime !== null &&
               shift.endTime >= where.endTime.gte &&
-              shift.endTime < where.endTime.lt,
+              shift.endTime < where.endTime.lt &&
+              (where.responsibleName ? shift.responsibleName === where.responsibleName : true),
           )
           .map((shift) => ({
+            id: shift.id,
+            endTime: shift.endTime,
+            expectedCash:
+              shift.expectedCash === null ? null : new Prisma.Decimal(shift.expectedCash),
+            actualCash: shift.actualCash === null ? null : new Prisma.Decimal(shift.actualCash),
             difference:
               shift.difference === null ? null : new Prisma.Decimal(shift.difference),
+            staffId: shift.staffId,
+            responsibleName: shift.responsibleName,
           }));
       },
     },
@@ -239,7 +259,10 @@ const mocked = vi.hoisted(() => {
           paymentMethod: order.paymentMethod,
           totalAmount: new Prisma.Decimal(order.totalAmount),
           shift: {
+            id: order.shiftId,
             staffId: state.shifts.find((shift) => shift.id === order.shiftId)?.staffId ?? order.shiftId,
+            responsibleName:
+              state.shifts.find((shift) => shift.id === order.shiftId)?.responsibleName ?? null,
           },
           items: order.items.map((item) => ({
             quantity: item.quantity,
@@ -248,6 +271,44 @@ const mocked = vi.hoisted(() => {
             },
           })),
         }));
+      },
+    },
+    orderItem: {
+      findMany: async ({
+        where,
+      }: {
+        where: {
+          order: { shiftId: string; status: "COMPLETED" };
+          product: { productType: "GOODS" };
+        };
+      }) => {
+        const rows: Array<{
+          quantity: number;
+          product: { id: string; sku: string; name: string };
+        }> = [];
+
+        for (const order of state.orders) {
+          if (order.shiftId !== where.order.shiftId || order.status !== where.order.status) {
+            continue;
+          }
+
+          for (const item of order.items) {
+            if (item.productType !== where.product.productType) {
+              continue;
+            }
+
+            rows.push({
+              quantity: item.quantity,
+              product: {
+                id: item.productId,
+                sku: item.productSku,
+                name: item.productName,
+              },
+            });
+          }
+        }
+
+        return rows;
       },
     },
     user: {
@@ -278,6 +339,17 @@ const mocked = vi.hoisted(() => {
     },
     shift: {
       findMany: txMock.shift.findMany,
+      findUnique: async ({ where }: { where: { id: string } }) => {
+        const target = state.shifts.find((shift) => shift.id === where.id);
+        if (!target) {
+          return null;
+        }
+
+        return {
+          id: target.id,
+          staffId: target.staffId,
+        };
+      },
     },
     journalLine: {
       findMany: async ({
@@ -314,6 +386,7 @@ const mocked = vi.hoisted(() => {
       {
         id: "shift_1",
         staffId: "u1",
+        responsibleName: "Pim Counter",
         status: "OPEN",
         startTime: new Date("2026-03-09T08:00:00.000Z"),
         endTime: null,
@@ -325,6 +398,7 @@ const mocked = vi.hoisted(() => {
       {
         id: "shift_2",
         staffId: "u2",
+        responsibleName: "June Desk",
         status: "CLOSED",
         startTime: new Date("2026-03-09T07:00:00.000Z"),
         endTime: new Date("2026-03-09T11:30:00.000Z"),
@@ -348,7 +422,15 @@ const mocked = vi.hoisted(() => {
         status: "COMPLETED",
         createdAt: new Date("2026-03-09T03:00:00.000Z"),
         customerName: null,
-        items: [{ quantity: 2, productName: "อเมริกาโน่เย็น" }],
+        items: [
+          {
+            quantity: 2,
+            productId: "prod_water",
+            productSku: "WATER-001",
+            productName: "Mineral Water",
+            productType: "GOODS",
+          },
+        ],
       },
       {
         id: "ord_2",
@@ -359,7 +441,15 @@ const mocked = vi.hoisted(() => {
         status: "COMPLETED",
         createdAt: new Date("2026-03-09T04:00:00.000Z"),
         customerName: "Nok Member",
-        items: [{ quantity: 1, productName: "สมาชิกรายเดือน" }],
+        items: [
+          {
+            quantity: 1,
+            productId: "prod_membership",
+            productSku: "MEM-001",
+            productName: "สมาชิกรายเดือน",
+            productType: "MEMBERSHIP",
+          },
+        ],
       },
       {
         id: "ord_3",
@@ -370,7 +460,15 @@ const mocked = vi.hoisted(() => {
         status: "COMPLETED",
         createdAt: new Date("2026-03-09T05:00:00.000Z"),
         customerName: "Mild Training",
-        items: [{ quantity: 1, productName: "เทรนเดี่ยว 1 ครั้ง" }],
+        items: [
+          {
+            quantity: 1,
+            productId: "prod_pt",
+            productSku: "PT-001",
+            productName: "เทรนเดี่ยว 1 ครั้ง",
+            productType: "SERVICE",
+          },
+        ],
       },
     ];
     state.users = [
@@ -427,6 +525,8 @@ import {
   closeActiveShiftWithDifference,
   getDailySummaryByDate,
   getGeneralLedgerReport,
+  getShiftInventorySummaryByShiftId,
+  getShiftSummaryByDate,
 } from "../../src/features/operations/services";
 
 describe("A-4 services", () => {
@@ -439,15 +539,18 @@ describe("A-4 services", () => {
     const result = await closeActiveShiftWithDifference("u1", {
       actual_cash: 850,
       closing_note: "counted by cashier",
+      responsible_name: "Pim Counter Updated",
     });
 
     expect(result.status).toBe("CLOSED");
     expect(result.expected_cash).toBe(900);
     expect(result.actual_cash).toBe(850);
     expect(result.difference).toBe(-50);
+    expect(result.responsible_name).toBe("Pim Counter Updated");
 
     const closed = mocked.state.shifts.find((shift) => shift.id === "shift_1");
     expect(closed?.status).toBe("CLOSED");
+    expect(closed?.responsibleName).toBe("Pim Counter Updated");
     expect(mocked.state.journalEntries).toHaveLength(1);
     expect(mocked.state.journalLines).toHaveLength(2);
 
@@ -474,17 +577,62 @@ describe("A-4 services", () => {
     expect(summary.sales_rows[0]).toMatchObject({
       order_number: "ORD-2026-0003",
       cashier_name: "June Desk",
+      responsible_name: "June Desk",
       payment_method: "CREDIT_CARD",
       total_amount: 300,
     });
     expect(summary.shift_rows[0]).toMatchObject({
-      responsible_name: "ไม่ระบุผู้รับผิดชอบ",
+      responsible_name: "June Desk",
       difference: 20,
     });
   });
 
   it("throws invalid date error when date format is invalid", async () => {
     await expect(getDailySummaryByDate("bad-date")).rejects.toThrow("INVALID_DATE");
+  });
+
+  it("returns shift summary with per-shift totals and cash overage/shortage", async () => {
+    const summary = await getShiftSummaryByDate("2026-03-09");
+
+    expect(summary.date).toBe("2026-03-09");
+    expect(summary.sales_rows).toHaveLength(3);
+    expect(summary.shift_rows).toHaveLength(1);
+    expect(summary.shift_rows[0]).toMatchObject({
+      shift_id: "shift_2",
+      responsible_name: "June Desk",
+      receipt_count: 2,
+      sales_by_method: {
+        CASH: 0,
+        PROMPTPAY: 700,
+        CREDIT_CARD: 300,
+      },
+      total_sales: 1000,
+      difference: 20,
+    });
+    expect(summary.totals).toMatchObject({
+      receipt_count: 2,
+      sales_by_method: {
+        CASH: 0,
+        PROMPTPAY: 700,
+        CREDIT_CARD: 300,
+      },
+      total_sales: 1000,
+      cash_overage: 20,
+      cash_shortage: 0,
+    });
+  });
+
+  it("filters shift summary by responsible_name", async () => {
+    const summary = await getShiftSummaryByDate("2026-03-09", "Pim Counter");
+
+    expect(summary.sales_rows).toHaveLength(0);
+    expect(summary.shift_rows).toHaveLength(0);
+    expect(summary.totals).toMatchObject({
+      receipt_count: 0,
+      total_sales: 0,
+      cash_overage: 0,
+      cash_shortage: 0,
+    });
   });
 
   it("returns GL rows in date range", async () => {
@@ -507,5 +655,66 @@ describe("A-4 services", () => {
     await expect(getGeneralLedgerReport("2026-03-10", "2026-03-09")).rejects.toThrow(
       "INVALID_DATE_RANGE",
     );
+  });
+
+  it("returns shift inventory summary with sold aggregates for GOODS products", async () => {
+    mocked.state.orders.push({
+      id: "ord_4",
+      orderNumber: "ORD-2026-0004",
+      shiftId: "shift_1",
+      paymentMethod: "CASH",
+      totalAmount: 40,
+      status: "COMPLETED",
+      createdAt: new Date("2026-03-09T06:00:00.000Z"),
+      customerName: null,
+      items: [
+        {
+          quantity: 1,
+          productId: "prod_water",
+          productSku: "WATER-001",
+          productName: "Mineral Water",
+          productType: "GOODS",
+        },
+        {
+          quantity: 2,
+          productId: "prod_towel",
+          productSku: "TOWEL-001",
+          productName: "Gym Towel",
+          productType: "GOODS",
+        },
+      ],
+    });
+
+    const rows = await getShiftInventorySummaryByShiftId("u1", "CASHIER", "shift_1");
+
+    expect(rows).toEqual([
+      {
+        product_id: "prod_towel",
+        sku: "TOWEL-001",
+        name: "Gym Towel",
+        opening_stock: 2,
+        sold_quantity: 2,
+        remaining_stock: 0,
+      },
+      {
+        product_id: "prod_water",
+        sku: "WATER-001",
+        name: "Mineral Water",
+        opening_stock: 3,
+        sold_quantity: 3,
+        remaining_stock: 0,
+      },
+    ]);
+  });
+
+  it("throws owner mismatch for cashier accessing another shift", async () => {
+    await expect(
+      getShiftInventorySummaryByShiftId("u1", "CASHIER", "shift_2"),
+    ).rejects.toThrow("SHIFT_OWNER_MISMATCH");
+  });
+
+  it("returns empty array when shift has no GOODS movement", async () => {
+    const rows = await getShiftInventorySummaryByShiftId("u2", "ADMIN", "shift_2");
+    expect(rows).toEqual([]);
   });
 });

@@ -115,6 +115,33 @@ export interface DailySummary {
   shift_rows: DailyShiftRow[];
 }
 
+export interface ShiftSummaryShiftRow extends DailyShiftRow {
+  receipt_count: number;
+  sales_by_method: {
+    CASH: number;
+    PROMPTPAY: number;
+    CREDIT_CARD: number;
+  };
+  total_sales: number;
+}
+
+export interface ShiftSummary {
+  date: string;
+  sales_rows: DailySalesRow[];
+  shift_rows: ShiftSummaryShiftRow[];
+  totals: {
+    receipt_count: number;
+    sales_by_method: {
+      CASH: number;
+      PROMPTPAY: number;
+      CREDIT_CARD: number;
+    };
+    total_sales: number;
+    cash_overage: number;
+    cash_shortage: number;
+  };
+}
+
 export interface MemberSubscriptionRecord {
   member_id: EntityId;
   member_code: string;

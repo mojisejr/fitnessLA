@@ -36,13 +36,7 @@ export async function POST(request: Request) {
 
   try {
     const result = await closeActiveShiftWithDifference(session.user_id, parseResult.data);
-    return NextResponse.json(
-      {
-        ...result,
-        responsible_name: parseResult.data.responsible_name,
-      },
-      { status: 200 },
-    );
+    return NextResponse.json(result, { status: 200 });
   } catch (error) {
     if (error instanceof Error) {
       if (error.message === "SHIFT_NOT_FOUND") {

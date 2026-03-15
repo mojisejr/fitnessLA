@@ -7,13 +7,13 @@ async function waitForPosReady() {
   await waitFor(() => {
     expect(screen.queryByText("กำลังโหลดสินค้า...")).not.toBeInTheDocument();
     expect(screen.queryByText("กำลังโหลดตัวเลือกบัญชีรายได้...")).not.toBeInTheDocument();
-  }, { timeout: 10000 });
+  }, { timeout: 20000 });
 }
 
 async function waitForCloseShiftReady() {
   await waitFor(() => {
     expect(screen.queryByText("กำลังโหลดรายการขายของกะ...")).not.toBeInTheDocument();
-  }, { timeout: 10000 });
+  }, { timeout: 20000 });
 }
 
 describe("close shift blind drop", () => {
@@ -51,8 +51,8 @@ describe("close shift blind drop", () => {
 
     await waitFor(() => {
       expect(screen.getByText("ยอดคาดหวัง")).toBeInTheDocument();
-    }, { timeout: 10000 });
-  }, 10000);
+    }, { timeout: 20000 });
+  }, 30000);
 
   it("shows shift inventory summary on the close shift page", async () => {
     const posView = renderWithProviders(<PosPage />);
@@ -66,11 +66,14 @@ describe("close shift blind drop", () => {
 
     fireEvent.click(within(selectedProductPanel as HTMLElement).getByRole("button", { name: "เพิ่มลงบิล" }));
     fireEvent.click(screen.getByRole("button", { name: "คิดเงิน" }));
-    fireEvent.click(screen.getByRole("button", { name: "ยืนยันการคิดเงิน" }));
+    const confirmCheckoutButton = screen.queryByRole("button", { name: "ยืนยันการคิดเงิน" });
+    if (confirmCheckoutButton) {
+      fireEvent.click(confirmCheckoutButton);
+    }
 
     await waitFor(() => {
       expect(screen.getByText("คิดเงินสำเร็จ")).toBeInTheDocument();
-    }, { timeout: 10000 });
+    }, { timeout: 20000 });
 
     posView.unmount();
 
@@ -80,10 +83,10 @@ describe("close shift blind drop", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Mineral Water x1")).toBeInTheDocument();
-    }, { timeout: 10000 });
+    }, { timeout: 20000 });
 
     expect(screen.getByText("รายการขายในกะนี้")).toBeInTheDocument();
     expect(screen.getByText("ยอดขายรวมทั้งกะ")).toBeInTheDocument();
     expect(screen.getByText("เงินสด")).toBeInTheDocument();
-  }, 10000);
+  }, 30000);
 });

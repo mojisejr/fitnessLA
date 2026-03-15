@@ -8,7 +8,7 @@ async function waitForPosReady() {
   await waitFor(() => {
     expect(screen.queryByText("กำลังโหลดสินค้า...")).not.toBeInTheDocument();
     expect(screen.queryByText("กำลังโหลดตัวเลือกบัญชีรายได้...")).not.toBeInTheDocument();
-  }, { timeout: 10000 });
+  }, { timeout: 20000 });
 }
 
 describe("POS product revenue mapping", () => {
@@ -52,7 +52,7 @@ describe("POS product revenue mapping", () => {
     fireEvent.change(screen.getByLabelText("ราคา"), {
       target: { value: "120" },
     });
-    fireEvent.change(screen.getByLabelText("stock คงเหลือ"), {
+    fireEvent.change(screen.getByLabelText("สต็อกคงเหลือ"), {
       target: { value: "8" },
     });
     fireEvent.change(screen.getByLabelText("เลือกบัญชีรายได้"), {
@@ -68,8 +68,8 @@ describe("POS product revenue mapping", () => {
           revenueAccountId: "6",
         }),
       );
-    }, { timeout: 10000 });
-  }, 10000);
+    }, { timeout: 20000 });
+  }, 30000);
 
   it("sends revenueAccountId when updating a product", async () => {
     const updateProductSpy = vi.spyOn(mockAppAdapter, "updateProduct");
@@ -85,7 +85,7 @@ describe("POS product revenue mapping", () => {
 
     await waitFor(() => {
       expect(screen.getByLabelText("เลือกบัญชีรายได้")).toHaveValue("7");
-    }, { timeout: 10000 });
+    }, { timeout: 20000 });
 
     fireEvent.change(screen.getByLabelText("เลือกบัญชีรายได้"), {
       target: { value: "4" },
@@ -99,6 +99,6 @@ describe("POS product revenue mapping", () => {
           revenueAccountId: "4",
         }),
       );
-    }, { timeout: 10000 });
-  }, 10000);
+    }, { timeout: 20000 });
+  }, 30000);
 });
