@@ -138,6 +138,7 @@ const mocked = vi.hoisted(() => {
         where: {
           status: "CLOSED";
           endTime: { gte: Date; lt: Date };
+          responsibleName?: string;
         };
       }) => {
         return state.shifts
@@ -146,7 +147,8 @@ const mocked = vi.hoisted(() => {
               shift.status === where.status &&
               shift.endTime !== null &&
               shift.endTime >= where.endTime.gte &&
-              shift.endTime < where.endTime.lt,
+              shift.endTime < where.endTime.lt &&
+              (where.responsibleName ? shift.responsibleName === where.responsibleName : true),
           )
           .map((shift) => ({
             id: shift.id,
@@ -444,6 +446,7 @@ import {
   closeActiveShiftWithDifference,
   getDailySummaryByDate,
   getGeneralLedgerReport,
+  getShiftSummaryByDate,
 } from "../../src/features/operations/services";
 
 describe("A-4 services", () => {
@@ -506,6 +509,50 @@ describe("A-4 services", () => {
 
   it("throws invalid date error when date format is invalid", async () => {
     await expect(getDailySummaryByDate("bad-date")).rejects.toThrow("INVALID_DATE");
+  });
+
+  it("returns shift summary with per-shift totals and cash overage/shortage", async () => {
+    const summary = await getShiftSummaryByDate("2026-03-09");
+
+    expect(summary.date).toBe("2026-03-09");
+    expect(summary.sales_rows).toHaveLength(3);
+    expect(summary.shift_rows).toHaveLength(1);
+    expect(summary.shift_rows[0]).toMatchObject({
+      shift_id: "shift_2",
+      responsible_name: "June Desk",
+      receipt_count: 2,
+      sales_by_method: {
+        CASH: 0,
+        PROMPTPAY: 700,
+        CREDIT_CARD: 300,
+      },
+      total_sales: 1000,
+      difference: 20,
+    });
+    expect(summary.totals).toMatchObject({
+      receipt_count: 2,
+      sales_by_method: {
+        CASH: 0,
+        PROMPTPAY: 700,
+        CREDIT_CARD: 300,
+      },
+      total_sales: 1000,
+      cash_overage: 20,
+      cash_shortage: 0,
+    });
+  });
+
+  it("filters shift summary by responsible_name", async () => {
+    const summary = await getShiftSummaryByDate("2026-03-09", "Pim Counter");
+
+    expect(summary.sales_rows).toHaveLength(0);
+    expect(summary.shift_rows).toHaveLength(0);
+    expect(summary.totals).toMatchObject({
+      receipt_count: 0,
+      total_sales: 0,
+      cash_overage: 0,
+      cash_shortage: 0,
+    });
   });
 
   it("returns GL rows in date range", async () => {

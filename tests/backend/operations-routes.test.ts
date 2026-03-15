@@ -304,6 +304,18 @@ describe("A-2 operations routes", () => {
     expect(body.code).toBe("VALIDATION_ERROR");
   });
 
+  it("returns 400 when shift-summary responsible_name is empty", async () => {
+    mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "ADMIN" });
+
+    const response = await shiftSummaryGET(
+      new Request("http://localhost/api/v1/reports/shift-summary?date=2026-03-09&responsible_name=%20%20"),
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(body.code).toBe("VALIDATION_ERROR");
+  });
+
   it("returns shift summary for admin with optional responsible_name", async () => {
     mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "ADMIN" });
     mockGetShiftSummaryByDate.mockResolvedValue({

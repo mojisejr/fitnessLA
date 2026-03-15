@@ -52,7 +52,7 @@ describe("general ledger page", () => {
     fireEvent.change(screen.getByLabelText("วันสิ้นสุด"), {
       target: { value: "2026-03-31" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Download CSV" }));
+    fireEvent.click(screen.getByRole("button", { name: "ดาวน์โหลด CSV" }));
 
     await waitFor(() => {
       expect(global.fetch).toHaveBeenCalledWith(

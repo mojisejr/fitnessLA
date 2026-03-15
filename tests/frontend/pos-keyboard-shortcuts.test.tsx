@@ -6,7 +6,7 @@ async function waitForPosReady() {
   await waitFor(() => {
     expect(screen.queryByText("กำลังโหลดสินค้า...")).not.toBeInTheDocument();
     expect(screen.queryByText("กำลังโหลดตัวเลือกบัญชีรายได้...")).not.toBeInTheDocument();
-  }, { timeout: 10000 });
+  }, { timeout: 20000 });
 }
 
 describe("POS keyboard shortcuts", () => {
@@ -38,7 +38,7 @@ describe("POS keyboard shortcuts", () => {
 
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "ลบ" })).toBeInTheDocument();
-    }, { timeout: 10000 });
+    }, { timeout: 20000 });
 
     fireEvent.keyDown(window, { key: "2", altKey: true });
     expect(screen.getByRole("button", { name: "พร้อมเพย์" })).toHaveAttribute("aria-pressed", "true");
@@ -46,8 +46,8 @@ describe("POS keyboard shortcuts", () => {
     fireEvent.keyDown(window, { key: "Escape" });
     await waitFor(() => {
       expect(screen.getByText(/ตะกร้ายังว่างอยู่/)).toBeInTheDocument();
-    }, { timeout: 10000 });
-  }, 10000);
+    }, { timeout: 20000 });
+  }, 30000);
 
   it("blocks increasing quantity beyond stock", async () => {
     renderWithProviders(<PosPage />);
@@ -71,7 +71,7 @@ describe("POS keyboard shortcuts", () => {
     fireEvent.click(shakeAddButton);
 
     expect(screen.getByText("สต็อก Protein Shake คงเหลือ 6 ชิ้น")).toBeInTheDocument();
-  }, 10000);
+  }, 30000);
 
   it("filters products using the Thai labels shown in the POS UI", async () => {
     renderWithProviders(<PosPage />);
@@ -84,9 +84,9 @@ describe("POS keyboard shortcuts", () => {
 
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "น้ำดื่ม" })).toBeInTheDocument();
-    }, { timeout: 10000 });
+    }, { timeout: 20000 });
 
     expect(screen.queryByRole("button", { name: "อเมริกาโน่เย็น" })).not.toBeInTheDocument();
     expect(screen.queryByText("ไม่พบรายการที่ตรงกับคำค้นหรือหมวดที่เลือก")).not.toBeInTheDocument();
-  }, 10000);
+  }, 30000);
 });

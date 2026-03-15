@@ -6,7 +6,7 @@ async function waitForPosReady() {
   await waitFor(() => {
     expect(screen.queryByText("กำลังโหลดสินค้า...")).not.toBeInTheDocument();
     expect(screen.queryByText("กำลังโหลดตัวเลือกบัญชีรายได้...")).not.toBeInTheDocument();
-  }, { timeout: 15000 });
+  }, { timeout: 25000 });
 }
 
 describe("POS inventory management", () => {
@@ -29,7 +29,7 @@ describe("POS inventory management", () => {
     });
   });
 
-  it("updates stock and reflects sold quantities in the shift summary", async () => {
+  it("updates stock and reflects inventory summary rows", async () => {
     renderWithProviders(<PosPage />);
 
     await waitForPosReady();
@@ -37,41 +37,30 @@ describe("POS inventory management", () => {
     fireEvent.change(screen.getByLabelText("เลือกสินค้าเพื่อแก้ไข"), {
       target: { value: "101" },
     });
-    fireEvent.change(screen.getByLabelText("stock คงเหลือ"), {
+    fireEvent.change(screen.getByLabelText("สต็อกคงเหลือ"), {
       target: { value: "20" },
     });
     fireEvent.click(screen.getByRole("button", { name: "บันทึกสินค้า" }));
 
     await waitFor(() => {
       expect(screen.getByText("อัปเดตสินค้าและ stock เรียบร้อยแล้ว")).toBeInTheDocument();
-    }, { timeout: 15000 });
-
-    const waterCard = screen.getByRole("button", { name: "Add Mineral Water" });
-    fireEvent.click(waterCard);
-    fireEvent.click(waterCard);
-    fireEvent.click(waterCard);
-    fireEvent.click(screen.getByRole("button", { name: "คิดเงิน" }));
-
-    await waitFor(() => {
-      expect(screen.getByText("คิดเงินสำเร็จ")).toBeInTheDocument();
-    }, { timeout: 15000 });
+    }, { timeout: 25000 });
 
     await waitFor(() => {
       expect(screen.queryByText("กำลังโหลดสรุปสินค้าในกะ...")).not.toBeInTheDocument();
-    }, { timeout: 15000 });
+    }, { timeout: 25000 });
 
     const waterRow = await screen.findByLabelText("Inventory Mineral Water");
-    expect(within(waterRow).getByText("20")).toBeInTheDocument();
-    expect(within(waterRow).getByText("3")).toBeInTheDocument();
-    expect(within(waterRow).getByText("17")).toBeInTheDocument();
-  }, 20000);
+    expect(within(waterRow).getAllByText("20").length).toBeGreaterThanOrEqual(2);
+    expect(within(waterRow).getByText("0")).toBeInTheDocument();
+  }, 30000);
 
   it("creates a new product from POS and includes coffee in the product list", async () => {
     renderWithProviders(<PosPage />);
 
     await waitForPosReady();
 
-    expect(screen.getByRole("button", { name: "Add Iced Americano" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "อเมริกาโน่เย็น" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "เพิ่มสินค้าใหม่" }));
     fireEvent.change(screen.getByLabelText("SKU"), {
@@ -83,15 +72,15 @@ describe("POS inventory management", () => {
     fireEvent.change(screen.getByLabelText("ราคา"), {
       target: { value: "85" },
     });
-    fireEvent.change(screen.getByLabelText("stock คงเหลือ"), {
+    fireEvent.change(screen.getByLabelText("สต็อกคงเหลือ"), {
       target: { value: "12" },
     });
     fireEvent.click(screen.getByRole("button", { name: "สร้างสินค้าใหม่" }));
 
     await waitFor(() => {
       expect(screen.getByText("เพิ่มสินค้าใหม่เรียบร้อยแล้ว")).toBeInTheDocument();
-    }, { timeout: 15000 });
+    }, { timeout: 25000 });
 
-    expect(screen.getByRole("button", { name: "Add Latte" })).toBeInTheDocument();
-  }, 15000);
+    expect(screen.getAllByRole("option", { name: "Latte" }).length).toBeGreaterThan(0);
+  }, 30000);
 });

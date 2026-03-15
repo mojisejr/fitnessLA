@@ -1,4 +1,4 @@
-# API Interface Contract (Phase 1)
+# API Interface Contract (Phase 2)
 **Project:** fitnessLA (Gym Management System)
 **Status:** Current Working Contract as of 2026-03-12
 **Governance:** Person A (Backend/Logic) & Person B (Frontend/UX) must adhere to these types and update this file when implementation drifts.
@@ -55,6 +55,7 @@ interface UserSession {
     opened_at: string;
     starting_cash: number;
     status: 'OPEN';
+    responsible_name?: string;
   }
   ```
 - **Not Found:** `404 { code: 'SHIFT_NOT_FOUND', ... }`
@@ -63,12 +64,12 @@ interface UserSession {
 
 ### **POST /api/v1/shifts/open**
 - **Purpose:** เปิดกะใหม่ด้วยเงินทอนตั้งต้น
-- **Request:** `{ starting_cash: number }`
-- **Success:** `201 { shift_id: string, opened_at: string, journal_entry_id: string }`
+- **Request:** `{ starting_cash: number, responsible_name: string }`
+- **Success:** `201 { shift_id: string, opened_at: string, journal_entry_id: string, responsible_name: string }`
 
 ### **POST /api/v1/shifts/close**
 - **Purpose:** ปิดกะด้วย Blind Drop (นับเงินจริง)
-- **Request:** `{ actual_cash: number, closing_note?: string }`
+- **Request:** `{ actual_cash: number, closing_note?: string, responsible_name: string }`
 - **Response (Backend Calculates):** 
   ```typescript
   interface ShiftCloseResult {
@@ -78,6 +79,7 @@ interface UserSession {
     difference: number; // actual - expected
     status: 'CLOSED';
     journal_entry_id: string; // reference to shortage/overage entry
+    responsible_name: string;
   }
   ```
 
@@ -254,6 +256,49 @@ interface DailySummary {
 }
 ```
 
+### **GET /api/v1/reports/shift-summary?date=YYYY-MM-DD&responsible_name=...**
+- **Purpose:** รายงานสรุปกะแบบ dedicated สำหรับกะที่ปิดแล้ว (ไม่ประกอบผ่าน daily summary)
+- **Auth:** `OWNER` | `ADMIN`
+- **Validation:**
+  - `date` ต้องเป็น `YYYY-MM-DD`
+  - `responsible_name` เป็น optional แต่ห้ามเป็นค่าว่าง
+- **Response:**
+```typescript
+interface ShiftSummary {
+  date: string;
+  sales_rows: Array<{
+    order_id: string;
+    shift_id: string;
+    order_number: string;
+    sold_at: string;
+    items_summary: string;
+    cashier_name: string;
+    responsible_name?: string;
+    customer_name: string | null;
+    payment_method: 'CASH' | 'PROMPTPAY' | 'CREDIT_CARD';
+    total_amount: number;
+  }>;
+  shift_rows: Array<{
+    shift_id: string;
+    closed_at: string;
+    responsible_name: string;
+    expected_cash: number;
+    actual_cash: number;
+    difference: number;
+    receipt_count: number;
+    sales_by_method: { CASH: number; PROMPTPAY: number; CREDIT_CARD: number };
+    total_sales: number;
+  }>;
+  totals: {
+    receipt_count: number;
+    sales_by_method: { CASH: number; PROMPTPAY: number; CREDIT_CARD: number };
+    total_sales: number;
+    cash_overage: number;
+    cash_shortage: number;
+  };
+}
+```
+
 ### **GET /api/v1/reports/gl?start_date=YYYY-MM-DD&end_date=YYYY-MM-DD**
 - **Purpose:** Export General Ledger by date range in CSV format
 - **Auth:** `OWNER` | `ADMIN`
@@ -265,7 +310,7 @@ interface DailySummary {
   ```
 - **Validation:** ถ้า query date format ผิดหรือช่วงวันที่ไม่ถูกต้อง ให้คืน `400` พร้อม `code` เป็น `VALIDATION_ERROR` หรือ `INVALID_DATE_RANGE`
 
-**Current implementation status:** daily summary, COA routes, product revenue mapping, และ general ledger CSV export ถูก implement แล้ว. Shift summary และ P&L ยังรอ implementation.
+**Current implementation status:** daily summary, shift summary, COA routes, product revenue mapping, และ general ledger CSV export ถูก implement แล้ว. P&L ยังรอ implementation.
 
 ---
 
