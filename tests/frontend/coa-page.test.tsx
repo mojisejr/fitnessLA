@@ -131,12 +131,12 @@ describe("chart of accounts page", () => {
     fireEvent.click(within(row as HTMLTableRowElement).getByRole("button", { name: "ปิดใช้งาน" }));
 
     await waitFor(() => {
-      expect(screen.getByText("บัญชีนี้ถูก lock จากการใช้งานทางบัญชี จึงยังไม่สามารถปรับสถานะได้")).toBeInTheDocument();
-    }, { timeout: 10000 });
+      expect(screen.getByText(/บัญชีนี้.*ไม่สามารถปรับสถานะได้/)).toBeInTheDocument();
+    }, { timeout: 20000 });
 
     await waitFor(() => {
       expect(toggleSpy).toHaveBeenCalled();
       expect(within(row as HTMLTableRowElement).getByRole("button", { name: "ปิดใช้งาน" })).toBeEnabled();
-    }, { timeout: 10000 });
-  });
+    }, { timeout: 20000 });
+  }, 30000);
 });

@@ -1,6 +1,6 @@
-# API Interface Contract (Phase 1)
+# API Interface Contract (Phase 5 Lock)
 **Project:** fitnessLA (Gym Management System)
-**Status:** Current Working Contract as of 2026-03-12
+**Status:** Final integration contract lock as of 2026-03-15
 **Governance:** Person A (Backend/Logic) & Person B (Frontend/UX) must adhere to these types and update this file when implementation drifts.
 
 ---
@@ -55,6 +55,7 @@ interface UserSession {
     opened_at: string;
     starting_cash: number;
     status: 'OPEN';
+    responsible_name?: string;
   }
   ```
 - **Not Found:** `404 { code: 'SHIFT_NOT_FOUND', ... }`
@@ -63,12 +64,12 @@ interface UserSession {
 
 ### **POST /api/v1/shifts/open**
 - **Purpose:** เปิดกะใหม่ด้วยเงินทอนตั้งต้น
-- **Request:** `{ starting_cash: number }`
-- **Success:** `201 { shift_id: string, opened_at: string, journal_entry_id: string }`
+- **Request:** `{ starting_cash: number, responsible_name: string }`
+- **Success:** `201 { shift_id: string, opened_at: string, journal_entry_id: string, responsible_name: string }`
 
 ### **POST /api/v1/shifts/close**
 - **Purpose:** ปิดกะด้วย Blind Drop (นับเงินจริง)
-- **Request:** `{ actual_cash: number, closing_note?: string }`
+- **Request:** `{ actual_cash: number, closing_note?: string, responsible_name: string }`
 - **Response (Backend Calculates):** 
   ```typescript
   interface ShiftCloseResult {
@@ -78,6 +79,7 @@ interface UserSession {
     difference: number; // actual - expected
     status: 'CLOSED';
     journal_entry_id: string; // reference to shortage/overage entry
+    responsible_name: string;
   }
   ```
 
@@ -254,6 +256,49 @@ interface DailySummary {
 }
 ```
 
+### **GET /api/v1/reports/shift-summary?date=YYYY-MM-DD&responsible_name=...**
+- **Purpose:** รายงานสรุปกะแบบ dedicated สำหรับกะที่ปิดแล้ว (ไม่ประกอบผ่าน daily summary)
+- **Auth:** `OWNER` | `ADMIN`
+- **Validation:**
+  - `date` ต้องเป็น `YYYY-MM-DD`
+  - `responsible_name` เป็น optional แต่ห้ามเป็นค่าว่าง
+- **Response:**
+```typescript
+interface ShiftSummary {
+  date: string;
+  sales_rows: Array<{
+    order_id: string;
+    shift_id: string;
+    order_number: string;
+    sold_at: string;
+    items_summary: string;
+    cashier_name: string;
+    responsible_name?: string;
+    customer_name: string | null;
+    payment_method: 'CASH' | 'PROMPTPAY' | 'CREDIT_CARD';
+    total_amount: number;
+  }>;
+  shift_rows: Array<{
+    shift_id: string;
+    closed_at: string;
+    responsible_name: string;
+    expected_cash: number;
+    actual_cash: number;
+    difference: number;
+    receipt_count: number;
+    sales_by_method: { CASH: number; PROMPTPAY: number; CREDIT_CARD: number };
+    total_sales: number;
+  }>;
+  totals: {
+    receipt_count: number;
+    sales_by_method: { CASH: number; PROMPTPAY: number; CREDIT_CARD: number };
+    total_sales: number;
+    cash_overage: number;
+    cash_shortage: number;
+  };
+}
+```
+
 ### **GET /api/v1/reports/gl?start_date=YYYY-MM-DD&end_date=YYYY-MM-DD**
 - **Purpose:** Export General Ledger by date range in CSV format
 - **Auth:** `OWNER` | `ADMIN`
@@ -265,7 +310,68 @@ interface DailySummary {
   ```
 - **Validation:** ถ้า query date format ผิดหรือช่วงวันที่ไม่ถูกต้อง ให้คืน `400` พร้อม `code` เป็น `VALIDATION_ERROR` หรือ `INVALID_DATE_RANGE`
 
-**Current implementation status:** daily summary, COA routes, product revenue mapping, และ general ledger CSV export ถูก implement แล้ว. Shift summary และ P&L ยังรอ implementation.
+### **GET /api/v1/shifts/:shiftId/inventory-summary**
+- **Purpose:** ดึงสรุปสินค้าในกะสำหรับหน้า POS/Close Shift ในโหมด real adapter
+- **Auth:**
+  - `OWNER` | `ADMIN` ดูได้ทุกกะ
+  - `CASHIER` ดูได้เฉพาะกะของตัวเอง (`SHIFT_OWNER_MISMATCH` เมื่อข้ามสิทธิ์)
+- **Response:** `Array<ShiftInventorySummaryRow>`
+```typescript
+interface ShiftInventorySummaryRow {
+  product_id: string;
+  sku: string;
+  name: string;
+  opening_stock: number;
+  sold_quantity: number;
+  remaining_stock: number;
+}
+```
+- **Error Cases:**
+  - `404 { code: 'SHIFT_NOT_FOUND' }`
+  - `403 { code: 'SHIFT_OWNER_MISMATCH' }`
+- **Current Backend Semantics (Phase 3):**
+  - aggregate เฉพาะสินค้าประเภท `GOODS` ที่เกิดใน `order_items` ของกะนั้น
+  - ถ้าไม่พบ movement ของสินค้า `GOODS` ให้คืน `[]` (deterministic no-data fallback)
+  - เนื่องจาก stock ledger ยังไม่ persist ใน schema ปัจจุบัน จึงรายงาน `opening_stock` เท่ากับยอดขายสะสม และ `remaining_stock = 0` เพื่อคงความเสถียรของ contract จนกว่าจะเปิด inventory ledger phase ถัดไป
+
+**Current implementation status:** daily summary, shift summary, shift inventory summary, COA routes, product revenue mapping, และ general ledger CSV export ถูก implement แล้ว. P&L ยังรอ implementation.
+
+---
+
+## 8. Ready-to-Integrate Checklist (Agent B)
+
+### Endpoint Matrix
+| Surface | Method | Endpoint | Minimum Expectation |
+| --- | --- | --- | --- |
+| Active Shift | `GET` | `/api/v1/shifts/active` | `404 SHIFT_NOT_FOUND` when no open shift |
+| Open Shift | `POST` | `/api/v1/shifts/open` | returns persisted `responsible_name` |
+| Create Order | `POST` | `/api/v1/orders` | atomic order result + tax doc number |
+| Create Expense | `POST` | `/api/v1/expenses` | accepts receipt upload and returns `expense_id` |
+| Close Shift | `POST` | `/api/v1/shifts/close` | returns expected/actual/difference + journal ref |
+| Daily Summary | `GET` | `/api/v1/reports/daily-summary?date=...` | returns `sales_rows` + `shift_rows` |
+| Shift Summary | `GET` | `/api/v1/reports/shift-summary?date=...[&responsible_name=...]` | returns shift aggregates + totals |
+| Shift Inventory Summary | `GET` | `/api/v1/shifts/:shiftId/inventory-summary` | role guard + deterministic `[]` on no-data |
+| GL Export | `GET` | `/api/v1/reports/gl?start_date=...&end_date=...` | returns CSV (`text/csv`) |
+
+### Smoke Sequence (Deterministic)
+1. เปิดกะผ่าน `POST /api/v1/shifts/open` ด้วย `responsible_name`
+2. ขายสินค้าอย่างน้อย 1 รายการผ่าน `POST /api/v1/orders`
+3. บันทึกรายจ่ายพร้อมใบเสร็จผ่าน `POST /api/v1/expenses`
+4. ปิดกะผ่าน `POST /api/v1/shifts/close`
+5. ตรวจ `daily-summary`, `shift-summary`, และ `gl` ว่าเลขสอดคล้องกัน
+6. ตรวจ `shifts/:shiftId/inventory-summary` ว่าได้ผลลัพธ์ตามสิทธิ์ผู้ใช้และ no-data fallback
+
+### Expected Outputs (Quick Assertions)
+- `daily-summary.shift_rows[].responsible_name` มาจาก persisted state
+- `shift-summary.totals.total_sales` เท่ากับยอดรวมจาก `shift_rows[].total_sales`
+- `inventory-summary`:
+  - shift คนอื่นสำหรับ cashier -> `403 SHIFT_OWNER_MISMATCH`
+  - shift ไม่พบ -> `404 SHIFT_NOT_FOUND`
+  - ไม่มี movement สินค้า GOODS -> `[]`
+- `gl` CSV ต้องมี header `Date,Account Code,Account Name,Debit,Credit,Description`
+
+### Final Handoff Pointer
+- Canonical handoff package: `docs/Handoff_2026-03-15_Agent-A_Final_100_to_Agent-B.md`
 
 ---
 

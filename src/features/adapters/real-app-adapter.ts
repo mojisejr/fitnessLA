@@ -2,6 +2,7 @@ import type {
   AdminUserRecord,
   CreateOrderRequest,
   DailySummary,
+  ShiftSummary,
   EntityId,
   MockShiftRecord,
   OrderResult,
@@ -54,13 +55,6 @@ async function fetchOptionalJson<T>(input: RequestInfo, init?: RequestInit): Pro
   }
 
   return response.json() as Promise<T>;
-}
-
-function notImplemented(message: string): never {
-  throw {
-    code: "NOT_IMPLEMENTED",
-    message,
-  };
 }
 
 export const realAppAdapter: AppAdapter = {
@@ -133,8 +127,9 @@ export const realAppAdapter: AppAdapter = {
   },
 
   async getShiftInventorySummary(shiftId: string | number) {
-    void shiftId;
-    return notImplemented("Shift inventory summary ยังมีเฉพาะ mock adapter ในรอบนี้");
+    return fetchJson(
+      `/api/v1/shifts/${encodeURIComponent(String(shiftId))}/inventory-summary`,
+    );
   },
 
   async openShift(startingCash: number, responsibleName: string) {
@@ -199,6 +194,15 @@ export const realAppAdapter: AppAdapter = {
 
   async getDailySummary(date: string) {
     return fetchJson<DailySummary>(`/api/v1/reports/daily-summary?date=${encodeURIComponent(date)}`);
+  },
+
+  async getShiftSummary(date: string, responsibleName?: string) {
+    const params = new URLSearchParams({ date });
+    if (responsibleName?.trim()) {
+      params.set("responsible_name", responsibleName.trim());
+    }
+
+    return fetchJson<ShiftSummary>(`/api/v1/reports/shift-summary?${params.toString()}`);
   },
 
   async listChartOfAccounts() {

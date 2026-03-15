@@ -32,13 +32,14 @@ export type ActiveShiftDto = {
   opened_at: string;
   starting_cash: number;
   status: "OPEN";
+  responsible_name?: string;
 };
 
 export type OpenShiftResultDto = {
   shift_id: string;
   opened_at: string;
   journal_entry_id: string;
-  responsible_name?: string;
+  responsible_name: string;
 };
 
 type PaymentMethod = "CASH" | "PROMPTPAY" | "CREDIT_CARD";
@@ -91,7 +92,7 @@ export type CloseShiftResultDto = {
   difference: number;
   status: "CLOSED";
   journal_entry_id: string;
-  responsible_name?: string;
+  responsible_name: string;
 };
 
 export type DailySummaryDto = {
@@ -126,6 +127,33 @@ export type DailySummaryDto = {
   }>;
 };
 
+export type ShiftSummaryDto = {
+  date: string;
+  sales_rows: DailySummaryDto["sales_rows"];
+  shift_rows: Array<
+    DailySummaryDto["shift_rows"][number] & {
+      receipt_count: number;
+      sales_by_method: {
+        CASH: number;
+        PROMPTPAY: number;
+        CREDIT_CARD: number;
+      };
+      total_sales: number;
+    }
+  >;
+  totals: {
+    receipt_count: number;
+    sales_by_method: {
+      CASH: number;
+      PROMPTPAY: number;
+      CREDIT_CARD: number;
+    };
+    total_sales: number;
+    cash_overage: number;
+    cash_shortage: number;
+  };
+};
+
 export type GeneralLedgerRowDto = {
   date: string;
   account_code: string;
@@ -133,6 +161,15 @@ export type GeneralLedgerRowDto = {
   debit: number;
   credit: number;
   description: string;
+};
+
+export type ShiftInventorySummaryRowDto = {
+  product_id: string;
+  sku: string;
+  name: string;
+  opening_stock: number;
+  sold_quantity: number;
+  remaining_stock: number;
 };
 
 export type ChartOfAccountRecordDto = {
@@ -427,10 +464,15 @@ export async function getActiveShiftByStaff(staffId: string): Promise<ActiveShif
     opened_at: shift.startTime.toISOString(),
     starting_cash: Number(shift.startingCash),
     status: "OPEN",
+    responsible_name: shift.responsibleName ?? undefined,
   };
 }
 
-export async function openShiftWithJournal(staffId: string, startingCash: number): Promise<OpenShiftResultDto> {
+export async function openShiftWithJournal(
+  staffId: string,
+  startingCash: number,
+  responsibleName: string,
+): Promise<OpenShiftResultDto> {
   const existing = await getActiveShiftByStaff(staffId);
   if (existing) {
     throw new Error("SHIFT_ALREADY_OPEN");
@@ -464,6 +506,7 @@ export async function openShiftWithJournal(staffId: string, startingCash: number
         staffId,
         startingCash: amount,
         status: "OPEN",
+        responsibleName,
       },
     });
 
@@ -496,6 +539,7 @@ export async function openShiftWithJournal(staffId: string, startingCash: number
       shift_id: shift.id,
       opened_at: shift.startTime.toISOString(),
       journal_entry_id: journalEntry.id,
+      responsible_name: shift.responsibleName ?? responsibleName,
     };
   });
 }
@@ -876,6 +920,7 @@ export async function closeActiveShiftWithDifference(
         expectedCash,
         actualCash,
         difference,
+        responsibleName: input.responsible_name?.trim() || shift.responsibleName,
       },
     });
 
@@ -886,6 +931,7 @@ export async function closeActiveShiftWithDifference(
       difference: Number(difference),
       status: "CLOSED",
       journal_entry_id: journalEntry.id,
+      responsible_name: closed.responsibleName ?? "ไม่ระบุผู้รับผิดชอบ",
     };
   });
 }
@@ -923,6 +969,7 @@ export async function getDailySummaryByDate(date: string): Promise<DailySummaryD
           select: {
             id: true,
             staffId: true,
+            responsibleName: true,
           },
         },
         items: {
@@ -964,6 +1011,7 @@ export async function getDailySummaryByDate(date: string): Promise<DailySummaryD
         actualCash: true,
         difference: true,
         staffId: true,
+        responsibleName: true,
       },
     }),
   ]);
@@ -1019,7 +1067,10 @@ export async function getDailySummaryByDate(date: string): Promise<DailySummaryD
         .map((item) => `${item.product.name} x${item.quantity}`)
         .join(", ") || order.orderNumber,
     cashier_name: staffNameById.get(order.shift.staffId) ?? order.shift.staffId,
-    responsible_name: staffNameById.get(order.shift.staffId) ?? order.shift.staffId,
+    responsible_name:
+      order.shift.responsibleName ??
+      staffNameById.get(order.shift.staffId) ??
+      order.shift.staffId,
     customer_name: order.customerName ?? null,
     payment_method: assertPaymentMethod(order.paymentMethod),
     total_amount: Number(Number(order.totalAmount).toFixed(2)),
@@ -1028,7 +1079,11 @@ export async function getDailySummaryByDate(date: string): Promise<DailySummaryD
   const shiftRows = closedShifts.map((shift) => ({
     shift_id: shift.id ?? `${shift.staffId}-${shift.endTime?.toISOString() ?? from.toISOString()}`,
     closed_at: shift.endTime?.toISOString() ?? from.toISOString(),
-    responsible_name: staffNameById.get(shift.staffId) ?? shift.staffId ?? "ไม่ระบุผู้รับผิดชอบ",
+    responsible_name:
+      shift.responsibleName ??
+      staffNameById.get(shift.staffId) ??
+      shift.staffId ??
+      "ไม่ระบุผู้รับผิดชอบ",
     expected_cash: Number(Number(shift.expectedCash ?? 0).toFixed(2)),
     actual_cash: Number(Number(shift.actualCash ?? 0).toFixed(2)),
     difference: Number(Number(shift.difference ?? 0).toFixed(2)),
@@ -1047,6 +1102,335 @@ export async function getDailySummaryByDate(date: string): Promise<DailySummaryD
     sales_rows: salesRows,
     shift_rows: shiftRows,
   };
+}
+
+export async function getShiftSummaryByDate(
+  date: string,
+  responsibleName?: string,
+): Promise<ShiftSummaryDto> {
+  const parsed = new Date(`${date}T00:00:00.000Z`);
+  if (Number.isNaN(parsed.getTime())) {
+    throw new Error("INVALID_DATE");
+  }
+
+  const from = parsed;
+  const to = new Date(parsed);
+  to.setUTCDate(to.getUTCDate() + 1);
+
+  const closedShifts = await prisma.shift.findMany({
+    where: {
+      status: "CLOSED",
+      endTime: {
+        gte: from,
+        lt: to,
+      },
+      ...(responsibleName ? { responsibleName } : {}),
+    },
+    select: {
+      id: true,
+      endTime: true,
+      expectedCash: true,
+      actualCash: true,
+      difference: true,
+      staffId: true,
+      responsibleName: true,
+    },
+    orderBy: { endTime: "desc" },
+  });
+
+  if (closedShifts.length === 0) {
+    return {
+      date,
+      sales_rows: [],
+      shift_rows: [],
+      totals: {
+        receipt_count: 0,
+        sales_by_method: {
+          CASH: 0,
+          PROMPTPAY: 0,
+          CREDIT_CARD: 0,
+        },
+        total_sales: 0,
+        cash_overage: 0,
+        cash_shortage: 0,
+      },
+    };
+  }
+
+  const shiftIdSet = new Set(closedShifts.map((shift) => shift.id));
+
+  const orders = await prisma.order.findMany({
+    where: {
+      status: "COMPLETED",
+      shiftId: {
+        in: Array.from(shiftIdSet),
+      },
+      createdAt: {
+        gte: from,
+        lt: to,
+      },
+    },
+    orderBy: {
+      createdAt: "desc",
+    },
+    select: {
+      id: true,
+      orderNumber: true,
+      createdAt: true,
+      customerName: true,
+      paymentMethod: true,
+      totalAmount: true,
+      shift: {
+        select: {
+          id: true,
+          staffId: true,
+          responsibleName: true,
+        },
+      },
+      items: {
+        select: {
+          quantity: true,
+          product: {
+            select: {
+              name: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  const staffIds = Array.from(
+    new Set([
+      ...closedShifts.map((shift) => shift.staffId),
+      ...orders.map((order) => order.shift.staffId),
+    ]),
+  );
+  const users = staffIds.length
+    ? await prisma.user.findMany({
+        where: {
+          id: { in: staffIds },
+        },
+        select: {
+          id: true,
+          name: true,
+          username: true,
+        },
+      })
+    : [];
+
+  const staffNameById = new Map(users.map((user) => [user.id, user.name || user.username || user.id]));
+
+  const salesRows: ShiftSummaryDto["sales_rows"] = orders.map((order) => ({
+    order_id: order.id,
+    shift_id: order.shift.id,
+    order_number: order.orderNumber,
+    sold_at: order.createdAt.toISOString(),
+    items_summary:
+      order.items
+        .map((item) => `${item.product.name} x${item.quantity}`)
+        .join(", ") || order.orderNumber,
+    cashier_name: staffNameById.get(order.shift.staffId) ?? order.shift.staffId,
+    responsible_name:
+      order.shift.responsibleName ??
+      staffNameById.get(order.shift.staffId) ??
+      order.shift.staffId,
+    customer_name: order.customerName ?? null,
+    payment_method: assertPaymentMethod(order.paymentMethod),
+    total_amount: Number(Number(order.totalAmount).toFixed(2)),
+  }));
+
+  const shiftSalesById = new Map<
+    string,
+    {
+      receipt_count: number;
+      sales_by_method: {
+        CASH: number;
+        PROMPTPAY: number;
+        CREDIT_CARD: number;
+      };
+      total_sales: number;
+    }
+  >();
+
+  for (const row of salesRows) {
+    const shiftId = String(row.shift_id ?? "");
+    if (!shiftId) {
+      continue;
+    }
+
+    const current = shiftSalesById.get(shiftId) ?? {
+      receipt_count: 0,
+      sales_by_method: {
+        CASH: 0,
+        PROMPTPAY: 0,
+        CREDIT_CARD: 0,
+      },
+      total_sales: 0,
+    };
+
+    current.receipt_count += 1;
+    current.sales_by_method[row.payment_method] += row.total_amount;
+    current.total_sales += row.total_amount;
+    shiftSalesById.set(shiftId, current);
+  }
+
+  const shiftRows: ShiftSummaryDto["shift_rows"] = closedShifts.map((shift) => {
+    const aggregate = shiftSalesById.get(shift.id) ?? {
+      receipt_count: 0,
+      sales_by_method: {
+        CASH: 0,
+        PROMPTPAY: 0,
+        CREDIT_CARD: 0,
+      },
+      total_sales: 0,
+    };
+
+    return {
+      shift_id: shift.id,
+      closed_at: shift.endTime?.toISOString() ?? from.toISOString(),
+      responsible_name:
+        shift.responsibleName ??
+        staffNameById.get(shift.staffId) ??
+        shift.staffId ??
+        "ไม่ระบุผู้รับผิดชอบ",
+      expected_cash: Number(Number(shift.expectedCash ?? 0).toFixed(2)),
+      actual_cash: Number(Number(shift.actualCash ?? 0).toFixed(2)),
+      difference: Number(Number(shift.difference ?? 0).toFixed(2)),
+      receipt_count: aggregate.receipt_count,
+      sales_by_method: {
+        CASH: Number(aggregate.sales_by_method.CASH.toFixed(2)),
+        PROMPTPAY: Number(aggregate.sales_by_method.PROMPTPAY.toFixed(2)),
+        CREDIT_CARD: Number(aggregate.sales_by_method.CREDIT_CARD.toFixed(2)),
+      },
+      total_sales: Number(aggregate.total_sales.toFixed(2)),
+    };
+  });
+
+  const totals = shiftRows.reduce(
+    (acc, row) => {
+      acc.receipt_count += row.receipt_count;
+      acc.sales_by_method.CASH += row.sales_by_method.CASH;
+      acc.sales_by_method.PROMPTPAY += row.sales_by_method.PROMPTPAY;
+      acc.sales_by_method.CREDIT_CARD += row.sales_by_method.CREDIT_CARD;
+      acc.total_sales += row.total_sales;
+      if (row.difference > 0) {
+        acc.cash_overage += row.difference;
+      } else if (row.difference < 0) {
+        acc.cash_shortage += Math.abs(row.difference);
+      }
+      return acc;
+    },
+    {
+      receipt_count: 0,
+      sales_by_method: {
+        CASH: 0,
+        PROMPTPAY: 0,
+        CREDIT_CARD: 0,
+      },
+      total_sales: 0,
+      cash_overage: 0,
+      cash_shortage: 0,
+    },
+  );
+
+  return {
+    date,
+    sales_rows: salesRows,
+    shift_rows: shiftRows,
+    totals: {
+      receipt_count: totals.receipt_count,
+      sales_by_method: {
+        CASH: Number(totals.sales_by_method.CASH.toFixed(2)),
+        PROMPTPAY: Number(totals.sales_by_method.PROMPTPAY.toFixed(2)),
+        CREDIT_CARD: Number(totals.sales_by_method.CREDIT_CARD.toFixed(2)),
+      },
+      total_sales: Number(totals.total_sales.toFixed(2)),
+      cash_overage: Number(totals.cash_overage.toFixed(2)),
+      cash_shortage: Number(totals.cash_shortage.toFixed(2)),
+    },
+  };
+}
+
+export async function getShiftInventorySummaryByShiftId(
+  requesterId: string,
+  requesterRole: "OWNER" | "ADMIN" | "CASHIER",
+  shiftId: string,
+): Promise<ShiftInventorySummaryRowDto[]> {
+  const normalizedShiftId = shiftId.trim();
+  if (!normalizedShiftId) {
+    throw new Error("SHIFT_NOT_FOUND");
+  }
+
+  const shift = await prisma.shift.findUnique({
+    where: { id: normalizedShiftId },
+    select: {
+      id: true,
+      staffId: true,
+    },
+  });
+
+  if (!shift) {
+    throw new Error("SHIFT_NOT_FOUND");
+  }
+
+  if (requesterRole === "CASHIER" && shift.staffId !== requesterId) {
+    throw new Error("SHIFT_OWNER_MISMATCH");
+  }
+
+  const soldItems = await prisma.orderItem.findMany({
+    where: {
+      order: {
+        shiftId: shift.id,
+        status: "COMPLETED",
+      },
+      product: {
+        productType: "GOODS",
+      },
+    },
+    select: {
+      quantity: true,
+      product: {
+        select: {
+          id: true,
+          sku: true,
+          name: true,
+        },
+      },
+    },
+  });
+
+  if (soldItems.length === 0) {
+    return [];
+  }
+
+  const rowsByProductId = new Map<string, ShiftInventorySummaryRowDto>();
+  for (const item of soldItems) {
+    const productId = item.product.id;
+    const current = rowsByProductId.get(productId) ?? {
+      product_id: productId,
+      sku: item.product.sku,
+      name: item.product.name,
+      opening_stock: 0,
+      sold_quantity: 0,
+      remaining_stock: 0,
+    };
+
+    current.sold_quantity += item.quantity;
+    rowsByProductId.set(productId, current);
+  }
+
+  return Array.from(rowsByProductId.values())
+    .sort((left, right) => left.sku.localeCompare(right.sku))
+    .map((row) => {
+      // Product stock ledger is not persisted yet; report deterministic sold totals with zeroed stock baseline.
+      const openingStock = row.sold_quantity;
+      return {
+        ...row,
+        opening_stock: openingStock,
+        remaining_stock: openingStock - row.sold_quantity,
+      };
+    });
 }
 
 export async function getGeneralLedgerReport(

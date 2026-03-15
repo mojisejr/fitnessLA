@@ -34,14 +34,18 @@ export async function POST(request: Request) {
   }
 
   try {
-    const result = await openShiftWithJournal(session.user_id, parseResult.data.starting_cash);
+    const result = await openShiftWithJournal(
+      session.user_id,
+      parseResult.data.starting_cash,
+      parseResult.data.responsible_name,
+    );
 
     return NextResponse.json(
       {
         shift_id: result.shift_id,
         opened_at: result.opened_at,
         journal_entry_id: result.journal_entry_id,
-        responsible_name: parseResult.data.responsible_name,
+        responsible_name: result.responsible_name,
       },
       { status: 201 },
     );
