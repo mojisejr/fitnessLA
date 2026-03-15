@@ -23,7 +23,13 @@ type OrderState = {
   status: "COMPLETED";
   createdAt: Date;
   customerName: string | null;
-  items: Array<{ quantity: number; productName: string }>;
+  items: Array<{
+    quantity: number;
+    productId: string;
+    productSku: string;
+    productName: string;
+    productType: "GOODS" | "SERVICE" | "MEMBERSHIP";
+  }>;
 };
 
 type UserState = {
@@ -267,6 +273,44 @@ const mocked = vi.hoisted(() => {
         }));
       },
     },
+    orderItem: {
+      findMany: async ({
+        where,
+      }: {
+        where: {
+          order: { shiftId: string; status: "COMPLETED" };
+          product: { productType: "GOODS" };
+        };
+      }) => {
+        const rows: Array<{
+          quantity: number;
+          product: { id: string; sku: string; name: string };
+        }> = [];
+
+        for (const order of state.orders) {
+          if (order.shiftId !== where.order.shiftId || order.status !== where.order.status) {
+            continue;
+          }
+
+          for (const item of order.items) {
+            if (item.productType !== where.product.productType) {
+              continue;
+            }
+
+            rows.push({
+              quantity: item.quantity,
+              product: {
+                id: item.productId,
+                sku: item.productSku,
+                name: item.productName,
+              },
+            });
+          }
+        }
+
+        return rows;
+      },
+    },
     user: {
       findMany: async ({ where }: { where: { id: { in: string[] } } }) => {
         return state.users
@@ -295,6 +339,17 @@ const mocked = vi.hoisted(() => {
     },
     shift: {
       findMany: txMock.shift.findMany,
+      findUnique: async ({ where }: { where: { id: string } }) => {
+        const target = state.shifts.find((shift) => shift.id === where.id);
+        if (!target) {
+          return null;
+        }
+
+        return {
+          id: target.id,
+          staffId: target.staffId,
+        };
+      },
     },
     journalLine: {
       findMany: async ({
@@ -367,7 +422,15 @@ const mocked = vi.hoisted(() => {
         status: "COMPLETED",
         createdAt: new Date("2026-03-09T03:00:00.000Z"),
         customerName: null,
-        items: [{ quantity: 2, productName: "อเมริกาโน่เย็น" }],
+        items: [
+          {
+            quantity: 2,
+            productId: "prod_water",
+            productSku: "WATER-001",
+            productName: "Mineral Water",
+            productType: "GOODS",
+          },
+        ],
       },
       {
         id: "ord_2",
@@ -378,7 +441,15 @@ const mocked = vi.hoisted(() => {
         status: "COMPLETED",
         createdAt: new Date("2026-03-09T04:00:00.000Z"),
         customerName: "Nok Member",
-        items: [{ quantity: 1, productName: "สมาชิกรายเดือน" }],
+        items: [
+          {
+            quantity: 1,
+            productId: "prod_membership",
+            productSku: "MEM-001",
+            productName: "สมาชิกรายเดือน",
+            productType: "MEMBERSHIP",
+          },
+        ],
       },
       {
         id: "ord_3",
@@ -389,7 +460,15 @@ const mocked = vi.hoisted(() => {
         status: "COMPLETED",
         createdAt: new Date("2026-03-09T05:00:00.000Z"),
         customerName: "Mild Training",
-        items: [{ quantity: 1, productName: "เทรนเดี่ยว 1 ครั้ง" }],
+        items: [
+          {
+            quantity: 1,
+            productId: "prod_pt",
+            productSku: "PT-001",
+            productName: "เทรนเดี่ยว 1 ครั้ง",
+            productType: "SERVICE",
+          },
+        ],
       },
     ];
     state.users = [
@@ -446,6 +525,7 @@ import {
   closeActiveShiftWithDifference,
   getDailySummaryByDate,
   getGeneralLedgerReport,
+  getShiftInventorySummaryByShiftId,
   getShiftSummaryByDate,
 } from "../../src/features/operations/services";
 
@@ -575,5 +655,66 @@ describe("A-4 services", () => {
     await expect(getGeneralLedgerReport("2026-03-10", "2026-03-09")).rejects.toThrow(
       "INVALID_DATE_RANGE",
     );
+  });
+
+  it("returns shift inventory summary with sold aggregates for GOODS products", async () => {
+    mocked.state.orders.push({
+      id: "ord_4",
+      orderNumber: "ORD-2026-0004",
+      shiftId: "shift_1",
+      paymentMethod: "CASH",
+      totalAmount: 40,
+      status: "COMPLETED",
+      createdAt: new Date("2026-03-09T06:00:00.000Z"),
+      customerName: null,
+      items: [
+        {
+          quantity: 1,
+          productId: "prod_water",
+          productSku: "WATER-001",
+          productName: "Mineral Water",
+          productType: "GOODS",
+        },
+        {
+          quantity: 2,
+          productId: "prod_towel",
+          productSku: "TOWEL-001",
+          productName: "Gym Towel",
+          productType: "GOODS",
+        },
+      ],
+    });
+
+    const rows = await getShiftInventorySummaryByShiftId("u1", "CASHIER", "shift_1");
+
+    expect(rows).toEqual([
+      {
+        product_id: "prod_towel",
+        sku: "TOWEL-001",
+        name: "Gym Towel",
+        opening_stock: 2,
+        sold_quantity: 2,
+        remaining_stock: 0,
+      },
+      {
+        product_id: "prod_water",
+        sku: "WATER-001",
+        name: "Mineral Water",
+        opening_stock: 3,
+        sold_quantity: 3,
+        remaining_stock: 0,
+      },
+    ]);
+  });
+
+  it("throws owner mismatch for cashier accessing another shift", async () => {
+    await expect(
+      getShiftInventorySummaryByShiftId("u1", "CASHIER", "shift_2"),
+    ).rejects.toThrow("SHIFT_OWNER_MISMATCH");
+  });
+
+  it("returns empty array when shift has no GOODS movement", async () => {
+    const rows = await getShiftInventorySummaryByShiftId("u2", "ADMIN", "shift_2");
+    expect(rows).toEqual([]);
   });
 });

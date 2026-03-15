@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { GET as productsGET } from "../../src/app/api/v1/products/route";
 import { GET as activeShiftGET } from "../../src/app/api/v1/shifts/active/route";
+import { GET as shiftInventorySummaryGET } from "../../src/app/api/v1/shifts/[shiftId]/inventory-summary/route";
 import { POST as openShiftPOST } from "../../src/app/api/v1/shifts/open/route";
 import { POST as createOrderPOST } from "../../src/app/api/v1/orders/route";
 import { POST as createExpensePOST } from "../../src/app/api/v1/expenses/route";
@@ -13,6 +14,7 @@ import { GET as generalLedgerGET } from "../../src/app/api/v1/reports/gl/route";
 const mockResolveSessionFromRequest = vi.fn();
 const mockListProducts = vi.fn();
 const mockGetActiveShiftByStaff = vi.fn();
+const mockGetShiftInventorySummaryByShiftId = vi.fn();
 const mockOpenShiftWithJournal = vi.fn();
 const mockCreateOrderWithJournal = vi.fn();
 const mockPostExpenseWithJournal = vi.fn();
@@ -28,6 +30,8 @@ vi.mock("../../src/lib/session", () => ({
 vi.mock("../../src/features/operations/services", () => ({
   listProducts: (...args: unknown[]) => mockListProducts(...args),
   getActiveShiftByStaff: (...args: unknown[]) => mockGetActiveShiftByStaff(...args),
+  getShiftInventorySummaryByShiftId: (...args: unknown[]) =>
+    mockGetShiftInventorySummaryByShiftId(...args),
   openShiftWithJournal: (...args: unknown[]) => mockOpenShiftWithJournal(...args),
   createOrderWithJournal: (...args: unknown[]) => mockCreateOrderWithJournal(...args),
   postExpenseWithJournal: (...args: unknown[]) => mockPostExpenseWithJournal(...args),
@@ -96,6 +100,66 @@ describe("A-2 operations routes", () => {
       shift_id: "shift_1",
       responsible_name: "Pim Counter",
     });
+  });
+
+  it("returns shift inventory summary for active cashier shift", async () => {
+    mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "CASHIER" });
+    mockGetShiftInventorySummaryByShiftId.mockResolvedValue([
+      {
+        product_id: "p_goods_1",
+        sku: "WATER-001",
+        name: "Mineral Water",
+        opening_stock: 3,
+        sold_quantity: 3,
+        remaining_stock: 0,
+      },
+    ]);
+
+    const response = await shiftInventorySummaryGET(
+      new Request("http://localhost/api/v1/shifts/shift_1/inventory-summary"),
+      { params: Promise.resolve({ shiftId: "shift_1" }) },
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(mockGetShiftInventorySummaryByShiftId).toHaveBeenCalledWith(
+      "u1",
+      "CASHIER",
+      "shift_1",
+    );
+    expect(body).toHaveLength(1);
+    expect(body[0]).toMatchObject({
+      sku: "WATER-001",
+      sold_quantity: 3,
+    });
+  });
+
+  it("returns 403 when cashier requests another shift inventory summary", async () => {
+    mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "CASHIER" });
+    mockGetShiftInventorySummaryByShiftId.mockRejectedValue(new Error("SHIFT_OWNER_MISMATCH"));
+
+    const response = await shiftInventorySummaryGET(
+      new Request("http://localhost/api/v1/shifts/shift_2/inventory-summary"),
+      { params: Promise.resolve({ shiftId: "shift_2" }) },
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(body.code).toBe("SHIFT_OWNER_MISMATCH");
+  });
+
+  it("returns 404 when shift inventory summary shift is missing", async () => {
+    mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "ADMIN" });
+    mockGetShiftInventorySummaryByShiftId.mockRejectedValue(new Error("SHIFT_NOT_FOUND"));
+
+    const response = await shiftInventorySummaryGET(
+      new Request("http://localhost/api/v1/shifts/missing/inventory-summary"),
+      { params: Promise.resolve({ shiftId: "missing" }) },
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(404);
+    expect(body.code).toBe("SHIFT_NOT_FOUND");
   });
 
   it("opens shift and returns journal reference", async () => {

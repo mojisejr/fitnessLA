@@ -1,6 +1,6 @@
-# API Interface Contract (Phase 2)
+# API Interface Contract (Phase 3)
 **Project:** fitnessLA (Gym Management System)
-**Status:** Current Working Contract as of 2026-03-12
+**Status:** Current Working Contract as of 2026-03-15
 **Governance:** Person A (Backend/Logic) & Person B (Frontend/UX) must adhere to these types and update this file when implementation drifts.
 
 ---
@@ -310,7 +310,31 @@ interface ShiftSummary {
   ```
 - **Validation:** ถ้า query date format ผิดหรือช่วงวันที่ไม่ถูกต้อง ให้คืน `400` พร้อม `code` เป็น `VALIDATION_ERROR` หรือ `INVALID_DATE_RANGE`
 
-**Current implementation status:** daily summary, shift summary, COA routes, product revenue mapping, และ general ledger CSV export ถูก implement แล้ว. P&L ยังรอ implementation.
+### **GET /api/v1/shifts/:shiftId/inventory-summary**
+- **Purpose:** ดึงสรุปสินค้าในกะสำหรับหน้า POS/Close Shift ในโหมด real adapter
+- **Auth:**
+  - `OWNER` | `ADMIN` ดูได้ทุกกะ
+  - `CASHIER` ดูได้เฉพาะกะของตัวเอง (`SHIFT_OWNER_MISMATCH` เมื่อข้ามสิทธิ์)
+- **Response:** `Array<ShiftInventorySummaryRow>`
+```typescript
+interface ShiftInventorySummaryRow {
+  product_id: string;
+  sku: string;
+  name: string;
+  opening_stock: number;
+  sold_quantity: number;
+  remaining_stock: number;
+}
+```
+- **Error Cases:**
+  - `404 { code: 'SHIFT_NOT_FOUND' }`
+  - `403 { code: 'SHIFT_OWNER_MISMATCH' }`
+- **Current Backend Semantics (Phase 3):**
+  - aggregate เฉพาะสินค้าประเภท `GOODS` ที่เกิดใน `order_items` ของกะนั้น
+  - ถ้าไม่พบ movement ของสินค้า `GOODS` ให้คืน `[]` (deterministic no-data fallback)
+  - เนื่องจาก stock ledger ยังไม่ persist ใน schema ปัจจุบัน จึงรายงาน `opening_stock` เท่ากับยอดขายสะสม และ `remaining_stock = 0` เพื่อคงความเสถียรของ contract จนกว่าจะเปิด inventory ledger phase ถัดไป
+
+**Current implementation status:** daily summary, shift summary, shift inventory summary, COA routes, product revenue mapping, และ general ledger CSV export ถูก implement แล้ว. P&L ยังรอ implementation.
 
 ---
 

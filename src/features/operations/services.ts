@@ -163,6 +163,15 @@ export type GeneralLedgerRowDto = {
   description: string;
 };
 
+export type ShiftInventorySummaryRowDto = {
+  product_id: string;
+  sku: string;
+  name: string;
+  opening_stock: number;
+  sold_quantity: number;
+  remaining_stock: number;
+};
+
 export type ChartOfAccountRecordDto = {
   account_id: string;
   account_code: string;
@@ -1341,6 +1350,87 @@ export async function getShiftSummaryByDate(
       cash_shortage: Number(totals.cash_shortage.toFixed(2)),
     },
   };
+}
+
+export async function getShiftInventorySummaryByShiftId(
+  requesterId: string,
+  requesterRole: "OWNER" | "ADMIN" | "CASHIER",
+  shiftId: string,
+): Promise<ShiftInventorySummaryRowDto[]> {
+  const normalizedShiftId = shiftId.trim();
+  if (!normalizedShiftId) {
+    throw new Error("SHIFT_NOT_FOUND");
+  }
+
+  const shift = await prisma.shift.findUnique({
+    where: { id: normalizedShiftId },
+    select: {
+      id: true,
+      staffId: true,
+    },
+  });
+
+  if (!shift) {
+    throw new Error("SHIFT_NOT_FOUND");
+  }
+
+  if (requesterRole === "CASHIER" && shift.staffId !== requesterId) {
+    throw new Error("SHIFT_OWNER_MISMATCH");
+  }
+
+  const soldItems = await prisma.orderItem.findMany({
+    where: {
+      order: {
+        shiftId: shift.id,
+        status: "COMPLETED",
+      },
+      product: {
+        productType: "GOODS",
+      },
+    },
+    select: {
+      quantity: true,
+      product: {
+        select: {
+          id: true,
+          sku: true,
+          name: true,
+        },
+      },
+    },
+  });
+
+  if (soldItems.length === 0) {
+    return [];
+  }
+
+  const rowsByProductId = new Map<string, ShiftInventorySummaryRowDto>();
+  for (const item of soldItems) {
+    const productId = item.product.id;
+    const current = rowsByProductId.get(productId) ?? {
+      product_id: productId,
+      sku: item.product.sku,
+      name: item.product.name,
+      opening_stock: 0,
+      sold_quantity: 0,
+      remaining_stock: 0,
+    };
+
+    current.sold_quantity += item.quantity;
+    rowsByProductId.set(productId, current);
+  }
+
+  return Array.from(rowsByProductId.values())
+    .sort((left, right) => left.sku.localeCompare(right.sku))
+    .map((row) => {
+      // Product stock ledger is not persisted yet; report deterministic sold totals with zeroed stock baseline.
+      const openingStock = row.sold_quantity;
+      return {
+        ...row,
+        opening_stock: openingStock,
+        remaining_stock: openingStock - row.sold_quantity,
+      };
+    });
 }
 
 export async function getGeneralLedgerReport(
