@@ -3,6 +3,7 @@ import type {
   ApiError,
   ChartOfAccountRecord,
   DailySummary,
+  ShiftSummary,
   EntityId,
   ExpenseResult,
   MemberSubscriptionRecord,
@@ -628,6 +629,85 @@ export const mockAppAdapter: AppAdapter = {
       shift_rows: buildBaseDailyShiftRows(date, baseSummary.shift_discrepancies),
       sales_rows: [...appendedRows, ...buildBaseDailySalesRows(date, baseSummary)],
     } satisfies DailySummary;
+  },
+
+  async getShiftSummary(date, responsibleName) {
+    const daily = await this.getDailySummary(date);
+    const trimmed = responsibleName?.trim();
+    const salesRows =
+      trimmed && trimmed.length > 0
+        ? daily.sales_rows.filter((row) => (row.responsible_name ?? row.cashier_name) === trimmed)
+        : daily.sales_rows;
+    const shiftRows =
+      trimmed && trimmed.length > 0
+        ? daily.shift_rows.filter((row) => row.responsible_name === trimmed)
+        : daily.shift_rows;
+
+    const shiftRowsWithAggregates = shiftRows.map((row) => {
+      const shiftSales = salesRows.filter((sale) => sale.shift_id === row.shift_id);
+      const salesByMethod = shiftSales.reduce(
+        (sum, sale) => {
+          sum[sale.payment_method] += sale.total_amount;
+          return sum;
+        },
+        { CASH: 0, PROMPTPAY: 0, CREDIT_CARD: 0 },
+      );
+
+      return {
+        ...row,
+        receipt_count: shiftSales.length,
+        sales_by_method: {
+          CASH: Number(salesByMethod.CASH.toFixed(2)),
+          PROMPTPAY: Number(salesByMethod.PROMPTPAY.toFixed(2)),
+          CREDIT_CARD: Number(salesByMethod.CREDIT_CARD.toFixed(2)),
+        },
+        total_sales: Number((salesByMethod.CASH + salesByMethod.PROMPTPAY + salesByMethod.CREDIT_CARD).toFixed(2)),
+      };
+    });
+
+    const totals = shiftRowsWithAggregates.reduce(
+      (acc, row) => {
+        acc.receipt_count += row.receipt_count;
+        acc.sales_by_method.CASH += row.sales_by_method.CASH;
+        acc.sales_by_method.PROMPTPAY += row.sales_by_method.PROMPTPAY;
+        acc.sales_by_method.CREDIT_CARD += row.sales_by_method.CREDIT_CARD;
+        acc.total_sales += row.total_sales;
+        if (row.difference > 0) {
+          acc.cash_overage += row.difference;
+        } else if (row.difference < 0) {
+          acc.cash_shortage += Math.abs(row.difference);
+        }
+        return acc;
+      },
+      {
+        receipt_count: 0,
+        sales_by_method: {
+          CASH: 0,
+          PROMPTPAY: 0,
+          CREDIT_CARD: 0,
+        },
+        total_sales: 0,
+        cash_overage: 0,
+        cash_shortage: 0,
+      },
+    );
+
+    return {
+      date,
+      sales_rows: salesRows,
+      shift_rows: shiftRowsWithAggregates,
+      totals: {
+        receipt_count: totals.receipt_count,
+        sales_by_method: {
+          CASH: Number(totals.sales_by_method.CASH.toFixed(2)),
+          PROMPTPAY: Number(totals.sales_by_method.PROMPTPAY.toFixed(2)),
+          CREDIT_CARD: Number(totals.sales_by_method.CREDIT_CARD.toFixed(2)),
+        },
+        total_sales: Number(totals.total_sales.toFixed(2)),
+        cash_overage: Number(totals.cash_overage.toFixed(2)),
+        cash_shortage: Number(totals.cash_shortage.toFixed(2)),
+      },
+    } satisfies ShiftSummary;
   },
 
   async listChartOfAccounts() {

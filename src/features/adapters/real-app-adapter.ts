@@ -2,6 +2,7 @@ import type {
   AdminUserRecord,
   CreateOrderRequest,
   DailySummary,
+  ShiftSummary,
   EntityId,
   MockShiftRecord,
   OrderResult,
@@ -199,6 +200,15 @@ export const realAppAdapter: AppAdapter = {
 
   async getDailySummary(date: string) {
     return fetchJson<DailySummary>(`/api/v1/reports/daily-summary?date=${encodeURIComponent(date)}`);
+  },
+
+  async getShiftSummary(date: string, responsibleName?: string) {
+    const params = new URLSearchParams({ date });
+    if (responsibleName?.trim()) {
+      params.set("responsible_name", responsibleName.trim());
+    }
+
+    return fetchJson<ShiftSummary>(`/api/v1/reports/shift-summary?${params.toString()}`);
   },
 
   async listChartOfAccounts() {

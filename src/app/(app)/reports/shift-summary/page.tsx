@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { RoleGuard } from "@/components/guards/role-guard";
 import { useAppAdapter } from "@/features/adapters/adapter-provider";
-import type { DailySummary, PaymentMethod } from "@/lib/contracts";
+import type { PaymentMethod, ShiftSummary } from "@/lib/contracts";
 import { formatCurrency, formatDateTime, getErrorMessage } from "@/lib/utils";
 
 const paymentMethodLabel: Record<PaymentMethod, string> = {
@@ -19,7 +19,7 @@ function todayAsInput() {
 export default function ShiftSummaryPage() {
   const adapter = useAppAdapter();
   const [date, setDate] = useState(todayAsInput);
-  const [summary, setSummary] = useState<DailySummary | null>(null);
+  const [summary, setSummary] = useState<ShiftSummary | null>(null);
   const [responsibleFilter, setResponsibleFilter] = useState("ALL");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -32,7 +32,7 @@ export default function ShiftSummaryPage() {
       setErrorMessage(null);
 
       try {
-        const result = await adapter.getDailySummary(date);
+        const result = await adapter.getShiftSummary(date);
         if (isActive) {
           setSummary(result);
         }

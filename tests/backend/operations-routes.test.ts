@@ -7,6 +7,7 @@ import { POST as createOrderPOST } from "../../src/app/api/v1/orders/route";
 import { POST as createExpensePOST } from "../../src/app/api/v1/expenses/route";
 import { POST as closeShiftPOST } from "../../src/app/api/v1/shifts/close/route";
 import { GET as dailySummaryGET } from "../../src/app/api/v1/reports/daily-summary/route";
+import { GET as shiftSummaryGET } from "../../src/app/api/v1/reports/shift-summary/route";
 import { GET as generalLedgerGET } from "../../src/app/api/v1/reports/gl/route";
 
 const mockResolveSessionFromRequest = vi.fn();
@@ -17,6 +18,7 @@ const mockCreateOrderWithJournal = vi.fn();
 const mockPostExpenseWithJournal = vi.fn();
 const mockCloseActiveShiftWithDifference = vi.fn();
 const mockGetDailySummaryByDate = vi.fn();
+const mockGetShiftSummaryByDate = vi.fn();
 const mockGetGeneralLedgerReport = vi.fn();
 
 vi.mock("../../src/lib/session", () => ({
@@ -32,6 +34,7 @@ vi.mock("../../src/features/operations/services", () => ({
   closeActiveShiftWithDifference: (...args: unknown[]) =>
     mockCloseActiveShiftWithDifference(...args),
   getDailySummaryByDate: (...args: unknown[]) => mockGetDailySummaryByDate(...args),
+  getShiftSummaryByDate: (...args: unknown[]) => mockGetShiftSummaryByDate(...args),
   getGeneralLedgerReport: (...args: unknown[]) => mockGetGeneralLedgerReport(...args),
 }));
 
@@ -274,6 +277,86 @@ describe("A-2 operations routes", () => {
       total_sales: 8420,
       net_cash_flow: 2480,
       shift_discrepancies: -60,
+    });
+  });
+
+  it("returns 403 when cashier requests shift summary", async () => {
+    mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "CASHIER" });
+
+    const response = await shiftSummaryGET(
+      new Request("http://localhost/api/v1/reports/shift-summary?date=2026-03-09"),
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(body.code).toBe("FORBIDDEN");
+  });
+
+  it("returns 400 when shift-summary date is invalid", async () => {
+    mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "ADMIN" });
+
+    const response = await shiftSummaryGET(
+      new Request("http://localhost/api/v1/reports/shift-summary?date=20260309"),
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(body.code).toBe("VALIDATION_ERROR");
+  });
+
+  it("returns shift summary for admin with optional responsible_name", async () => {
+    mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "ADMIN" });
+    mockGetShiftSummaryByDate.mockResolvedValue({
+      date: "2026-03-09",
+      sales_rows: [],
+      shift_rows: [
+        {
+          shift_id: "shift_1",
+          closed_at: "2026-03-09T11:30:00.000Z",
+          responsible_name: "Pim Counter",
+          expected_cash: 1000,
+          actual_cash: 980,
+          difference: -20,
+          receipt_count: 3,
+          sales_by_method: {
+            CASH: 980,
+            PROMPTPAY: 200,
+            CREDIT_CARD: 0,
+          },
+          total_sales: 1180,
+        },
+      ],
+      totals: {
+        receipt_count: 3,
+        sales_by_method: {
+          CASH: 980,
+          PROMPTPAY: 200,
+          CREDIT_CARD: 0,
+        },
+        total_sales: 1180,
+        cash_overage: 0,
+        cash_shortage: 20,
+      },
+    });
+
+    const response = await shiftSummaryGET(
+      new Request(
+        "http://localhost/api/v1/reports/shift-summary?date=2026-03-09&responsible_name=Pim%20Counter",
+      ),
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(mockGetShiftSummaryByDate).toHaveBeenCalledWith("2026-03-09", "Pim Counter");
+    expect(body).toMatchObject({
+      date: "2026-03-09",
+      totals: {
+        total_sales: 1180,
+      },
+    });
+    expect(body.shift_rows[0]).toMatchObject({
+      responsible_name: "Pim Counter",
+      receipt_count: 3,
     });
   });
 

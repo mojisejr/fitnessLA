@@ -4,6 +4,7 @@ import type {
   EntityId,
   CreateOrderRequest,
   DailySummary,
+  ShiftSummary,
   ExpenseResult,
   MockShiftRecord,
   OrderResult,
@@ -72,6 +73,7 @@ export interface AppAdapter {
     receiptFile?: File | null;
   }) => Promise<ExpenseResult>;
   getDailySummary: (date: string) => Promise<DailySummary>;
+  getShiftSummary: (date: string, responsibleName?: string) => Promise<ShiftSummary>;
   listChartOfAccounts: () => Promise<ChartOfAccountRecord[]>;
   createChartOfAccount: (input: CreateChartOfAccountInput) => Promise<ChartOfAccountRecord>;
   toggleChartOfAccount: (accountId: EntityId) => Promise<ChartOfAccountRecord>;
