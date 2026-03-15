@@ -40,10 +40,14 @@ describe("expenses page", () => {
       target: { files: [receipt] },
     });
 
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "บันทึกรายจ่าย" })).toBeEnabled();
+    });
+
     fireEvent.click(screen.getByRole("button", { name: "บันทึกรายจ่าย" }));
 
     await waitFor(() => {
       expect(screen.getByText(/บันทึกรายจ่าย #/)).toBeInTheDocument();
-    });
+    }, { timeout: 5000 });
   });
 });

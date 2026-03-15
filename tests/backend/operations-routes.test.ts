@@ -162,6 +162,33 @@ describe("A-2 operations routes", () => {
     expect(body.code).toBe("SHIFT_NOT_FOUND");
   });
 
+  it("returns 401 when inventory summary is requested without session", async () => {
+    mockResolveSessionFromRequest.mockResolvedValue(null);
+
+    const response = await shiftInventorySummaryGET(
+      new Request("http://localhost/api/v1/shifts/shift_1/inventory-summary"),
+      { params: Promise.resolve({ shiftId: "shift_1" }) },
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(401);
+    expect(body.code).toBe("UNAUTHENTICATED");
+  });
+
+  it("returns 500 when inventory summary service throws unexpected error", async () => {
+    mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "ADMIN" });
+    mockGetShiftInventorySummaryByShiftId.mockRejectedValue(new Error("DB_TIMEOUT"));
+
+    const response = await shiftInventorySummaryGET(
+      new Request("http://localhost/api/v1/shifts/shift_1/inventory-summary"),
+      { params: Promise.resolve({ shiftId: "shift_1" }) },
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(500);
+    expect(body.code).toBe("INTERNAL_SERVER_ERROR");
+  });
+
   it("opens shift and returns journal reference", async () => {
     mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "CASHIER" });
     mockOpenShiftWithJournal.mockResolvedValue({
