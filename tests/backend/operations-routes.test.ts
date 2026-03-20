@@ -268,6 +268,48 @@ describe("A-2 operations routes", () => {
     expect(body.code).toBe("SHIFT_NOT_OPEN");
   });
 
+  it("returns 409 when order shift owner mismatches current session", async () => {
+    mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "CASHIER" });
+    mockCreateOrderWithJournal.mockRejectedValue(new Error("SHIFT_OWNER_MISMATCH"));
+
+    const response = await createOrderPOST(
+      new Request("http://localhost/api/v1/orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          shift_id: "shift_2",
+          items: [{ product_id: "p1", quantity: 1 }],
+          payment_method: "CASH",
+        }),
+      }),
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(body.code).toBe("SHIFT_OWNER_MISMATCH");
+  });
+
+  it("returns 409 when order hits insufficient stock", async () => {
+    mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "CASHIER" });
+    mockCreateOrderWithJournal.mockRejectedValue(new Error("INSUFFICIENT_STOCK"));
+
+    const response = await createOrderPOST(
+      new Request("http://localhost/api/v1/orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          shift_id: "shift_1",
+          items: [{ product_id: "p1", quantity: 99 }],
+          payment_method: "CASH",
+        }),
+      }),
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(body.code).toBe("INSUFFICIENT_STOCK");
+  });
+
   it("creates expense with 201", async () => {
     mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "CASHIER" });
     mockPostExpenseWithJournal.mockResolvedValue({

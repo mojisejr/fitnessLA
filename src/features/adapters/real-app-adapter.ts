@@ -2,6 +2,7 @@ import type {
   AdminUserRecord,
   CreateOrderRequest,
   DailySummary,
+  MemberSubscriptionRecord,
   ShiftSummary,
   EntityId,
   MockShiftRecord,
@@ -93,6 +94,10 @@ export const realAppAdapter: AppAdapter = {
     return fetchOptionalJson<MockShiftRecord>("/api/v1/shifts/active");
   },
 
+  async listMembers() {
+    return fetchJson<MemberSubscriptionRecord[]>("/api/v1/members");
+  },
+
   async listProducts() {
     return fetchJson<Product[]>("/api/v1/products");
   },
@@ -108,6 +113,9 @@ export const realAppAdapter: AppAdapter = {
         product_type: input.productType,
         revenue_account_id:
           input.revenueAccountId === undefined ? undefined : String(input.revenueAccountId),
+        stock_on_hand: input.stockOnHand ?? undefined,
+        membership_period: input.membershipPeriod ?? undefined,
+        membership_duration_days: input.membershipDurationDays ?? undefined,
       }),
     });
   },
@@ -122,6 +130,9 @@ export const realAppAdapter: AppAdapter = {
         price: input.price,
         revenue_account_id:
           input.revenueAccountId === undefined ? undefined : String(input.revenueAccountId),
+        stock_on_hand: input.stockOnHand ?? undefined,
+        membership_period: input.membershipPeriod ?? undefined,
+        membership_duration_days: input.membershipDurationDays ?? undefined,
       }),
     });
   },

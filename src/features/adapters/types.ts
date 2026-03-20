@@ -4,6 +4,7 @@ import type {
   EntityId,
   CreateOrderRequest,
   DailySummary,
+  MemberSubscriptionRecord,
   ShiftSummary,
   ExpenseResult,
   MockShiftRecord,
@@ -37,21 +38,26 @@ export type UpdateProductInput = {
   price: number;
   revenueAccountId?: EntityId;
   stockOnHand?: number | null;
+  membershipPeriod?: "DAILY" | "MONTHLY" | "QUARTERLY" | "SEMIANNUAL" | "YEARLY" | null;
+  membershipDurationDays?: number | null;
 };
 
 export type CreateProductInput = {
   sku: string;
   name: string;
   price: number;
-  productType: "GOODS" | "SERVICE";
+  productType: "GOODS" | "SERVICE" | "MEMBERSHIP";
   revenueAccountId?: EntityId;
   stockOnHand?: number | null;
+  membershipPeriod?: "DAILY" | "MONTHLY" | "QUARTERLY" | "SEMIANNUAL" | "YEARLY" | null;
+  membershipDurationDays?: number | null;
 };
 
 export interface AppAdapter {
   mode: "mock" | "real";
   authenticateUser: (username: string, password: string) => Promise<UserSession>;
   getActiveShift: () => Promise<MockShiftRecord | null>;
+  listMembers: () => Promise<MemberSubscriptionRecord[]>;
   listProducts: () => Promise<Product[]>;
   createProduct: (input: CreateProductInput) => Promise<Product>;
   updateProduct: (input: UpdateProductInput) => Promise<Product>;

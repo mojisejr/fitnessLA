@@ -155,13 +155,36 @@ model Product {
   price            Decimal        @db.Decimal(12, 2)
   productType      String
   isActive         Boolean        @default(true)
+  trackStock       Boolean        @default(false)
+  stockOnHand      Int?
+  membershipPeriod String?
+  membershipDurationDays Int?
   revenueAccountId String?
   revenueAccount   ChartOfAccount? @relation(fields: [revenueAccountId], references: [id])
   orderItems       OrderItem[]
+  memberSubscriptions MemberSubscription[]
   createdAt        DateTime       @default(now())
   updatedAt        DateTime       @updatedAt
 
   @@map("products")
+}
+
+model MemberSubscription {
+  id                     String   @id @default(cuid())
+  memberCode             String   @unique
+  fullName               String
+  phone                  String
+  membershipProductId    String
+  membershipProduct      Product  @relation(fields: [membershipProductId], references: [id])
+  startedAt              DateTime
+  expiresAt              DateTime
+  checkedInAt            DateTime?
+  renewedAt              DateTime?
+  renewalStatus          String   @default("ACTIVE")
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  @@map("member_subscriptions")
 }
 
 model Order {

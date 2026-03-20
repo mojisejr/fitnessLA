@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { RoleGuard } from "@/components/guards/role-guard";
-import { getMemberRegistrySnapshot, subscribeMemberRegistry } from "@/features/members/member-registry";
+import { useAppAdapter } from "@/features/adapters/adapter-provider";
+import type { MemberSubscriptionRecord } from "@/lib/contracts";
 import { formatDate, formatDateTime } from "@/lib/utils";
 
 function referenceDateAsInput() {
@@ -10,12 +11,42 @@ function referenceDateAsInput() {
 }
 
 export default function MembersPage() {
+  const adapter = useAppAdapter();
   const [referenceDate, setReferenceDate] = useState(referenceDateAsInput);
-  const memberRegistry = useSyncExternalStore(
-    subscribeMemberRegistry,
-    getMemberRegistrySnapshot,
-    getMemberRegistrySnapshot,
-  );
+  const [memberRegistry, setMemberRegistry] = useState<MemberSubscriptionRecord[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let isActive = true;
+
+    async function loadMembers() {
+      setIsLoading(true);
+      setLoadError(null);
+
+      try {
+        const result = await adapter.listMembers();
+        if (isActive) {
+          setMemberRegistry(result);
+        }
+      } catch (error) {
+        if (isActive) {
+          setMemberRegistry([]);
+          setLoadError(error instanceof Error ? error.message : "ไม่สามารถโหลดข้อมูลสมาชิกได้");
+        }
+      } finally {
+        if (isActive) {
+          setIsLoading(false);
+        }
+      }
+    }
+
+    void loadMembers();
+
+    return () => {
+      isActive = false;
+    };
+  }, [adapter]);
 
   const memberRows = useMemo(() => {
     const reference = new Date(`${referenceDate}T23:59:59`);
@@ -86,7 +117,15 @@ export default function MembersPage() {
         </section>
 
         <section className="rounded-[28px] border border-line bg-surface-strong p-6 md:p-8">
-          {memberRows.length === 0 ? (
+          {isLoading ? (
+            <div className="rounded-3xl border border-dashed border-line bg-[#161510] p-8 text-sm leading-7 text-muted">
+              กำลังโหลดสมาชิก...
+            </div>
+          ) : loadError ? (
+            <div className="rounded-3xl border border-warning bg-warning-soft p-8 text-sm leading-7 text-foreground">
+              {loadError}
+            </div>
+          ) : memberRows.length === 0 ? (
             <div className="rounded-3xl border border-dashed border-line bg-[#161510] p-8 text-sm leading-7 text-muted">
               ยังไม่มีสมาชิกในระบบตอนนี้ เมื่อขายแพ็กเกจสมาชิกผ่านหน้า POS แล้ว รายชื่อสมาชิกจะมาแสดงที่หน้านี้อัตโนมัติ
             </div>

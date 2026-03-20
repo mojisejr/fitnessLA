@@ -10,6 +10,10 @@ export type ProductDto = {
   price: number;
   product_type: "GOODS" | "SERVICE" | "MEMBERSHIP";
   revenue_account_id?: string;
+  track_stock?: boolean;
+  stock_on_hand?: number | null;
+  membership_period?: "DAILY" | "MONTHLY" | "QUARTERLY" | "SEMIANNUAL" | "YEARLY" | null;
+  membership_duration_days?: number | null;
 };
 
 export type CreateProductInputDto = {
@@ -18,6 +22,9 @@ export type CreateProductInputDto = {
   price: number;
   product_type: "GOODS" | "SERVICE" | "MEMBERSHIP";
   revenue_account_id?: string;
+  stock_on_hand?: number | null;
+  membership_period?: "DAILY" | "MONTHLY" | "QUARTERLY" | "SEMIANNUAL" | "YEARLY" | null;
+  membership_duration_days?: number | null;
 };
 
 export type UpdateProductInputDto = {
@@ -26,6 +33,9 @@ export type UpdateProductInputDto = {
   name: string;
   price: number;
   revenue_account_id?: string;
+  stock_on_hand?: number | null;
+  membership_period?: "DAILY" | "MONTHLY" | "QUARTERLY" | "SEMIANNUAL" | "YEARLY" | null;
+  membership_duration_days?: number | null;
 };
 
 export type ActiveShiftDto = {
@@ -256,6 +266,97 @@ function assertProductType(value: string): "GOODS" | "SERVICE" | "MEMBERSHIP" {
   return "SERVICE";
 }
 
+function inferMembershipPeriod(
+  sku: string,
+  membershipPeriod?: string | null,
+): "DAILY" | "MONTHLY" | "QUARTERLY" | "SEMIANNUAL" | "YEARLY" | null {
+  if (
+    membershipPeriod === "DAILY" ||
+    membershipPeriod === "MONTHLY" ||
+    membershipPeriod === "QUARTERLY" ||
+    membershipPeriod === "SEMIANNUAL" ||
+    membershipPeriod === "YEARLY"
+  ) {
+    return membershipPeriod;
+  }
+
+  if (sku === "DAYPASS") {
+    return "DAILY";
+  }
+
+  if (sku === "MEM-MONTH") {
+    return "MONTHLY";
+  }
+
+  if (sku === "MEM-3MONTH") {
+    return "QUARTERLY";
+  }
+
+  if (sku === "MEM-6MONTH") {
+    return "SEMIANNUAL";
+  }
+
+  if (sku === "MEM-YEAR") {
+    return "YEARLY";
+  }
+
+  return null;
+}
+
+function defaultMembershipDurationDays(period: ProductDto["membership_period"]): number | null {
+  switch (period) {
+    case "DAILY":
+      return 1;
+    case "MONTHLY":
+      return 30;
+    case "QUARTERLY":
+      return 90;
+    case "SEMIANNUAL":
+      return 180;
+    case "YEARLY":
+      return 365;
+    default:
+      return null;
+  }
+}
+
+function normalizeMembershipMetadata(input: {
+  productType: "GOODS" | "SERVICE" | "MEMBERSHIP";
+  sku: string;
+  membershipPeriod?: ProductDto["membership_period"];
+  membershipDurationDays?: number | null;
+}) {
+  if (input.productType !== "MEMBERSHIP") {
+    return {
+      membershipPeriod: null,
+      membershipDurationDays: null,
+      trackStock: false,
+      stockOnHand: null,
+    };
+  }
+
+  const period = inferMembershipPeriod(input.sku, input.membershipPeriod);
+  const duration = input.membershipDurationDays ?? defaultMembershipDurationDays(period);
+
+  return {
+    membershipPeriod: period,
+    membershipDurationDays: duration,
+    trackStock: false,
+    stockOnHand: null,
+  };
+}
+
+function calculateMembershipExpiry(startedAt: Date, durationDays: number) {
+  const expiresAt = new Date(startedAt);
+  expiresAt.setUTCDate(expiresAt.getUTCDate() + durationDays);
+  expiresAt.setUTCHours(23, 59, 59, 0);
+  return expiresAt;
+}
+
+function createMembershipPhone(customerInfo: CreateOrderInput["customer_info"]) {
+  return customerInfo?.tax_id?.trim() || "รออัปเดตเบอร์โทร";
+}
+
 function mapProductRecord(product: {
   id: string;
   sku: string;
@@ -263,14 +364,28 @@ function mapProductRecord(product: {
   price: Prisma.Decimal;
   productType: string;
   revenueAccountId?: string | null;
+  trackStock?: boolean | null;
+  stockOnHand?: number | null;
+  membershipPeriod?: string | null;
+  membershipDurationDays?: number | null;
 }): ProductDto {
+  const productType = assertProductType(product.productType);
+  const membershipPeriod = inferMembershipPeriod(product.sku, product.membershipPeriod);
+
   return {
     product_id: product.id,
     sku: product.sku,
     name: product.name,
     price: Number(product.price),
-    product_type: assertProductType(product.productType),
+    product_type: productType,
     revenue_account_id: product.revenueAccountId ?? undefined,
+    track_stock: product.trackStock ?? productType === "GOODS",
+    stock_on_hand: product.trackStock ?? productType === "GOODS" ? product.stockOnHand ?? 0 : null,
+    membership_period: productType === "MEMBERSHIP" ? membershipPeriod : null,
+    membership_duration_days:
+      productType === "MEMBERSHIP"
+        ? product.membershipDurationDays ?? defaultMembershipDurationDays(membershipPeriod)
+        : null,
   };
 }
 
@@ -380,7 +495,45 @@ export async function listProducts(): Promise<ProductDto[]> {
 }
 
 export async function listMembers(): Promise<MemberSubscriptionRecord[]> {
-  return [];
+  const members = await prisma.memberSubscription.findMany({
+    orderBy: [{ createdAt: "desc" }],
+    select: {
+      id: true,
+      memberCode: true,
+      fullName: true,
+      phone: true,
+      startedAt: true,
+      expiresAt: true,
+      checkedInAt: true,
+      renewedAt: true,
+      renewalStatus: true,
+      membershipProduct: {
+        select: {
+          id: true,
+          name: true,
+          sku: true,
+          membershipPeriod: true,
+          membershipDurationDays: true,
+        },
+      },
+    },
+  });
+
+  return members.map((member) => ({
+    member_id: member.id,
+    member_code: member.memberCode,
+    full_name: member.fullName,
+    phone: member.phone,
+    membership_product_id: member.membershipProduct.id,
+    membership_name: member.membershipProduct.name,
+    membership_period:
+      inferMembershipPeriod(member.membershipProduct.sku, member.membershipProduct.membershipPeriod) ?? "MONTHLY",
+    started_at: member.startedAt.toISOString(),
+    expires_at: member.expiresAt.toISOString(),
+    checked_in_at: member.checkedInAt?.toISOString() ?? null,
+    renewed_at: member.renewedAt?.toISOString() ?? null,
+    renewal_status: member.renewalStatus === "RENEWED" ? "RENEWED" : "ACTIVE",
+  }));
 }
 
 export async function renewMember(memberId: string): Promise<MemberSubscriptionRecord> {
@@ -388,7 +541,87 @@ export async function renewMember(memberId: string): Promise<MemberSubscriptionR
     throw new Error("MEMBER_NOT_FOUND");
   }
 
-  throw new Error("MEMBER_NOT_FOUND");
+  const member = await prisma.memberSubscription.findUnique({
+    where: { id: memberId.trim() },
+    select: {
+      id: true,
+      memberCode: true,
+      fullName: true,
+      phone: true,
+      startedAt: true,
+      expiresAt: true,
+      checkedInAt: true,
+      renewedAt: true,
+      membershipProduct: {
+        select: {
+          id: true,
+          name: true,
+          sku: true,
+          membershipPeriod: true,
+          membershipDurationDays: true,
+        },
+      },
+    },
+  });
+
+  if (!member) {
+    throw new Error("MEMBER_NOT_FOUND");
+  }
+
+  const membershipPeriod = inferMembershipPeriod(
+    member.membershipProduct.sku,
+    member.membershipProduct.membershipPeriod,
+  ) ?? "MONTHLY";
+  const durationDays = member.membershipProduct.membershipDurationDays ?? defaultMembershipDurationDays(membershipPeriod) ?? 30;
+  const now = new Date();
+  const nextStart = member.expiresAt > now ? new Date(member.expiresAt) : now;
+  nextStart.setUTCDate(nextStart.getUTCDate() + 1);
+  nextStart.setUTCHours(0, 0, 0, 0);
+  const renewedAt = new Date();
+
+  const updated = await prisma.memberSubscription.update({
+    where: { id: member.id },
+    data: {
+      startedAt: nextStart,
+      expiresAt: calculateMembershipExpiry(nextStart, durationDays),
+      renewedAt,
+      renewalStatus: "RENEWED",
+    },
+    select: {
+      id: true,
+      memberCode: true,
+      fullName: true,
+      phone: true,
+      startedAt: true,
+      expiresAt: true,
+      checkedInAt: true,
+      renewedAt: true,
+      renewalStatus: true,
+      membershipProduct: {
+        select: {
+          id: true,
+          name: true,
+          sku: true,
+          membershipPeriod: true,
+        },
+      },
+    },
+  });
+
+  return {
+    member_id: updated.id,
+    member_code: updated.memberCode,
+    full_name: updated.fullName,
+    phone: updated.phone,
+    membership_product_id: updated.membershipProduct.id,
+    membership_name: updated.membershipProduct.name,
+    membership_period: inferMembershipPeriod(updated.membershipProduct.sku, updated.membershipProduct.membershipPeriod) ?? "MONTHLY",
+    started_at: updated.startedAt.toISOString(),
+    expires_at: updated.expiresAt.toISOString(),
+    checked_in_at: updated.checkedInAt?.toISOString() ?? null,
+    renewed_at: updated.renewedAt?.toISOString() ?? null,
+    renewal_status: "RENEWED",
+  };
 }
 
 export async function restartMember(memberId: string): Promise<MemberSubscriptionRecord> {
@@ -396,7 +629,79 @@ export async function restartMember(memberId: string): Promise<MemberSubscriptio
     throw new Error("MEMBER_NOT_FOUND");
   }
 
-  throw new Error("MEMBER_NOT_FOUND");
+  const member = await prisma.memberSubscription.findUnique({
+    where: { id: memberId.trim() },
+    select: {
+      id: true,
+      memberCode: true,
+      fullName: true,
+      phone: true,
+      checkedInAt: true,
+      membershipProduct: {
+        select: {
+          id: true,
+          name: true,
+          sku: true,
+          membershipPeriod: true,
+          membershipDurationDays: true,
+        },
+      },
+    },
+  });
+
+  if (!member) {
+    throw new Error("MEMBER_NOT_FOUND");
+  }
+
+  const membershipPeriod = inferMembershipPeriod(
+    member.membershipProduct.sku,
+    member.membershipProduct.membershipPeriod,
+  ) ?? "MONTHLY";
+  const durationDays = member.membershipProduct.membershipDurationDays ?? defaultMembershipDurationDays(membershipPeriod) ?? 30;
+  const restartedAt = new Date();
+
+  const updated = await prisma.memberSubscription.update({
+    where: { id: member.id },
+    data: {
+      startedAt: restartedAt,
+      expiresAt: calculateMembershipExpiry(restartedAt, durationDays),
+      renewedAt: restartedAt,
+      renewalStatus: "ACTIVE",
+    },
+    select: {
+      id: true,
+      memberCode: true,
+      fullName: true,
+      phone: true,
+      startedAt: true,
+      expiresAt: true,
+      checkedInAt: true,
+      renewedAt: true,
+      membershipProduct: {
+        select: {
+          id: true,
+          name: true,
+          sku: true,
+          membershipPeriod: true,
+        },
+      },
+    },
+  });
+
+  return {
+    member_id: updated.id,
+    member_code: updated.memberCode,
+    full_name: updated.fullName,
+    phone: updated.phone,
+    membership_product_id: updated.membershipProduct.id,
+    membership_name: updated.membershipProduct.name,
+    membership_period: inferMembershipPeriod(updated.membershipProduct.sku, updated.membershipProduct.membershipPeriod) ?? "MONTHLY",
+    started_at: updated.startedAt.toISOString(),
+    expires_at: updated.expiresAt.toISOString(),
+    checked_in_at: updated.checkedInAt?.toISOString() ?? null,
+    renewed_at: updated.renewedAt?.toISOString() ?? null,
+    renewal_status: "ACTIVE",
+  };
 }
 
 export async function createProduct(input: CreateProductInputDto): Promise<ProductDto> {
@@ -413,6 +718,13 @@ export async function createProduct(input: CreateProductInputDto): Promise<Produ
 
   const productType = assertProductType(input.product_type);
   const revenueAccountId = await resolveRevenueAccountId(prisma, input.revenue_account_id);
+  const stockOnHand = productType === "GOODS" ? Math.max(0, input.stock_on_hand ?? 0) : null;
+  const membershipMetadata = normalizeMembershipMetadata({
+    productType,
+    sku,
+    membershipPeriod: input.membership_period,
+    membershipDurationDays: input.membership_duration_days ?? null,
+  });
 
   const created = await prisma.product.create({
     data: {
@@ -420,6 +732,10 @@ export async function createProduct(input: CreateProductInputDto): Promise<Produ
       name,
       price: asMoney(input.price),
       productType,
+      trackStock: productType === "GOODS",
+      stockOnHand,
+      membershipPeriod: membershipMetadata.membershipPeriod,
+      membershipDurationDays: membershipMetadata.membershipDurationDays,
       isActive: true,
       revenueAccountId,
     },
@@ -449,6 +765,13 @@ export async function updateProduct(input: UpdateProductInputDto): Promise<Produ
   }
 
   const revenueAccountId = await resolveRevenueAccountId(prisma, input.revenue_account_id);
+  const productType = assertProductType(existing.productType);
+  const membershipMetadata = normalizeMembershipMetadata({
+    productType,
+    sku,
+    membershipPeriod: input.membership_period ?? inferMembershipPeriod(existing.sku, existing.membershipPeriod),
+    membershipDurationDays: input.membership_duration_days ?? existing.membershipDurationDays ?? null,
+  });
 
   const updated = await prisma.product.update({
     where: { id: existing.id },
@@ -456,6 +779,10 @@ export async function updateProduct(input: UpdateProductInputDto): Promise<Produ
       sku,
       name,
       price: asMoney(input.price),
+      trackStock: productType === "GOODS",
+      stockOnHand: productType === "GOODS" ? Math.max(0, input.stock_on_hand ?? existing.stockOnHand ?? 0) : null,
+      membershipPeriod: membershipMetadata.membershipPeriod,
+      membershipDurationDays: membershipMetadata.membershipDurationDays,
       revenueAccountId,
     },
   });
@@ -607,6 +934,19 @@ export async function createOrderWithJournal(
       throw new Error("PRODUCT_NOT_FOUND");
     }
 
+    const membershipUnits = input.items.reduce((sum, item) => {
+      const product = products.find((candidate) => candidate.id === item.product_id);
+      return sum + (product?.productType === "MEMBERSHIP" ? item.quantity : 0);
+    }, 0);
+
+    if (membershipUnits > 1) {
+      throw new Error("MEMBERSHIP_SINGLE_QUANTITY");
+    }
+
+    if (membershipUnits > 0 && !input.customer_info?.name?.trim()) {
+      throw new Error("MEMBERSHIP_CUSTOMER_REQUIRED");
+    }
+
     const productMap = new Map(products.map((product) => [product.id, product]));
     const normalizedItems = input.items.map((item) => {
       const product = productMap.get(item.product_id);
@@ -614,11 +954,26 @@ export async function createOrderWithJournal(
         throw new Error("PRODUCT_NOT_FOUND");
       }
 
+      if (product.productType === "MEMBERSHIP" && item.quantity > 1) {
+        throw new Error("MEMBERSHIP_SINGLE_QUANTITY");
+      }
+
+      if (product.trackStock && typeof product.stockOnHand === "number" && item.quantity > product.stockOnHand) {
+        throw new Error("INSUFFICIENT_STOCK");
+      }
+
       const unitPrice = product.price;
       const totalPrice = unitPrice.mul(new Prisma.Decimal(item.quantity));
 
       return {
         productId: product.id,
+        productSku: product.sku,
+        productName: product.name,
+        productType: assertProductType(product.productType),
+        trackStock: product.trackStock,
+        stockOnHand: product.stockOnHand,
+        membershipPeriod: inferMembershipPeriod(product.sku, product.membershipPeriod),
+        membershipDurationDays: product.membershipDurationDays,
         quantity: item.quantity,
         unitPrice,
         totalPrice,
@@ -656,6 +1011,19 @@ export async function createOrderWithJournal(
       })),
     });
 
+    for (const item of normalizedItems) {
+      if (!item.trackStock || typeof item.stockOnHand !== "number") {
+        continue;
+      }
+
+      await tx.product.update({
+        where: { id: item.productId },
+        data: {
+          stockOnHand: Math.max(0, item.stockOnHand - item.quantity),
+        },
+      });
+    }
+
     await tx.taxDocument.create({
       data: {
         orderId: order.id,
@@ -666,6 +1034,25 @@ export async function createOrderWithJournal(
         customerTaxId: input.customer_info?.tax_id,
       },
     });
+
+    const membershipItem = normalizedItems.find((item) => item.productType === "MEMBERSHIP");
+    if (membershipItem && input.customer_info?.name?.trim()) {
+      const memberSequence = await reserveDocumentNumber(tx, "MEMBER", "MBR");
+      const startedAt = new Date();
+      const durationDays = membershipItem.membershipDurationDays ?? defaultMembershipDurationDays(membershipItem.membershipPeriod) ?? 30;
+
+      await tx.memberSubscription.create({
+        data: {
+          memberCode: memberSequence.documentNumber,
+          fullName: input.customer_info.name.trim(),
+          phone: createMembershipPhone(input.customer_info),
+          membershipProductId: membershipItem.productId,
+          startedAt,
+          expiresAt: calculateMembershipExpiry(startedAt, durationDays),
+          renewalStatus: "ACTIVE",
+        },
+      });
+    }
 
     if (input.simulate_journal_failure) {
       throw new Error("SIMULATED_JOURNAL_FAILURE");
@@ -1416,6 +1803,7 @@ export async function getShiftInventorySummaryByShiftId(
           id: true,
           sku: true,
           name: true,
+          stockOnHand: true,
         },
       },
     },
@@ -1449,7 +1837,7 @@ export async function getShiftInventorySummaryByShiftId(
       return {
         ...row,
         opening_stock: openingStock,
-        remaining_stock: openingStock - row.sold_quantity,
+        remaining_stock: Math.max(0, openingStock - row.sold_quantity),
       };
     });
 }

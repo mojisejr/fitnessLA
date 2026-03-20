@@ -287,6 +287,11 @@ export const mockAppAdapter: AppAdapter = {
     return null;
   },
 
+  async listMembers() {
+    await sleep(120);
+    return readMemberRegistry();
+  },
+
   async listProducts() {
     await sleep(180);
     return productsState.map((product) => ({ ...product } satisfies Product));
@@ -318,6 +323,9 @@ export const mockAppAdapter: AppAdapter = {
       revenue_account_id: revenueAccount?.account_id,
       track_stock: input.productType === "GOODS",
       stock_on_hand: input.productType === "GOODS" ? (input.stockOnHand ?? 0) : null,
+      membership_period: input.productType === "MEMBERSHIP" ? (input.membershipPeriod ?? "MONTHLY") : null,
+      membership_duration_days:
+        input.productType === "MEMBERSHIP" ? (input.membershipDurationDays ?? 30) : null,
     };
 
     productSequence += 1;
