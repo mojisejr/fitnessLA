@@ -149,4 +149,72 @@ describe("members routes", () => {
 
     expect(response.status).toBe(404);
   });
+
+  it("POST /members/:memberId/renew returns 401 for unauthenticated request", async () => {
+    mockResolveSessionFromRequest.mockResolvedValue(null);
+
+    const response = await memberRenewPOST(
+      new Request("http://localhost/api/v1/members/m1/renew", { method: "POST" }),
+      { params: Promise.resolve({ memberId: "m1" }) },
+    );
+
+    expect(response.status).toBe(401);
+  });
+
+  it("POST /members/:memberId/renew returns 500 for unexpected service failure", async () => {
+    mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "ADMIN" });
+    mockRenewMember.mockRejectedValue(new Error("database offline"));
+
+    const response = await memberRenewPOST(
+      new Request("http://localhost/api/v1/members/m1/renew", { method: "POST" }),
+      { params: Promise.resolve({ memberId: "m1" }) },
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(500);
+    expect(body).toEqual({
+      code: "INTERNAL_SERVER_ERROR",
+      message: "ไม่สามารถต่ออายุสมาชิกได้",
+    });
+  });
+
+  it("POST /members/:memberId/restart returns 401 for unauthenticated request", async () => {
+    mockResolveSessionFromRequest.mockResolvedValue(null);
+
+    const response = await memberRestartPOST(
+      new Request("http://localhost/api/v1/members/m1/restart", { method: "POST" }),
+      { params: Promise.resolve({ memberId: "m1" }) },
+    );
+
+    expect(response.status).toBe(401);
+  });
+
+  it("POST /members/:memberId/restart returns 404 for unknown member", async () => {
+    mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "ADMIN" });
+    mockRestartMember.mockRejectedValue(new Error("MEMBER_NOT_FOUND"));
+
+    const response = await memberRestartPOST(
+      new Request("http://localhost/api/v1/members/unknown/restart", { method: "POST" }),
+      { params: Promise.resolve({ memberId: "unknown" }) },
+    );
+
+    expect(response.status).toBe(404);
+  });
+
+  it("POST /members/:memberId/restart returns 500 for unexpected service failure", async () => {
+    mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "ADMIN" });
+    mockRestartMember.mockRejectedValue(new Error("database offline"));
+
+    const response = await memberRestartPOST(
+      new Request("http://localhost/api/v1/members/m1/restart", { method: "POST" }),
+      { params: Promise.resolve({ memberId: "m1" }) },
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(500);
+    expect(body).toEqual({
+      code: "INTERNAL_SERVER_ERROR",
+      message: "ไม่สามารถเริ่มรอบสมาชิกใหม่ได้",
+    });
+  });
 });

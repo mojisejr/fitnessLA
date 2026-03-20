@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
+import type { MemberSubscriptionRecord } from "@/lib/contracts";
 
 export type ProductDto = {
   product_id: string;
@@ -376,6 +377,26 @@ export async function listProducts(): Promise<ProductDto[]> {
       revenueAccountId: product.revenueAccountId,
     }),
   );
+}
+
+export async function listMembers(): Promise<MemberSubscriptionRecord[]> {
+  return [];
+}
+
+export async function renewMember(memberId: string): Promise<MemberSubscriptionRecord> {
+  if (!memberId.trim()) {
+    throw new Error("MEMBER_NOT_FOUND");
+  }
+
+  throw new Error("MEMBER_NOT_FOUND");
+}
+
+export async function restartMember(memberId: string): Promise<MemberSubscriptionRecord> {
+  if (!memberId.trim()) {
+    throw new Error("MEMBER_NOT_FOUND");
+  }
+
+  throw new Error("MEMBER_NOT_FOUND");
 }
 
 export async function createProduct(input: CreateProductInputDto): Promise<ProductDto> {
