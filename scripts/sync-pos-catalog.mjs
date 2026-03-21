@@ -2,6 +2,32 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
 import posCatalog from "../src/lib/pos-catalog.json" with { type: "json" };
 
+const legacyPosFixups = [
+    {
+        sku: "MEM-001",
+        name: "Monthly Membership",
+        price: 1500,
+        productType: "MEMBERSHIP",
+        revenueCode: "4020",
+        membershipPeriod: "MONTHLY",
+        membershipDurationDays: 30,
+    },
+    {
+        sku: "PT-001",
+        name: "Personal Training Session",
+        price: 1500,
+        productType: "SERVICE",
+        revenueCode: "4010",
+    },
+    {
+        sku: "SNK-001",
+        name: "Protein Snack",
+        price: 85,
+        productType: "GOODS",
+        revenueCode: "4010",
+    },
+];
+
 const connectionString = process.env.DIRECT_URL ?? process.env.DATABASE_URL;
 
 if (!connectionString) {
@@ -13,6 +39,8 @@ const prisma = new PrismaClient({
     adapter: new PrismaPg({ connectionString }),
 });
 
+const normalizedCatalog = [...legacyPosFixups, ...posCatalog];
+
 async function main() {
     const revenueAccounts = await prisma.chartOfAccount.findMany({
         where: { code: { in: ["4010", "4020"] } },
@@ -23,7 +51,7 @@ async function main() {
 
     let syncedCount = 0;
 
-    for (const product of posCatalog) {
+    for (const product of normalizedCatalog) {
         await prisma.product.upsert({
             where: { sku: product.sku },
             update: {
@@ -32,6 +60,8 @@ async function main() {
                 productType: product.productType,
                 isActive: true,
                 revenueAccountId: revenueAccountIdByCode.get(product.revenueCode) ?? null,
+                membershipPeriod: product.membershipPeriod ?? null,
+                membershipDurationDays: product.membershipDurationDays ?? null,
             },
             create: {
                 sku: product.sku,
@@ -40,6 +70,8 @@ async function main() {
                 productType: product.productType,
                 isActive: true,
                 revenueAccountId: revenueAccountIdByCode.get(product.revenueCode) ?? null,
+                membershipPeriod: product.membershipPeriod ?? null,
+                membershipDurationDays: product.membershipDurationDays ?? null,
             },
         });
 

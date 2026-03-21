@@ -51,9 +51,29 @@ const seedChartOfAccounts = [
 ];
 
 const seedProducts = [
-  { sku: "PT-001", name: "Personal Training Session", price: "1500.00", productType: "SERVICE" },
-  { sku: "MEM-001", name: "Monthly Membership", price: "1200.00", productType: "MEMBERSHIP" },
-  { sku: "SNK-001", name: "Protein Snack", price: "85.00", productType: "GOODS" },
+  {
+    sku: "PT-001",
+    name: "Personal Training Session",
+    price: "1500.00",
+    productType: "SERVICE",
+    revenueCode: "4010",
+  },
+  {
+    sku: "MEM-001",
+    name: "Monthly Membership",
+    price: "1500.00",
+    productType: "MEMBERSHIP",
+    revenueCode: "4020",
+    membershipPeriod: "MONTHLY",
+    membershipDurationDays: 30,
+  },
+  {
+    sku: "SNK-001",
+    name: "Protein Snack",
+    price: "85.00",
+    productType: "GOODS",
+    revenueCode: "4010",
+  },
 ];
 
 async function upsertCredentialAccount(userId, username, passwordHash) {
@@ -132,6 +152,12 @@ async function seedRealMode() {
     });
   }
 
+  const revenueAccounts = await prisma.chartOfAccount.findMany({
+    where: { code: { in: ["4010", "4020"] } },
+    select: { id: true, code: true },
+  });
+  const revenueAccountIdByCode = new Map(revenueAccounts.map((account) => [account.code, account.id]));
+
   for (const product of seedProducts) {
     await prisma.product.upsert({
       where: { sku: product.sku },
@@ -140,10 +166,19 @@ async function seedRealMode() {
         price: product.price,
         productType: product.productType,
         isActive: true,
+        revenueAccountId: revenueAccountIdByCode.get(product.revenueCode) ?? null,
+        membershipPeriod: product.membershipPeriod ?? null,
+        membershipDurationDays: product.membershipDurationDays ?? null,
       },
       create: {
-        ...product,
+        sku: product.sku,
+        name: product.name,
+        price: product.price,
+        productType: product.productType,
         isActive: true,
+        revenueAccountId: revenueAccountIdByCode.get(product.revenueCode) ?? null,
+        membershipPeriod: product.membershipPeriod ?? null,
+        membershipDurationDays: product.membershipDurationDays ?? null,
       },
     });
   }

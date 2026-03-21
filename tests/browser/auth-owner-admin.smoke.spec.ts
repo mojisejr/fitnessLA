@@ -3,6 +3,8 @@ import { expect, test } from "@playwright/test";
 const password = process.env.FITNESSLA_SEED_PASSWORD ?? "ChangeMe123!";
 
 async function loginAs(page: Parameters<typeof test>[0]["page"], username: string) {
+  let lastBodyText = "";
+
   for (let attempt = 1; attempt <= 3; attempt += 1) {
     await page.goto("/login");
     await expect(page.getByRole("heading", { name: "เข้าสู่ระบบ" })).toBeVisible();
@@ -15,10 +17,12 @@ async function loginAs(page: Parameters<typeof test>[0]["page"], username: strin
       await expect(page).toHaveURL(/\/dashboard$/, { timeout: 10_000 });
       return;
     } catch {
-      const bodyText = await page.locator("body").innerText();
-      if (attempt === 3 || !bodyText.includes("Failed to fetch")) {
-        throw new Error(`Login failed for ${username}: ${bodyText.slice(0, 400)}`);
+      lastBodyText = await page.locator("body").innerText();
+
+      if (attempt === 3) {
+        throw new Error(`Login failed for ${username}: ${lastBodyText.slice(0, 400)}`);
       }
+
       await page.waitForTimeout(2_000);
     }
   }

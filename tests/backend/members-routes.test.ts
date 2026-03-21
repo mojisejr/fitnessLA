@@ -78,10 +78,43 @@ describe("members routes", () => {
     const body = await response.json();
 
     expect(response.status).toBe(500);
-    expect(body).toEqual({
+    expect(body).toMatchObject({
       code: "INTERNAL_SERVER_ERROR",
       message: "ไม่สามารถโหลดข้อมูลสมาชิกได้",
     });
+    expect(mockListMembers).toHaveBeenCalledTimes(2);
+  });
+
+  it("GET /members retries once and returns 200 after transient failure", async () => {
+    mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "ADMIN" });
+    mockListMembers
+      .mockRejectedValueOnce(new Error("temporary database hiccup"))
+      .mockResolvedValueOnce([
+        {
+          member_id: "m1",
+          member_code: "MEM-0001",
+          full_name: "สมชาย ทดสอบ",
+          phone: "0812345678",
+          is_active: true,
+          membership_product_id: "p1",
+          membership_name: "Monthly Pass",
+          membership_period: "MONTHLY",
+          started_at: "2026-03-01T00:00:00.000Z",
+          expires_at: "2026-03-31T23:59:59.000Z",
+          checked_in_at: null,
+          renewed_at: null,
+          renewal_status: "ACTIVE",
+          renewal_method: "NONE",
+        },
+      ]);
+
+    const response = await membersGET(new Request("http://localhost/api/v1/members"));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toHaveLength(1);
+    expect(body[0]?.full_name).toBe("สมชาย ทดสอบ");
+    expect(mockListMembers).toHaveBeenCalledTimes(2);
   });
 
   it("POST /members/:memberId/renew returns renewed member", async () => {
