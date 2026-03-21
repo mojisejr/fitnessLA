@@ -1,6 +1,6 @@
-# API Interface Contract (Phase 5 Lock)
+# API Interface Contract (Recovery Lock)
 **Project:** fitnessLA (Gym Management System)
-**Status:** Final integration contract lock as of 2026-03-15
+**Status:** Runtime-aligned contract as of 2026-03-21
 **Governance:** Person A (Backend/Logic) & Person B (Frontend/UX) must adhere to these types and update this file when implementation drifts.
 
 ---
@@ -96,6 +96,10 @@ interface Product {
   price: number;
   product_type: 'GOODS' | 'SERVICE' | 'MEMBERSHIP';
   revenue_account_id?: string;
+  track_stock?: boolean;
+  stock_on_hand?: number | null;
+  membership_period?: 'DAILY' | 'MONTHLY' | 'QUARTERLY' | 'SEMIANNUAL' | 'YEARLY' | null;
+  membership_duration_days?: number | null;
 }
 ```
 
@@ -110,6 +114,9 @@ interface CreateProductRequest {
   price: number;
   product_type: 'GOODS' | 'SERVICE' | 'MEMBERSHIP';
   revenue_account_id?: string; // optional, defaults to account code 4010
+  stock_on_hand?: number | null; // required in practice for GOODS create/edit flow
+  membership_period?: 'DAILY' | 'MONTHLY' | 'QUARTERLY' | 'SEMIANNUAL' | 'YEARLY' | null;
+  membership_duration_days?: number | null;
 }
 ```
 
@@ -123,6 +130,9 @@ interface UpdateProductRequest {
   name: string;
   price: number;
   revenue_account_id?: string;
+  stock_on_hand?: number | null;
+  membership_period?: 'DAILY' | 'MONTHLY' | 'QUARTERLY' | 'SEMIANNUAL' | 'YEARLY' | null;
+  membership_duration_days?: number | null;
 }
 ```
 
@@ -152,6 +162,55 @@ interface OrderResult {
   status: 'COMPLETED';
 }
 ```
+- **Important Validation Cases:**
+  - membership orders require `customer_info.name`
+  - membership products can only be purchased with quantity `1`
+  - goods orders may return `INSUFFICIENT_STOCK`
+- **Named Error Codes In Runtime:**
+  - `SHIFT_NOT_FOUND`
+  - `SHIFT_OWNER_MISMATCH`
+  - `SHIFT_NOT_OPEN`
+  - `PRODUCT_NOT_FOUND`
+  - `INSUFFICIENT_STOCK`
+  - `MEMBERSHIP_CUSTOMER_REQUIRED`
+  - `MEMBERSHIP_SINGLE_QUANTITY`
+
+---
+
+## 3.1 Members (Backend Truth In Real Mode)
+### **GET /api/v1/members**
+- **Purpose:** โหลดรายการสมาชิกจาก persistence layer จริงใน real mode
+- **Response:** `Array<MemberSubscriptionRecord>`
+```typescript
+interface MemberSubscriptionRecord {
+  member_id: string;
+  member_code: string;
+  full_name: string;
+  phone: string;
+  membership_product_id: string;
+  membership_name: string;
+  membership_period: 'DAILY' | 'MONTHLY' | 'QUARTERLY' | 'SEMIANNUAL' | 'YEARLY';
+  started_at: string;
+  expires_at: string;
+  checked_in_at: string | null;
+  renewed_at: string | null;
+  renewal_status: 'ACTIVE' | 'EXPIRES_TODAY' | 'EXPIRED_NOT_RENEWED' | 'RENEWED';
+}
+```
+
+### **POST /api/v1/members/:memberId/renew**
+- **Purpose:** ต่ออายุสมาชิกจาก backend service layer
+- **Response:** `MemberSubscriptionRecord`
+- **Error Cases:**
+  - `401 { code: 'UNAUTHENTICATED' }`
+  - `404 { code: 'MEMBER_NOT_FOUND' }`
+
+### **POST /api/v1/members/:memberId/restart**
+- **Purpose:** เริ่มรอบสมาชิกใหม่จาก backend service layer
+- **Response:** `MemberSubscriptionRecord`
+- **Error Cases:**
+  - `401 { code: 'UNAUTHENTICATED' }`
+  - `404 { code: 'MEMBER_NOT_FOUND' }`
 
 ---
 
@@ -329,12 +388,12 @@ interface ShiftInventorySummaryRow {
 - **Error Cases:**
   - `404 { code: 'SHIFT_NOT_FOUND' }`
   - `403 { code: 'SHIFT_OWNER_MISMATCH' }`
-- **Current Backend Semantics (Phase 3):**
+- **Current Backend Semantics (2026-03-21):**
   - aggregate เฉพาะสินค้าประเภท `GOODS` ที่เกิดใน `order_items` ของกะนั้น
   - ถ้าไม่พบ movement ของสินค้า `GOODS` ให้คืน `[]` (deterministic no-data fallback)
-  - เนื่องจาก stock ledger ยังไม่ persist ใน schema ปัจจุบัน จึงรายงาน `opening_stock` เท่ากับยอดขายสะสม และ `remaining_stock = 0` เพื่อคงความเสถียรของ contract จนกว่าจะเปิด inventory ledger phase ถัดไป
+  - แม้ `Product.stockOnHand` จะ persist แล้ว แต่ inventory-summary endpoint ยังไม่ได้เป็น opening-stock ledger เต็มรูปแบบ จึงยังรายงาน `opening_stock` จาก sold totals baseline และ `remaining_stock` แบบ deterministic fallback จนกว่าจะเปิด inventory ledger phase ถัดไป
 
-**Current implementation status:** daily summary, shift summary, shift inventory summary, COA routes, product revenue mapping, และ general ledger CSV export ถูก implement แล้ว. P&L ยังรอ implementation.
+**Current implementation status:** daily summary, shift summary, shift inventory summary, COA routes, members routes, product revenue mapping, และ general ledger CSV export ถูก implement แล้ว. P&L ยังรอ implementation.
 
 ---
 
