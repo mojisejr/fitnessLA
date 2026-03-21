@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { restartMember } from "@/features/operations/services";
+import { canManageMembers } from "@/lib/roles";
 import { resolveSessionFromRequest } from "@/lib/session";
 
 type RouteContext = {
@@ -18,6 +19,16 @@ export async function POST(request: Request, context: RouteContext) {
         message: "ต้องยืนยันตัวตนก่อนเริ่มรอบสมาชิกใหม่",
       },
       { status: 401 },
+    );
+  }
+
+  if (!canManageMembers(session.role)) {
+    return NextResponse.json(
+      {
+        code: "FORBIDDEN",
+        message: "สิทธิ์ไม่เพียงพอสำหรับเริ่มรอบสมาชิกใหม่",
+      },
+      { status: 403 },
     );
   }
 
@@ -43,6 +54,16 @@ export async function POST(request: Request, context: RouteContext) {
           message: "ไม่พบสมาชิกที่ต้องการเริ่มรอบใหม่",
         },
         { status: 404 },
+      );
+    }
+
+    if (error instanceof Error && error.message === "MEMBER_INACTIVE") {
+      return NextResponse.json(
+        {
+          code: "MEMBER_INACTIVE",
+          message: "สมาชิกที่ปิดใช้งานไม่สามารถเริ่มรอบใหม่ได้",
+        },
+        { status: 409 },
       );
     }
 

@@ -1,53 +1,78 @@
 @import "tailwindcss";
 
 :root {
-  --background: #050505;
-  --foreground: #fff7d6;
-  --muted: #d7c98c;
-  --surface: rgba(20, 20, 18, 0.92);
-  --surface-strong: #161510;
-  --line: rgba(246, 217, 74, 0.24);
-  --accent: #f4cf3a;
-  --accent-strong: #ffdf57;
-  --accent-soft: rgba(244, 207, 58, 0.18);
-  --warning: #f0b323;
-  --warning-soft: rgba(240, 179, 35, 0.18);
-  --shadow: 0 22px 50px rgba(0, 0, 0, 0.42);
+    --background: #050505;
+    --foreground: #fff7d6;
+    --muted: #d7c98c;
+    --surface: rgba(20, 20, 18, 0.92);
+    --surface-strong: #161510;
+    --line: rgba(246, 217, 74, 0.24);
+    --accent: #f4cf3a;
+    --accent-strong: #ffdf57;
+    --accent-soft: rgba(244, 207, 58, 0.18);
+    --warning: #f0b323;
+    --warning-soft: rgba(240, 179, 35, 0.18);
+    --shadow: 0 22px 50px rgba(0, 0, 0, 0.42);
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --color-muted: var(--muted);
-  --color-surface: var(--surface);
-  --color-surface-strong: var(--surface-strong);
-  --color-line: var(--line);
-  --color-accent: var(--accent);
-  --color-accent-strong: var(--accent-strong);
-  --color-accent-soft: var(--accent-soft);
-  --color-warning: var(--warning);
-  --color-warning-soft: var(--warning-soft);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+    --color-background: var(--background);
+    --color-foreground: var(--foreground);
+    --color-muted: var(--muted);
+    --color-surface: var(--surface);
+    --color-surface-strong: var(--surface-strong);
+    --color-line: var(--line);
+    --color-accent: var(--accent);
+    --color-accent-strong: var(--accent-strong);
+    --color-accent-soft: var(--accent-soft);
+    --color-warning: var(--warning);
+    --color-warning-soft: var(--warning-soft);
+    --font-sans: var(--font-geist-sans);
+    --font-mono: var(--font-geist-mono);
 }
 
 * {
-  box-sizing: border-box;
+    box-sizing: border-box;
 }
 
 html {
-  min-height: 100%;
+    min-height: 100%;
 }
 
 body {
-  min-height: 100vh;
-  background: var(--background);
-  background-image:
-    radial-gradient(circle at top left, rgba(244, 207, 58, 0.18), transparent 24%),
-    radial-gradient(circle at top right, rgba(244, 207, 58, 0.08), transparent 20%),
-    linear-gradient(180deg, #11110f 0%, #070707 44%, #040404 100%);
-  color: var(--foreground);
-  font-family: var(--font-geist-sans), sans-serif;
+    min-height: 100vh;
+    background: var(--background);
+    background-image:
+        radial-gradient(circle at top left, rgba(244, 207, 58, 0.18), transparent 24%),
+        radial-gradient(circle at top right, rgba(244, 207, 58, 0.08), transparent 20%),
+        linear-gradient(180deg, #11110f 0%, #070707 44%, #040404 100%);
+    color: var(--foreground);
+    font-family: var(--font-geist-sans), sans-serif;
+    font-kerning: normal;
+    text-rendering: optimizeLegibility;
+}
+
+h1,
+h2,
+h3 {
+    letter-spacing: -0.018em;
+}
+
+.tracking-\[0\.32em\],
+.tracking-\[0\.28em\] {
+    letter-spacing: 0.14em;
+}
+
+.tracking-\[0\.18em\] {
+    letter-spacing: 0.1em;
+}
+
+.tracking-\[0\.16em\] {
+    letter-spacing: 0.08em;
+}
+
+.tracking-\[0\.14em\] {
+    letter-spacing: 0.07em;
 }
 
 button:focus-visible,
@@ -55,26 +80,26 @@ input:focus-visible,
 select:focus-visible,
 textarea:focus-visible,
 a:focus-visible {
-  outline: 2px solid var(--accent-strong);
-  outline-offset: 2px;
+    outline: 2px solid var(--accent-strong);
+    outline-offset: 2px;
 }
 
 a {
-  color: inherit;
-  text-decoration: none;
+    color: inherit;
+    text-decoration: none;
 }
 
 button,
 input,
 select,
 textarea {
-  font: inherit;
+    font: inherit;
 }
 
 button {
-  cursor: pointer;
+    cursor: pointer;
 }
 
 ::selection {
-  background: rgba(246, 217, 74, 0.28);
+    background: rgba(246, 217, 74, 0.28);
 }

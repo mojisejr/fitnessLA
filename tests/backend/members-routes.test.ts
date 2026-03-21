@@ -3,11 +3,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { GET as membersGET } from "../../src/app/api/v1/members/route";
 import { POST as memberRenewPOST } from "../../src/app/api/v1/members/[memberId]/renew/route";
 import { POST as memberRestartPOST } from "../../src/app/api/v1/members/[memberId]/restart/route";
+import { PATCH as memberToggleActivePATCH } from "../../src/app/api/v1/members/[memberId]/toggle-active/route";
 
 const mockResolveSessionFromRequest = vi.fn();
 const mockListMembers = vi.fn();
 const mockRenewMember = vi.fn();
 const mockRestartMember = vi.fn();
+const mockToggleMemberActive = vi.fn();
 
 vi.mock("../../src/lib/session", () => ({
   resolveSessionFromRequest: (...args: unknown[]) => mockResolveSessionFromRequest(...args),
@@ -17,6 +19,7 @@ vi.mock("../../src/features/operations/services", () => ({
   listMembers: (...args: unknown[]) => mockListMembers(...args),
   renewMember: (...args: unknown[]) => mockRenewMember(...args),
   restartMember: (...args: unknown[]) => mockRestartMember(...args),
+  toggleMemberActive: (...args: unknown[]) => mockToggleMemberActive(...args),
 }));
 
 describe("members routes", () => {
@@ -32,6 +35,7 @@ describe("members routes", () => {
         member_code: "MEM-0001",
         full_name: "สมชาย ทดสอบ",
         phone: "0812345678",
+        is_active: true,
         membership_product_id: "p1",
         membership_name: "Monthly Pass",
         membership_period: "MONTHLY",
@@ -40,6 +44,7 @@ describe("members routes", () => {
         checked_in_at: null,
         renewed_at: null,
         renewal_status: "ACTIVE",
+        renewal_method: "NONE",
       },
     ]);
 
@@ -77,12 +82,13 @@ describe("members routes", () => {
   });
 
   it("POST /members/:memberId/renew returns renewed member", async () => {
-    mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "ADMIN" });
+    mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "OWNER" });
     mockRenewMember.mockResolvedValue({
       member_id: "m1",
       member_code: "MEM-0001",
       full_name: "สมชาย ทดสอบ",
       phone: "0812345678",
+      is_active: true,
       membership_product_id: "p1",
       membership_name: "Monthly Pass",
       membership_period: "MONTHLY",
@@ -91,6 +97,7 @@ describe("members routes", () => {
       checked_in_at: null,
       renewed_at: "2026-03-20T10:00:00.000Z",
       renewal_status: "RENEWED",
+      renewal_method: "EXTEND_FROM_PREVIOUS_END",
     });
 
     const response = await memberRenewPOST(
@@ -108,12 +115,13 @@ describe("members routes", () => {
   });
 
   it("POST /members/:memberId/restart returns restarted member", async () => {
-    mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "ADMIN" });
+    mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "OWNER" });
     mockRestartMember.mockResolvedValue({
       member_id: "m1",
       member_code: "MEM-0001",
       full_name: "สมชาย ทดสอบ",
       phone: "0812345678",
+      is_active: true,
       membership_product_id: "p1",
       membership_name: "Monthly Pass",
       membership_period: "MONTHLY",
@@ -122,6 +130,7 @@ describe("members routes", () => {
       checked_in_at: null,
       renewed_at: "2026-03-20T10:00:00.000Z",
       renewal_status: "ACTIVE",
+      renewal_method: "RESTART_FROM_NEW_START",
     });
 
     const response = await memberRestartPOST(
@@ -139,7 +148,7 @@ describe("members routes", () => {
   });
 
   it("POST /members/:memberId/renew returns 404 for unknown member", async () => {
-    mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "ADMIN" });
+    mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "OWNER" });
     mockRenewMember.mockRejectedValue(new Error("MEMBER_NOT_FOUND"));
 
     const response = await memberRenewPOST(
@@ -148,6 +157,23 @@ describe("members routes", () => {
     );
 
     expect(response.status).toBe(404);
+  });
+
+  it("POST /members/:memberId/renew returns 403 for admin", async () => {
+    mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "ADMIN" });
+
+    const response = await memberRenewPOST(
+      new Request("http://localhost/api/v1/members/m1/renew", { method: "POST" }),
+      { params: Promise.resolve({ memberId: "m1" }) },
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(body).toEqual({
+      code: "FORBIDDEN",
+      message: "สิทธิ์ไม่เพียงพอสำหรับต่ออายุสมาชิก",
+    });
+    expect(mockRenewMember).not.toHaveBeenCalled();
   });
 
   it("POST /members/:memberId/renew returns 401 for unauthenticated request", async () => {
@@ -162,7 +188,7 @@ describe("members routes", () => {
   });
 
   it("POST /members/:memberId/renew returns 500 for unexpected service failure", async () => {
-    mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "ADMIN" });
+    mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "OWNER" });
     mockRenewMember.mockRejectedValue(new Error("database offline"));
 
     const response = await memberRenewPOST(
@@ -178,6 +204,23 @@ describe("members routes", () => {
     });
   });
 
+  it("POST /members/:memberId/renew returns 409 for inactive member", async () => {
+    mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "OWNER" });
+    mockRenewMember.mockRejectedValue(new Error("MEMBER_INACTIVE"));
+
+    const response = await memberRenewPOST(
+      new Request("http://localhost/api/v1/members/m1/renew", { method: "POST" }),
+      { params: Promise.resolve({ memberId: "m1" }) },
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(body).toEqual({
+      code: "MEMBER_INACTIVE",
+      message: "สมาชิกที่ปิดใช้งานไม่สามารถต่ออายุได้",
+    });
+  });
+
   it("POST /members/:memberId/restart returns 401 for unauthenticated request", async () => {
     mockResolveSessionFromRequest.mockResolvedValue(null);
 
@@ -189,8 +232,25 @@ describe("members routes", () => {
     expect(response.status).toBe(401);
   });
 
-  it("POST /members/:memberId/restart returns 404 for unknown member", async () => {
+  it("POST /members/:memberId/restart returns 403 for admin", async () => {
     mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "ADMIN" });
+
+    const response = await memberRestartPOST(
+      new Request("http://localhost/api/v1/members/m1/restart", { method: "POST" }),
+      { params: Promise.resolve({ memberId: "m1" }) },
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(body).toEqual({
+      code: "FORBIDDEN",
+      message: "สิทธิ์ไม่เพียงพอสำหรับเริ่มรอบสมาชิกใหม่",
+    });
+    expect(mockRestartMember).not.toHaveBeenCalled();
+  });
+
+  it("POST /members/:memberId/restart returns 404 for unknown member", async () => {
+    mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "OWNER" });
     mockRestartMember.mockRejectedValue(new Error("MEMBER_NOT_FOUND"));
 
     const response = await memberRestartPOST(
@@ -202,7 +262,7 @@ describe("members routes", () => {
   });
 
   it("POST /members/:memberId/restart returns 500 for unexpected service failure", async () => {
-    mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "ADMIN" });
+    mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "OWNER" });
     mockRestartMember.mockRejectedValue(new Error("database offline"));
 
     const response = await memberRestartPOST(
@@ -215,6 +275,87 @@ describe("members routes", () => {
     expect(body).toEqual({
       code: "INTERNAL_SERVER_ERROR",
       message: "ไม่สามารถเริ่มรอบสมาชิกใหม่ได้",
+    });
+  });
+
+  it("POST /members/:memberId/restart returns 409 for inactive member", async () => {
+    mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "OWNER" });
+    mockRestartMember.mockRejectedValue(new Error("MEMBER_INACTIVE"));
+
+    const response = await memberRestartPOST(
+      new Request("http://localhost/api/v1/members/m1/restart", { method: "POST" }),
+      { params: Promise.resolve({ memberId: "m1" }) },
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(body).toEqual({
+      code: "MEMBER_INACTIVE",
+      message: "สมาชิกที่ปิดใช้งานไม่สามารถเริ่มรอบใหม่ได้",
+    });
+  });
+
+  it("PATCH /members/:memberId/toggle-active returns toggled member", async () => {
+    mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "OWNER" });
+    mockToggleMemberActive.mockResolvedValue({
+      member_id: "m1",
+      member_code: "MEM-0001",
+      full_name: "สมชาย ทดสอบ",
+      phone: "0812345678",
+      is_active: false,
+      membership_product_id: "p1",
+      membership_name: "Monthly Pass",
+      membership_period: "MONTHLY",
+      started_at: "2026-03-01T00:00:00.000Z",
+      expires_at: "2026-03-31T23:59:59.000Z",
+      checked_in_at: null,
+      renewed_at: null,
+      renewal_status: "ACTIVE",
+      renewal_method: "NONE",
+    });
+
+    const response = await memberToggleActivePATCH(
+      new Request("http://localhost/api/v1/members/m1/toggle-active", { method: "PATCH" }),
+      { params: Promise.resolve({ memberId: "m1" }) },
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toMatchObject({ member_id: "m1", is_active: false });
+    expect(mockToggleMemberActive).toHaveBeenCalledWith("m1");
+  });
+
+  it("PATCH /members/:memberId/toggle-active returns 403 for admin", async () => {
+    mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "ADMIN" });
+
+    const response = await memberToggleActivePATCH(
+      new Request("http://localhost/api/v1/members/m1/toggle-active", { method: "PATCH" }),
+      { params: Promise.resolve({ memberId: "m1" }) },
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(body).toEqual({
+      code: "FORBIDDEN",
+      message: "สิทธิ์ไม่เพียงพอสำหรับปรับสถานะสมาชิก",
+    });
+    expect(mockToggleMemberActive).not.toHaveBeenCalled();
+  });
+
+  it("PATCH /members/:memberId/toggle-active returns 404 when member is missing", async () => {
+    mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "OWNER" });
+    mockToggleMemberActive.mockRejectedValue(new Error("MEMBER_NOT_FOUND"));
+
+    const response = await memberToggleActivePATCH(
+      new Request("http://localhost/api/v1/members/unknown/toggle-active", { method: "PATCH" }),
+      { params: Promise.resolve({ memberId: "unknown" }) },
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(404);
+    expect(body).toEqual({
+      code: "MEMBER_NOT_FOUND",
+      message: "ไม่พบสมาชิกที่ต้องการปรับสถานะ",
     });
   });
 });

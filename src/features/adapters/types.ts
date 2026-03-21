@@ -1,6 +1,7 @@
 import type {
   AdminUserRecord,
   ChartOfAccountRecord,
+  CreateTrainerInput,
   EntityId,
   CreateOrderRequest,
   DailySummary,
@@ -15,6 +16,10 @@ import type {
   ShiftOpenResult,
   UserSession,
   AccountType,
+  ReportPeriod,
+  TrainerRecord,
+  TrainingEnrollmentRecord,
+  UpdateTrainingEnrollmentInput,
 } from "@/lib/contracts";
 
 export type CreateChartOfAccountInput = {
@@ -53,11 +58,23 @@ export type CreateProductInput = {
   membershipDurationDays?: number | null;
 };
 
+export type DailySummaryQuery = {
+  period: ReportPeriod;
+  date?: string;
+  start_date?: string;
+  end_date?: string;
+};
+
+export type MemberListFilters = {
+  search?: string;
+  status?: "ALL" | "ACTIVE" | "EXPIRING_SOON" | "EXPIRED";
+};
+
 export interface AppAdapter {
   mode: "mock" | "real";
   authenticateUser: (username: string, password: string) => Promise<UserSession>;
   getActiveShift: () => Promise<MockShiftRecord | null>;
-  listMembers: () => Promise<MemberSubscriptionRecord[]>;
+  listMembers: (filters?: MemberListFilters) => Promise<MemberSubscriptionRecord[]>;
   listProducts: () => Promise<Product[]>;
   createProduct: (input: CreateProductInput) => Promise<Product>;
   updateProduct: (input: UpdateProductInput) => Promise<Product>;
@@ -78,10 +95,20 @@ export interface AppAdapter {
     receiptName: string;
     receiptFile?: File | null;
   }) => Promise<ExpenseResult>;
-  getDailySummary: (date: string) => Promise<DailySummary>;
+  getDailySummary: (query: DailySummaryQuery) => Promise<DailySummary>;
   getShiftSummary: (date: string, responsibleName?: string) => Promise<ShiftSummary>;
   listChartOfAccounts: () => Promise<ChartOfAccountRecord[]>;
   createChartOfAccount: (input: CreateChartOfAccountInput) => Promise<ChartOfAccountRecord>;
   toggleChartOfAccount: (accountId: EntityId) => Promise<ChartOfAccountRecord>;
   createAdminUser: (input: CreateAdminUserInput) => Promise<AdminUserRecord>;
+  listTrainers: () => Promise<Array<TrainerRecord & { assignments: TrainingEnrollmentRecord[] }>>;
+  createTrainer: (input: CreateTrainerInput) => Promise<TrainerRecord>;
+  toggleTrainerActive: (trainerId: EntityId) => Promise<TrainerRecord>;
+  updateTrainingEnrollment: (
+    enrollmentId: EntityId,
+    input: UpdateTrainingEnrollmentInput,
+  ) => Promise<TrainingEnrollmentRecord>;
+  toggleMemberActive: (memberId: EntityId) => Promise<MemberSubscriptionRecord>;
+  renewMember: (memberId: EntityId) => Promise<MemberSubscriptionRecord>;
+  restartMember: (memberId: EntityId) => Promise<MemberSubscriptionRecord>;
 }

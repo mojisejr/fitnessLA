@@ -58,6 +58,8 @@ export interface CreateOrderRequest {
   items: {
     product_id: EntityId;
     quantity: number;
+    trainer_id?: EntityId;
+    service_start_date?: string;
   }[];
   payment_method: PaymentMethod;
   customer_info?: {
@@ -102,12 +104,16 @@ export interface DailyShiftRow {
 }
 
 export interface DailySummary {
+  report_period: ReportPeriod;
+  range_start: string;
+  range_end: string;
   total_sales: number;
   sales_by_method: {
     CASH: number;
     PROMPTPAY: number;
     CREDIT_CARD: number;
   };
+  sales_by_category: SalesByCategoryRow[];
   total_expenses: number;
   net_cash_flow: number;
   shift_discrepancies: number;
@@ -147,6 +153,7 @@ export interface MemberSubscriptionRecord {
   member_code: string;
   full_name: string;
   phone: string;
+  is_active: boolean;
   membership_product_id: EntityId;
   membership_name: string;
   membership_period: MembershipPeriod;
@@ -155,6 +162,8 @@ export interface MemberSubscriptionRecord {
   checked_in_at: string | null;
   renewed_at: string | null;
   renewal_status: "ACTIVE" | "EXPIRES_TODAY" | "EXPIRED_NOT_RENEWED" | "RENEWED";
+  renewal_method: RenewalMethod;
+  training_summary?: MemberTrainingSummary;
 }
 
 export type MemberMutationResult = MemberSubscriptionRecord;
@@ -209,4 +218,85 @@ export interface MockShiftRecord {
   opened_at: string;
   starting_cash: number;
   responsible_name?: string;
+}
+
+// --- Report Types ---
+
+export type ReportPeriod = "DAY" | "WEEK" | "MONTH" | "CUSTOM";
+
+export type PosSalesCategory =
+  | "COFFEE"
+  | "MEMBERSHIP"
+  | "FOOD"
+  | "TRAINING"
+  | "COUNTER";
+
+export interface SalesByCategoryRow {
+  category: PosSalesCategory;
+  label: string;
+  total_amount: number;
+  receipt_count: number;
+  item_count: number;
+}
+
+// --- Members/Trainer Types ---
+
+export type RenewalMethod =
+  | "NONE"
+  | "EXTEND_FROM_PREVIOUS_END"
+  | "RESTART_FROM_NEW_START";
+
+export type TrainingStatus = "NONE" | "ACTIVE" | "EXPIRED" | "UNASSIGNED" | "CLOSED";
+
+export interface MemberTrainingSummary {
+  training_status: TrainingStatus;
+  trainer_id?: EntityId | null;
+  trainer_name?: string | null;
+  training_package_name?: string | null;
+  training_package_sku?: string | null;
+  training_started_at?: string | null;
+  training_expires_at?: string | null;
+}
+
+// --- Trainer Records ---
+
+export interface TrainerRecord {
+  trainer_id: EntityId;
+  trainer_code: string;
+  full_name: string;
+  nickname?: string | null;
+  phone?: string | null;
+  is_active: boolean;
+  active_customer_count: number;
+}
+
+export interface TrainingEnrollmentRecord {
+  enrollment_id: EntityId;
+  trainer_id: EntityId | null;
+  trainer_name: string | null;
+  customer_name: string;
+  member_id: EntityId | null;
+  package_name: string;
+  package_sku: string;
+  started_at: string;
+  expires_at: string | null;
+  session_limit?: number | null;
+  sessions_remaining?: number | null;
+  price: number;
+  status: "ACTIVE" | "EXPIRED" | "UNASSIGNED" | "CLOSED";
+  closed_at?: string | null;
+  close_reason?: string | null;
+  updated_at: string;
+}
+
+export interface CreateTrainerInput {
+  full_name: string;
+  nickname?: string;
+  phone?: string;
+}
+
+export interface UpdateTrainingEnrollmentInput {
+  sessions_remaining?: number | null;
+  status?: "ACTIVE" | "EXPIRED" | "UNASSIGNED" | "CLOSED";
+  close_reason?: string | null;
 }

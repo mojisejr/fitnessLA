@@ -266,8 +266,12 @@ const mocked = vi.hoisted(() => {
           },
           items: order.items.map((item) => ({
             quantity: item.quantity,
+            totalPrice: new Prisma.Decimal(
+              order.totalAmount * (item.quantity / Math.max(order.items.reduce((sum, current) => sum + current.quantity, 0), 1)),
+            ),
             product: {
               name: item.productName,
+              sku: item.productSku,
             },
           })),
         }));
@@ -585,6 +589,43 @@ describe("A-4 services", () => {
       responsible_name: "June Desk",
       difference: 20,
     });
+    expect(summary.sales_by_category).toEqual([
+      {
+        category: "COFFEE",
+        label: "กาแฟและเครื่องดื่ม",
+        total_amount: 500,
+        receipt_count: 1,
+        item_count: 2,
+      },
+      {
+        category: "MEMBERSHIP",
+        label: "สมาชิก",
+        total_amount: 700,
+        receipt_count: 1,
+        item_count: 1,
+      },
+      {
+        category: "FOOD",
+        label: "อาหารตามสั่ง",
+        total_amount: 0,
+        receipt_count: 0,
+        item_count: 0,
+      },
+      {
+        category: "TRAINING",
+        label: "บริการเทรน",
+        total_amount: 300,
+        receipt_count: 1,
+        item_count: 1,
+      },
+      {
+        category: "COUNTER",
+        label: "สินค้าเสริมหน้าเคาน์เตอร์",
+        total_amount: 0,
+        receipt_count: 0,
+        item_count: 0,
+      },
+    ]);
   });
 
   it("throws invalid date error when date format is invalid", async () => {

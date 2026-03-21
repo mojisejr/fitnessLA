@@ -12,7 +12,7 @@ type ShiftState = {
 
 type State = {
   shifts: ShiftState[];
-  products: Array<{ id: string; isActive: boolean; price: number; revenueAccountId: string | null }>;
+  products: Array<{ id: string; isActive: boolean; price: number; revenueAccountId: string | null; sku: string }>;
   chartOfAccounts: Array<{ id: string; code: string; type?: string; isActive?: boolean }>;
   documentSequences: Array<{ id: string; type: string; prefix: string; currentNo: number }>;
   orders: Array<{ id: string; orderNumber: string }>;
@@ -114,6 +114,7 @@ const mocked = vi.hoisted(() => {
           .map((item) => ({
             id: item.id,
             isActive: item.isActive,
+            sku: item.sku,
             price: new Prisma.Decimal(item.price),
             revenueAccountId: item.revenueAccountId,
           }));
@@ -290,8 +291,8 @@ const mocked = vi.hoisted(() => {
       },
     ];
     state.products = [
-      { id: "p1", isActive: true, price: 1500, revenueAccountId: null },
-      { id: "p2", isActive: true, price: 500, revenueAccountId: "coa_rev_pt" },
+      { id: "p1", isActive: true, price: 1500, revenueAccountId: null, sku: "WATER-01" },
+      { id: "p2", isActive: true, price: 500, revenueAccountId: "coa_rev_pt", sku: "SAUNA-01" },
     ];
     state.chartOfAccounts = [
       { id: "coa_cash", code: "1010", type: "ASSET", isActive: true },

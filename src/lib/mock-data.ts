@@ -6,6 +6,7 @@ import type {
   Role,
   UserSession,
 } from "@/lib/contracts";
+import { buildEmptyPosSalesCategoryRows } from "@/lib/pos-categories";
 
 export const demoPassword = "demo1234";
 
@@ -439,6 +440,10 @@ export const mockPendingUsers: MockPendingUser[] = [
 ];
 
 export const mockDailySummary: DailySummary = {
+  report_period: "DAY",
+  range_start: "2026-03-14",
+  range_end: "2026-03-14",
+  sales_by_category: buildEmptyPosSalesCategoryRows(),
   total_sales: 8420,
   sales_by_method: {
     CASH: 3120,

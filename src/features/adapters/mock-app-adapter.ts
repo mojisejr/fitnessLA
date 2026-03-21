@@ -2,6 +2,7 @@ import type {
   AdminUserRecord,
   ApiError,
   ChartOfAccountRecord,
+  CreateTrainerInput,
   DailySummary,
   ShiftSummary,
   EntityId,
@@ -12,7 +13,11 @@ import type {
   ShiftInventorySummaryRow,
   ShiftCloseResult,
   ShiftOpenResult,
+  TrainingEnrollmentRecord,
+  TrainerRecord,
+  UpdateTrainingEnrollmentInput,
   UserSession,
+  RenewalMethod,
 } from "@/lib/contracts";
 import {
   demoPassword,
@@ -21,6 +26,7 @@ import {
   mockProducts,
   mockUsersByRole,
 } from "@/lib/mock-data";
+import { buildEmptyPosSalesCategoryRows } from "@/lib/pos-categories";
 import { sleep } from "@/lib/utils";
 import type {
   AppAdapter,
@@ -29,7 +35,9 @@ import type {
   CreateProductInput,
   UpdateProductInput,
 } from "@/features/adapters/types";
-import { prependMemberRegistry, readMemberRegistry } from "@/features/members/member-registry";
+import { prependMemberRegistry, readMemberRegistry, writeMemberRegistry } from "@/features/members/member-registry";
+
+type MockTrainerWithAssignments = TrainerRecord & { assignments: TrainingEnrollmentRecord[] };
 
 let orderSequence = 1001;
 let expenseSequence = 3001;
@@ -38,6 +46,7 @@ let productSequence = Math.max(...mockProducts.map((item) => Number(item.product
 let chartOfAccountsState = mockChartOfAccounts.map((item) => ({ ...item }));
 let productsState = mockProducts.map((item) => ({ ...item }));
 let managedUsersState: AdminUserRecord[] = [];
+let trainersState: MockTrainerWithAssignments[] = [];
 let shiftInventoryState = new Map<string, Map<string, { product_id: EntityId; opening_stock: number; sold_quantity: number }>>();
 let salesRowsState: DailySummary["sales_rows"] = [];
 
@@ -240,6 +249,7 @@ function createMembershipRecords(request: Parameters<AppAdapter["createOrder"]>[
       member_code: `MBR-24${String(sequence).padStart(3, "0")}`,
       full_name: customerName,
       phone: request.customer_info?.tax_id?.trim() || "รออัปเดตเบอร์โทร",
+      is_active: true,
       membership_product_id: product.product_id,
       membership_name: product.name,
       membership_period: product.membership_period ?? "MONTHLY",
@@ -248,6 +258,7 @@ function createMembershipRecords(request: Parameters<AppAdapter["createOrder"]>[
       checked_in_at: null,
       renewed_at: null,
       renewal_status: "ACTIVE",
+      renewal_method: "NONE",
     } satisfies MemberSubscriptionRecord;
   });
 }
@@ -597,9 +608,10 @@ export const mockAppAdapter: AppAdapter = {
     } satisfies ExpenseResult;
   },
 
-  async getDailySummary(date) {
+  async getDailySummary(query) {
     await sleep(220);
 
+    const date = query.date ?? query.start_date ?? new Date().toISOString().slice(0, 10);
     const day = Number(date.split("-").at(-1) ?? 1);
     const offset = day % 4;
 
@@ -625,12 +637,16 @@ export const mockAppAdapter: AppAdapter = {
     );
 
     return {
+      report_period: query.period,
+      range_start: date,
+      range_end: query.end_date ?? date,
       total_sales: Number((baseSummary.total_sales + appendedRows.reduce((sum, row) => sum + row.total_amount, 0)).toFixed(2)),
       sales_by_method: {
         CASH: Number((baseSummary.sales_by_method.CASH + appendedByMethod.CASH).toFixed(2)),
         PROMPTPAY: Number((baseSummary.sales_by_method.PROMPTPAY + appendedByMethod.PROMPTPAY).toFixed(2)),
         CREDIT_CARD: Number((baseSummary.sales_by_method.CREDIT_CARD + appendedByMethod.CREDIT_CARD).toFixed(2)),
       },
+      sales_by_category: buildEmptyPosSalesCategoryRows(),
       total_expenses: baseSummary.total_expenses,
       net_cash_flow: Number((baseSummary.net_cash_flow + appendedByMethod.CASH).toFixed(2)),
       shift_discrepancies: baseSummary.shift_discrepancies,
@@ -640,7 +656,7 @@ export const mockAppAdapter: AppAdapter = {
   },
 
   async getShiftSummary(date, responsibleName) {
-    const daily = await this.getDailySummary(date);
+    const daily = await this.getDailySummary({ period: "DAY", date });
     const trimmed = responsibleName?.trim();
     const salesRows =
       trimmed && trimmed.length > 0
@@ -783,5 +799,161 @@ export const mockAppAdapter: AppAdapter = {
 
     managedUsersState = [nextUser, ...managedUsersState];
     return cloneManagedUser(nextUser);
+  },
+
+  async listTrainers() {
+    await sleep(120);
+    return trainersState.map((trainer) => ({
+      ...trainer,
+      assignments: trainer.assignments.map((assignment) => ({ ...assignment })),
+    }));
+  },
+
+  async createTrainer(input: CreateTrainerInput) {
+    await sleep(120);
+    const nextNumber = trainersState.length + 1;
+    const nextTrainer: MockTrainerWithAssignments = {
+      trainer_id: `mock-trainer-${nextNumber}`,
+      trainer_code: `TR${String(nextNumber).padStart(3, "0")}`,
+      full_name: input.full_name.trim(),
+      nickname: input.nickname?.trim() || null,
+      phone: input.phone?.trim() || null,
+      is_active: true,
+      active_customer_count: 0,
+      assignments: [],
+    };
+
+    trainersState = [nextTrainer, ...trainersState];
+    return { ...nextTrainer, assignments: [] };
+  },
+
+  async toggleTrainerActive(trainerId: EntityId) {
+    await sleep(120);
+    const target = trainersState.find((trainer) => String(trainer.trainer_id) === String(trainerId));
+
+    if (!target) {
+      throw createError("TRAINER_NOT_FOUND", "ไม่พบเทรนเนอร์ที่ต้องการปรับสถานะ");
+    }
+
+    if (target.is_active && target.assignments.some((assignment) => assignment.status === "ACTIVE")) {
+      throw createError("TRAINER_HAS_ACTIVE_ASSIGNMENTS", "ยังมีลูกเทรนที่ใช้งานอยู่ จึงยังปิดใช้งานเทรนเนอร์ไม่ได้");
+    }
+
+    let updatedTrainer: TrainerRecord | null = null;
+    trainersState = trainersState.map((trainer) => {
+      if (String(trainer.trainer_id) !== String(trainerId)) {
+        return trainer;
+      }
+
+      updatedTrainer = {
+        trainer_id: trainer.trainer_id,
+        trainer_code: trainer.trainer_code,
+        full_name: trainer.full_name,
+        nickname: trainer.nickname,
+        phone: trainer.phone,
+        is_active: !trainer.is_active,
+        active_customer_count: trainer.active_customer_count,
+      };
+
+      return {
+        ...trainer,
+        is_active: !trainer.is_active,
+      };
+    });
+
+    if (!updatedTrainer) {
+      throw createError("TRAINER_NOT_FOUND", "ไม่พบเทรนเนอร์ที่ต้องการปรับสถานะ");
+    }
+
+    return updatedTrainer;
+  },
+
+  async updateTrainingEnrollment(enrollmentId: EntityId, input: UpdateTrainingEnrollmentInput) {
+    await sleep(120);
+    let updatedAssignment: TrainingEnrollmentRecord | null = null;
+
+    trainersState = trainersState.map((trainer) => {
+      const assignments = trainer.assignments.map((assignment) => {
+        if (String(assignment.enrollment_id) !== String(enrollmentId)) {
+          return assignment;
+        }
+
+        let closedAt = assignment.closed_at;
+        if (input.status === "CLOSED") {
+          closedAt = assignment.closed_at ?? new Date().toISOString();
+        } else if (input.status) {
+          closedAt = null;
+        }
+
+        updatedAssignment = {
+          ...assignment,
+          sessions_remaining:
+            input.sessions_remaining === undefined ? assignment.sessions_remaining : input.sessions_remaining,
+          status: input.status ?? assignment.status,
+          close_reason:
+            input.close_reason === undefined ? assignment.close_reason : input.close_reason,
+          closed_at: closedAt,
+          updated_at: new Date().toISOString(),
+        };
+
+        return updatedAssignment;
+      });
+
+      return {
+        ...trainer,
+        assignments,
+        active_customer_count: assignments.filter((assignment) => assignment.status === "ACTIVE").length,
+      };
+    });
+
+    if (!updatedAssignment) {
+      throw createError("TRAINING_ENROLLMENT_NOT_FOUND", "ไม่พบรายการลูกเทรนที่ต้องการแก้ไข");
+    }
+
+    return updatedAssignment as TrainingEnrollmentRecord;
+  },
+
+  async renewMember(memberId) {
+    await sleep(200);
+    const registry = readMemberRegistry();
+    const member = registry.find((m) => String(m.member_id) === String(memberId));
+    if (!member) {
+      throw createError("MEMBER_NOT_FOUND", "ไม่พบสมาชิกที่ต้องการต่ออายุ");
+    }
+    if (!member.is_active) {
+      throw createError("MEMBER_INACTIVE", "สมาชิกที่ปิดใช้งานไม่สามารถต่ออายุได้");
+    }
+    return { ...member, renewal_status: "RENEWED" as const, renewal_method: "EXTEND_FROM_PREVIOUS_END" as const };
+  },
+
+  async toggleMemberActive(memberId) {
+    await sleep(200);
+    const registry = readMemberRegistry();
+    const targetIndex = registry.findIndex((member) => String(member.member_id) === String(memberId));
+    if (targetIndex < 0) {
+      throw createError("MEMBER_NOT_FOUND", "ไม่พบสมาชิกที่ต้องการปรับสถานะ");
+    }
+
+    const updatedMember = {
+      ...registry[targetIndex],
+      is_active: !registry[targetIndex]?.is_active,
+    } satisfies MemberSubscriptionRecord;
+
+    registry.splice(targetIndex, 1, updatedMember);
+    writeMemberRegistry(registry);
+    return updatedMember;
+  },
+
+  async restartMember(memberId) {
+    await sleep(200);
+    const registry = readMemberRegistry();
+    const member = registry.find((m) => String(m.member_id) === String(memberId));
+    if (!member) {
+      throw createError("MEMBER_NOT_FOUND", "ไม่พบสมาชิกที่ต้องการเริ่มรอบใหม่");
+    }
+    if (!member.is_active) {
+      throw createError("MEMBER_INACTIVE", "สมาชิกที่ปิดใช้งานไม่สามารถเริ่มรอบใหม่ได้");
+    }
+    return { ...member, renewal_status: "ACTIVE" as const, renewal_method: "RESTART_FROM_NEW_START" as const };
   },
 };

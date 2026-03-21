@@ -164,7 +164,7 @@ vi.mock("../../src/features/operations/services", () => ({
 }));
 
 async function runFlowOnce() {
-  mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "OWNER" });
+  mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "OWNER", full_name: "Pim Counter" });
 
   const openResponse = await openShiftPOST(
     new Request("http://localhost/api/v1/shifts/open", {

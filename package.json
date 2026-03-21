@@ -9,6 +9,9 @@
     "postinstall": "prisma generate",
     "lint": "eslint",
     "test": "vitest run",
+    "test:browser:smoke": "playwright test",
+    "test:browser:smoke:headed": "playwright test --headed",
+    "test:browser:install": "playwright install chromium",
     "db:migrate": "prisma migrate dev --name init_accounting_auth",
     "db:seed": "prisma db seed",
     "db:seed:users": "node prisma/seed-users.mjs",
@@ -33,6 +36,7 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@playwright/test": "^1.58.2",
     "@tailwindcss/postcss": "^4",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",

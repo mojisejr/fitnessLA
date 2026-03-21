@@ -2,6 +2,7 @@ import { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
 import type { MemberSubscriptionRecord } from "@/lib/contracts";
+import { POS_CATEGORY_DEFINITIONS, getPosSalesCategoryFromSku } from "@/lib/pos-categories";
 
 export type ProductDto = {
   product_id: string;
@@ -60,6 +61,8 @@ export type CreateOrderInput = {
   items: Array<{
     product_id: string;
     quantity: number;
+    trainer_id?: string;
+    service_start_date?: string;
   }>;
   payment_method: PaymentMethod;
   customer_info?: {
@@ -90,6 +93,15 @@ export type CreateExpenseResultDto = {
   status: "POSTED";
 };
 
+export type CreateSpecialMemberInputDto = {
+  full_name: string;
+  phone?: string;
+  membership_name: string;
+  membership_period: "DAILY" | "MONTHLY" | "QUARTERLY" | "SEMIANNUAL" | "YEARLY";
+  started_at: string;
+  expires_at: string;
+};
+
 export type CloseShiftInput = {
   actual_cash: number;
   closing_note?: string;
@@ -107,12 +119,22 @@ export type CloseShiftResultDto = {
 };
 
 export type DailySummaryDto = {
+  report_period: "DAY" | "WEEK" | "MONTH" | "CUSTOM";
+  range_start: string;
+  range_end: string;
   total_sales: number;
   sales_by_method: {
     CASH: number;
     PROMPTPAY: number;
     CREDIT_CARD: number;
   };
+  sales_by_category: Array<{
+    category: string;
+    label: string;
+    total_amount: number;
+    receipt_count: number;
+    item_count: number;
+  }>;
   total_expenses: number;
   net_cash_flow: number;
   shift_discrepancies: number;
@@ -353,6 +375,67 @@ function calculateMembershipExpiry(startedAt: Date, durationDays: number) {
   return expiresAt;
 }
 
+function createSpecialMembershipSkuSeed(name: string) {
+  const normalized = name
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 24);
+
+  return normalized || "SPECIAL";
+}
+
+async function ensureSpecialMembershipProduct(
+  tx: Prisma.TransactionClient,
+  input: Pick<CreateSpecialMemberInputDto, "membership_name" | "membership_period">,
+) {
+  const existing = await tx.product.findFirst({
+    where: {
+      productType: "MEMBERSHIP",
+      isActive: true,
+      name: input.membership_name,
+      membershipPeriod: input.membership_period,
+    },
+    orderBy: { createdAt: "asc" },
+    select: {
+      id: true,
+      name: true,
+      sku: true,
+      membershipPeriod: true,
+    },
+  });
+
+  if (existing) {
+    return existing;
+  }
+
+  const productSequence = await reserveDocumentNumber(tx, "SPECIAL_MEMBERSHIP_PRODUCT", "SPM");
+  const seededSku = createSpecialMembershipSkuSeed(input.membership_name);
+  const durationDays = defaultMembershipDurationDays(input.membership_period) ?? 30;
+
+  return tx.product.create({
+    data: {
+      sku: `${productSequence.documentNumber}-${seededSku}`,
+      name: input.membership_name,
+      price: new Prisma.Decimal("0.00"),
+      productType: "MEMBERSHIP",
+      isActive: true,
+      trackStock: false,
+      stockOnHand: null,
+      membershipPeriod: input.membership_period,
+      membershipDurationDays: durationDays,
+      revenueAccountId: null,
+    },
+    select: {
+      id: true,
+      name: true,
+      sku: true,
+      membershipPeriod: true,
+    },
+  });
+}
+
 function createMembershipPhone(customerInfo: CreateOrderInput["customer_info"]) {
   return customerInfo?.tax_id?.trim() || "รออัปเดตเบอร์โทร";
 }
@@ -502,11 +585,13 @@ export async function listMembers(): Promise<MemberSubscriptionRecord[]> {
       memberCode: true,
       fullName: true,
       phone: true,
+      isActive: true,
       startedAt: true,
       expiresAt: true,
       checkedInAt: true,
       renewedAt: true,
       renewalStatus: true,
+      renewalMethod: true,
       membershipProduct: {
         select: {
           id: true,
@@ -516,24 +601,56 @@ export async function listMembers(): Promise<MemberSubscriptionRecord[]> {
           membershipDurationDays: true,
         },
       },
+      trainingEnrollments: {
+        orderBy: { createdAt: "desc" },
+        take: 1,
+        include: {
+          trainer: { select: { id: true, fullName: true } },
+          packageProduct: { select: { name: true, sku: true } },
+        },
+      },
     },
   });
 
-  return members.map((member) => ({
-    member_id: member.id,
-    member_code: member.memberCode,
-    full_name: member.fullName,
-    phone: member.phone,
-    membership_product_id: member.membershipProduct.id,
-    membership_name: member.membershipProduct.name,
-    membership_period:
-      inferMembershipPeriod(member.membershipProduct.sku, member.membershipProduct.membershipPeriod) ?? "MONTHLY",
-    started_at: member.startedAt.toISOString(),
-    expires_at: member.expiresAt.toISOString(),
-    checked_in_at: member.checkedInAt?.toISOString() ?? null,
-    renewed_at: member.renewedAt?.toISOString() ?? null,
-    renewal_status: member.renewalStatus === "RENEWED" ? "RENEWED" : "ACTIVE",
-  }));
+  const now = new Date();
+
+  return members.map((member) => {
+    let training_summary: MemberSubscriptionRecord["training_summary"];
+
+    if (member.trainingEnrollments.length > 0) {
+      const latest = member.trainingEnrollments[0];
+      const training_status = resolveTrainingEnrollmentStatus(latest, now);
+
+      training_summary = {
+        training_status,
+        trainer_id: latest.trainer?.id ?? null,
+        trainer_name: latest.trainer?.fullName ?? null,
+        training_package_name: latest.packageProduct?.name ?? latest.packageNameSnapshot,
+        training_package_sku: latest.packageProduct?.sku ?? latest.packageSkuSnapshot,
+        training_started_at: latest.startedAt.toISOString(),
+        training_expires_at: latest.expiresAt?.toISOString() ?? null,
+      };
+    }
+
+    return {
+      member_id: member.id,
+      member_code: member.memberCode,
+      full_name: member.fullName,
+      phone: member.phone,
+      is_active: member.isActive,
+      membership_product_id: member.membershipProduct.id,
+      membership_name: member.membershipProduct.name,
+      membership_period:
+        inferMembershipPeriod(member.membershipProduct.sku, member.membershipProduct.membershipPeriod) ?? "MONTHLY",
+      started_at: member.startedAt.toISOString(),
+      expires_at: member.expiresAt.toISOString(),
+      checked_in_at: member.checkedInAt?.toISOString() ?? null,
+      renewed_at: member.renewedAt?.toISOString() ?? null,
+      renewal_status: member.renewalStatus === "RENEWED" ? "RENEWED" : "ACTIVE",
+      renewal_method: (member.renewalMethod as MemberSubscriptionRecord["renewal_method"]) ?? "NONE",
+      training_summary,
+    };
+  });
 }
 
 export async function renewMember(memberId: string): Promise<MemberSubscriptionRecord> {
@@ -548,6 +665,7 @@ export async function renewMember(memberId: string): Promise<MemberSubscriptionR
       memberCode: true,
       fullName: true,
       phone: true,
+      isActive: true,
       startedAt: true,
       expiresAt: true,
       checkedInAt: true,
@@ -566,6 +684,10 @@ export async function renewMember(memberId: string): Promise<MemberSubscriptionR
 
   if (!member) {
     throw new Error("MEMBER_NOT_FOUND");
+  }
+
+  if (!member.isActive) {
+    throw new Error("MEMBER_INACTIVE");
   }
 
   const membershipPeriod = inferMembershipPeriod(
@@ -586,12 +708,14 @@ export async function renewMember(memberId: string): Promise<MemberSubscriptionR
       expiresAt: calculateMembershipExpiry(nextStart, durationDays),
       renewedAt,
       renewalStatus: "RENEWED",
+      renewalMethod: "EXTEND_FROM_PREVIOUS_END",
     },
     select: {
       id: true,
       memberCode: true,
       fullName: true,
       phone: true,
+      isActive: true,
       startedAt: true,
       expiresAt: true,
       checkedInAt: true,
@@ -613,6 +737,7 @@ export async function renewMember(memberId: string): Promise<MemberSubscriptionR
     member_code: updated.memberCode,
     full_name: updated.fullName,
     phone: updated.phone,
+    is_active: updated.isActive,
     membership_product_id: updated.membershipProduct.id,
     membership_name: updated.membershipProduct.name,
     membership_period: inferMembershipPeriod(updated.membershipProduct.sku, updated.membershipProduct.membershipPeriod) ?? "MONTHLY",
@@ -621,6 +746,7 @@ export async function renewMember(memberId: string): Promise<MemberSubscriptionR
     checked_in_at: updated.checkedInAt?.toISOString() ?? null,
     renewed_at: updated.renewedAt?.toISOString() ?? null,
     renewal_status: "RENEWED",
+    renewal_method: "EXTEND_FROM_PREVIOUS_END",
   };
 }
 
@@ -636,6 +762,7 @@ export async function restartMember(memberId: string): Promise<MemberSubscriptio
       memberCode: true,
       fullName: true,
       phone: true,
+      isActive: true,
       checkedInAt: true,
       membershipProduct: {
         select: {
@@ -653,6 +780,10 @@ export async function restartMember(memberId: string): Promise<MemberSubscriptio
     throw new Error("MEMBER_NOT_FOUND");
   }
 
+  if (!member.isActive) {
+    throw new Error("MEMBER_INACTIVE");
+  }
+
   const membershipPeriod = inferMembershipPeriod(
     member.membershipProduct.sku,
     member.membershipProduct.membershipPeriod,
@@ -667,12 +798,14 @@ export async function restartMember(memberId: string): Promise<MemberSubscriptio
       expiresAt: calculateMembershipExpiry(restartedAt, durationDays),
       renewedAt: restartedAt,
       renewalStatus: "ACTIVE",
+      renewalMethod: "RESTART_FROM_NEW_START",
     },
     select: {
       id: true,
       memberCode: true,
       fullName: true,
       phone: true,
+      isActive: true,
       startedAt: true,
       expiresAt: true,
       checkedInAt: true,
@@ -693,6 +826,7 @@ export async function restartMember(memberId: string): Promise<MemberSubscriptio
     member_code: updated.memberCode,
     full_name: updated.fullName,
     phone: updated.phone,
+    is_active: updated.isActive,
     membership_product_id: updated.membershipProduct.id,
     membership_name: updated.membershipProduct.name,
     membership_period: inferMembershipPeriod(updated.membershipProduct.sku, updated.membershipProduct.membershipPeriod) ?? "MONTHLY",
@@ -701,6 +835,166 @@ export async function restartMember(memberId: string): Promise<MemberSubscriptio
     checked_in_at: updated.checkedInAt?.toISOString() ?? null,
     renewed_at: updated.renewedAt?.toISOString() ?? null,
     renewal_status: "ACTIVE",
+    renewal_method: "RESTART_FROM_NEW_START",
+  };
+}
+
+export async function createSpecialMember(input: CreateSpecialMemberInputDto): Promise<MemberSubscriptionRecord> {
+  const fullName = input.full_name.trim();
+  if (!fullName) {
+    throw new Error("MEMBER_NAME_REQUIRED");
+  }
+
+  const startedAt = new Date(input.started_at);
+  const expiresAt = new Date(input.expires_at);
+
+  if (Number.isNaN(startedAt.getTime()) || Number.isNaN(expiresAt.getTime())) {
+    throw new Error("INVALID_DATE");
+  }
+
+  if (expiresAt <= startedAt) {
+    throw new Error("EXPIRES_BEFORE_START");
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const membershipProduct = await ensureSpecialMembershipProduct(tx, {
+      membership_name: input.membership_name.trim(),
+      membership_period: input.membership_period,
+    });
+    const memberSequence = await reserveDocumentNumber(tx, "MEMBER", "MBR");
+
+    const created = await tx.memberSubscription.create({
+      data: {
+        memberCode: memberSequence.documentNumber,
+        fullName,
+        phone: input.phone?.trim() || "รออัปเดตเบอร์โทร",
+        membershipProductId: membershipProduct.id,
+        isActive: true,
+        startedAt,
+        expiresAt,
+        renewalStatus: "ACTIVE",
+        renewalMethod: "NONE",
+      },
+      select: {
+        id: true,
+        memberCode: true,
+        fullName: true,
+        phone: true,
+        startedAt: true,
+        expiresAt: true,
+        checkedInAt: true,
+        renewedAt: true,
+        membershipProduct: {
+          select: {
+            id: true,
+            name: true,
+            sku: true,
+            membershipPeriod: true,
+          },
+        },
+      },
+    });
+
+    return {
+      member_id: created.id,
+      member_code: created.memberCode,
+      full_name: created.fullName,
+      phone: created.phone,
+        is_active: true,
+      membership_product_id: created.membershipProduct.id,
+      membership_name: created.membershipProduct.name,
+      membership_period:
+        inferMembershipPeriod(created.membershipProduct.sku, created.membershipProduct.membershipPeriod) ??
+        input.membership_period,
+      started_at: created.startedAt.toISOString(),
+      expires_at: created.expiresAt.toISOString(),
+      checked_in_at: created.checkedInAt?.toISOString() ?? null,
+      renewed_at: created.renewedAt?.toISOString() ?? null,
+      renewal_status: "ACTIVE",
+      renewal_method: "NONE",
+    };
+  });
+}
+
+export async function toggleMemberActive(memberId: string): Promise<MemberSubscriptionRecord> {
+  const normalizedMemberId = memberId.trim();
+  if (!normalizedMemberId) {
+    throw new Error("MEMBER_NOT_FOUND");
+  }
+
+  const member = await prisma.memberSubscription.findUnique({
+    where: { id: normalizedMemberId },
+    select: {
+      id: true,
+      memberCode: true,
+      fullName: true,
+      phone: true,
+      isActive: true,
+      startedAt: true,
+      expiresAt: true,
+      checkedInAt: true,
+      renewedAt: true,
+      renewalStatus: true,
+      renewalMethod: true,
+      membershipProduct: {
+        select: {
+          id: true,
+          name: true,
+          sku: true,
+          membershipPeriod: true,
+        },
+      },
+    },
+  });
+
+  if (!member) {
+    throw new Error("MEMBER_NOT_FOUND");
+  }
+
+  const updated = await prisma.memberSubscription.update({
+    where: { id: member.id },
+    data: {
+      isActive: !member.isActive,
+    },
+    select: {
+      id: true,
+      memberCode: true,
+      fullName: true,
+      phone: true,
+      isActive: true,
+      startedAt: true,
+      expiresAt: true,
+      checkedInAt: true,
+      renewedAt: true,
+      renewalStatus: true,
+      renewalMethod: true,
+      membershipProduct: {
+        select: {
+          id: true,
+          name: true,
+          sku: true,
+          membershipPeriod: true,
+        },
+      },
+    },
+  });
+
+  return {
+    member_id: updated.id,
+    member_code: updated.memberCode,
+    full_name: updated.fullName,
+    phone: updated.phone,
+    is_active: updated.isActive,
+    membership_product_id: updated.membershipProduct.id,
+    membership_name: updated.membershipProduct.name,
+    membership_period:
+      inferMembershipPeriod(updated.membershipProduct.sku, updated.membershipProduct.membershipPeriod) ?? "MONTHLY",
+    started_at: updated.startedAt.toISOString(),
+    expires_at: updated.expiresAt.toISOString(),
+    checked_in_at: updated.checkedInAt?.toISOString() ?? null,
+    renewed_at: updated.renewedAt?.toISOString() ?? null,
+    renewal_status: updated.renewalStatus === "RENEWED" ? "RENEWED" : "ACTIVE",
+    renewal_method: (updated.renewalMethod as MemberSubscriptionRecord["renewal_method"]) ?? "NONE",
   };
 }
 
@@ -947,6 +1241,31 @@ export async function createOrderWithJournal(
       throw new Error("MEMBERSHIP_CUSTOMER_REQUIRED");
     }
 
+    // PT / Training validation
+    for (const item of input.items) {
+      const product = products.find((p) => p.id === item.product_id);
+      if (product && product.sku.startsWith("PT-")) {
+        if (!item.trainer_id) {
+          throw new Error("TRAINER_REQUIRED");
+        }
+        if (item.quantity > 1) {
+          throw new Error("TRAINING_SINGLE_QUANTITY");
+        }
+      }
+    }
+
+    // Validate trainers exist and are active
+    const trainerIds = [...new Set(input.items.filter((i) => i.trainer_id).map((i) => i.trainer_id!))];
+    if (trainerIds.length > 0) {
+      const trainers = await tx.trainer.findMany({
+        where: { id: { in: trainerIds }, isActive: true },
+        select: { id: true },
+      });
+      if (trainers.length !== trainerIds.length) {
+        throw new Error("TRAINER_NOT_FOUND");
+      }
+    }
+
     const productMap = new Map(products.map((product) => [product.id, product]));
     const normalizedItems = input.items.map((item) => {
       const product = productMap.get(item.product_id);
@@ -1010,6 +1329,48 @@ export async function createOrderWithJournal(
         totalPrice: item.totalPrice,
       })),
     });
+
+    // Create TrainingServiceEnrollment for PT items
+    const ptInputItems = input.items.filter((i) => {
+      const product = productMap.get(i.product_id);
+      return product && product.sku.startsWith("PT-");
+    });
+
+    if (ptInputItems.length > 0) {
+      const createdOrderItems = await tx.orderItem.findMany({
+        where: { orderId: order.id },
+        select: { id: true, productId: true },
+      });
+
+      for (const ptItem of ptInputItems) {
+        const product = productMap.get(ptItem.product_id)!;
+        const orderItem = createdOrderItems.find((oi) => oi.productId === ptItem.product_id);
+        if (!orderItem) continue;
+
+        const startedAt = ptItem.service_start_date ? new Date(ptItem.service_start_date) : new Date();
+        const durationDays = product.membershipDurationDays;
+        const expiresAt = durationDays ? new Date(startedAt.getTime() + durationDays * 86400000) : null;
+        const sessionLimit = deriveTrainingSessionLimit(product.sku);
+
+        await tx.trainingServiceEnrollment.create({
+          data: {
+            orderId: order.id,
+            orderItemId: orderItem.id,
+            trainerId: ptItem.trainer_id ?? null,
+            packageProductId: product.id,
+            customerNameSnapshot: input.customer_info?.name ?? "Walk-in",
+            packageNameSnapshot: product.name,
+            packageSkuSnapshot: product.sku,
+            startedAt,
+            expiresAt,
+            sessionLimit,
+            sessionsRemaining: sessionLimit,
+            priceSnapshot: product.price,
+            status: ptItem.trainer_id ? "ACTIVE" : "UNASSIGNED",
+          },
+        });
+      }
+    }
 
     for (const item of normalizedItems) {
       if (!item.trackStock || typeof item.stockOnHand !== "number") {
@@ -1344,15 +1705,74 @@ export async function closeActiveShiftWithDifference(
   });
 }
 
-export async function getDailySummaryByDate(date: string): Promise<DailySummaryDto> {
-  const parsed = new Date(`${date}T00:00:00.000Z`);
-  if (Number.isNaN(parsed.getTime())) {
+export type ReportQueryInput = {
+  period: "DAY" | "WEEK" | "MONTH" | "CUSTOM";
+  date?: string;
+  start_date?: string;
+  end_date?: string;
+};
+
+function resolveReportRange(input: ReportQueryInput): { from: Date; to: Date; rangeStart: string; rangeEnd: string } {
+  if (input.period === "CUSTOM") {
+    if (!input.start_date || !input.end_date) {
+      throw new Error("INVALID_DATE");
+    }
+    const from = new Date(`${input.start_date}T00:00:00.000Z`);
+    const to = new Date(`${input.end_date}T00:00:00.000Z`);
+    to.setUTCDate(to.getUTCDate() + 1);
+    if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) {
+      throw new Error("INVALID_DATE");
+    }
+    return { from, to, rangeStart: input.start_date, rangeEnd: input.end_date };
+  }
+
+  const dateStr = input.date;
+  if (!dateStr) {
+    throw new Error("INVALID_DATE");
+  }
+  const anchor = new Date(`${dateStr}T00:00:00.000Z`);
+  if (Number.isNaN(anchor.getTime())) {
     throw new Error("INVALID_DATE");
   }
 
-  const from = parsed;
-  const to = new Date(parsed);
-  to.setUTCDate(to.getUTCDate() + 1);
+  if (input.period === "DAY") {
+    const to = new Date(anchor);
+    to.setUTCDate(to.getUTCDate() + 1);
+    return { from: anchor, to, rangeStart: dateStr, rangeEnd: dateStr };
+  }
+
+  if (input.period === "WEEK") {
+    const dayOfWeek = anchor.getUTCDay();
+    const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+    const monday = new Date(anchor);
+    monday.setUTCDate(monday.getUTCDate() + mondayOffset);
+    const sunday = new Date(monday);
+    sunday.setUTCDate(sunday.getUTCDate() + 7);
+    return {
+      from: monday,
+      to: sunday,
+      rangeStart: monday.toISOString().slice(0, 10),
+      rangeEnd: new Date(sunday.getTime() - 86400000).toISOString().slice(0, 10),
+    };
+  }
+
+  // MONTH
+  const firstDay = new Date(Date.UTC(anchor.getUTCFullYear(), anchor.getUTCMonth(), 1));
+  const lastDay = new Date(Date.UTC(anchor.getUTCFullYear(), anchor.getUTCMonth() + 1, 1));
+  return {
+    from: firstDay,
+    to: lastDay,
+    rangeStart: firstDay.toISOString().slice(0, 10),
+    rangeEnd: new Date(lastDay.getTime() - 86400000).toISOString().slice(0, 10),
+  };
+}
+
+export async function getDailySummaryByDate(dateOrInput: string | ReportQueryInput): Promise<DailySummaryDto> {
+  const input: ReportQueryInput = typeof dateOrInput === "string"
+    ? { period: "DAY", date: dateOrInput }
+    : dateOrInput;
+
+  const { from, to, rangeStart, rangeEnd } = resolveReportRange(input);
 
   const [orders, expenses, closedShifts] = await Promise.all([
     prisma.order.findMany({
@@ -1383,9 +1803,11 @@ export async function getDailySummaryByDate(date: string): Promise<DailySummaryD
         items: {
           select: {
             quantity: true,
+            totalPrice: true,
             product: {
               select: {
                 name: true,
+                sku: true,
               },
             },
           },
@@ -1497,13 +1919,56 @@ export async function getDailySummaryByDate(date: string): Promise<DailySummaryD
     difference: Number(Number(shift.difference ?? 0).toFixed(2)),
   }));
 
+  // Category aggregation
+  const categoryMap = new Map(
+    POS_CATEGORY_DEFINITIONS.map((definition) => [
+      definition.category,
+      {
+        label: definition.label,
+        total_amount: 0,
+        receipt_count: new Set<string>(),
+        item_count: 0,
+      },
+    ]),
+  );
+
+  for (const order of orders) {
+    for (const item of order.items) {
+      const category = getPosSalesCategoryFromSku(item.product.sku);
+      const existing = categoryMap.get(category);
+      if (!existing) {
+        continue;
+      }
+
+      existing.total_amount += Number(item.totalPrice);
+      existing.receipt_count.add(order.id);
+      existing.item_count += item.quantity;
+    }
+  }
+
+  const salesByCategory = POS_CATEGORY_DEFINITIONS.map((definition) => {
+    const data = categoryMap.get(definition.category);
+
+    return {
+      category: definition.category,
+      label: definition.label,
+      total_amount: Number((data?.total_amount ?? 0).toFixed(2)),
+      receipt_count: data?.receipt_count.size ?? 0,
+      item_count: data?.item_count ?? 0,
+    };
+  });
+
   return {
+    report_period: input.period,
+    range_start: rangeStart,
+    range_end: rangeEnd,
     total_sales: Number(totalSales.toFixed(2)),
     sales_by_method: {
       CASH: Number(salesByMethod.CASH.toFixed(2)),
       PROMPTPAY: Number(salesByMethod.PROMPTPAY.toFixed(2)),
       CREDIT_CARD: Number(salesByMethod.CREDIT_CARD.toFixed(2)),
     },
+    sales_by_category: salesByCategory,
     total_expenses: Number(totalExpenses.toFixed(2)),
     net_cash_flow: Number((salesByMethod.CASH - totalExpenses).toFixed(2)),
     shift_discrepancies: Number(shiftDiscrepancies.toFixed(2)),
@@ -1984,4 +2449,324 @@ export async function toggleChartOfAccount(accountId: string): Promise<ChartOfAc
     description: updated.description,
     lockedReason: updated.lockedReason,
   });
+}
+
+// --- Trainer Services ---
+
+export type TrainerRecordDto = {
+  trainer_id: string;
+  trainer_code: string;
+  full_name: string;
+  nickname: string | null;
+  phone: string | null;
+  is_active: boolean;
+  active_customer_count: number;
+};
+
+export type TrainingEnrollmentDto = {
+  enrollment_id: string;
+  trainer_id: string | null;
+  trainer_name: string | null;
+  customer_name: string;
+  member_id: string | null;
+  package_name: string;
+  package_sku: string;
+  started_at: string;
+  expires_at: string | null;
+  session_limit: number | null;
+  sessions_remaining: number | null;
+  price: number;
+  status: "ACTIVE" | "EXPIRED" | "UNASSIGNED" | "CLOSED";
+  closed_at: string | null;
+  close_reason: string | null;
+  updated_at: string;
+};
+
+export type CreateTrainerInputDto = {
+  full_name: string;
+  nickname?: string;
+  phone?: string;
+};
+
+export type UpdateTrainingEnrollmentInputDto = {
+  sessions_remaining?: number | null;
+  status?: "ACTIVE" | "EXPIRED" | "UNASSIGNED" | "CLOSED";
+  close_reason?: string | null;
+};
+
+function normalizeOptionalText(value?: string | null) {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : null;
+}
+
+function deriveTrainingSessionLimit(packageSku: string) {
+  const match = /^PT-(\d+)$/.exec(packageSku);
+  if (!match) {
+    return null;
+  }
+
+  const value = Number.parseInt(match[1] ?? "", 10);
+  return Number.isFinite(value) && value > 0 ? value : null;
+}
+
+function resolveTrainingEnrollmentStatus(
+  enrollment: {
+    trainerId: string | null;
+    status: string;
+    expiresAt: Date | null;
+    sessionsRemaining?: number | null;
+  },
+  now = new Date(),
+): "ACTIVE" | "EXPIRED" | "UNASSIGNED" | "CLOSED" {
+  if (enrollment.status === "CLOSED") {
+    return "CLOSED";
+  }
+
+  if (!enrollment.trainerId) {
+    return "UNASSIGNED";
+  }
+
+  if (enrollment.status === "EXPIRED") {
+    return "EXPIRED";
+  }
+
+  if (typeof enrollment.sessionsRemaining === "number" && enrollment.sessionsRemaining <= 0) {
+    return "EXPIRED";
+  }
+
+  if (enrollment.expiresAt && enrollment.expiresAt < now) {
+    return "EXPIRED";
+  }
+
+  return "ACTIVE";
+}
+
+function mapTrainingEnrollmentDto(
+  enrollment: {
+    id: string;
+    trainerId: string | null;
+    trainer?: { fullName: string } | null;
+    customerNameSnapshot: string;
+    memberSubscriptionId: string | null;
+    packageNameSnapshot: string;
+    packageSkuSnapshot: string;
+    startedAt: Date;
+    expiresAt: Date | null;
+    sessionLimit: number | null;
+    sessionsRemaining: number | null;
+    priceSnapshot: Prisma.Decimal | number;
+    status: string;
+    closedAt: Date | null;
+    closeReason: string | null;
+    updatedAt: Date;
+  },
+  trainerName?: string | null,
+  now = new Date(),
+): TrainingEnrollmentDto {
+  return {
+    enrollment_id: enrollment.id,
+    trainer_id: enrollment.trainerId,
+    trainer_name: enrollment.trainer?.fullName ?? trainerName ?? null,
+    customer_name: enrollment.customerNameSnapshot,
+    member_id: enrollment.memberSubscriptionId,
+    package_name: enrollment.packageNameSnapshot,
+    package_sku: enrollment.packageSkuSnapshot,
+    started_at: enrollment.startedAt.toISOString(),
+    expires_at: enrollment.expiresAt?.toISOString() ?? null,
+    session_limit: enrollment.sessionLimit,
+    sessions_remaining: enrollment.sessionsRemaining ?? enrollment.sessionLimit ?? null,
+    price: Number(enrollment.priceSnapshot),
+    status: resolveTrainingEnrollmentStatus(enrollment, now),
+    closed_at: enrollment.closedAt?.toISOString() ?? null,
+    close_reason: enrollment.closeReason,
+    updated_at: enrollment.updatedAt.toISOString(),
+  };
+}
+
+function toNextTrainerCode(existingCodes: string[]) {
+  const maxCode = existingCodes.reduce((highest, code) => {
+    const match = /^TR(\d+)$/.exec(code);
+    if (!match) {
+      return highest;
+    }
+
+    const value = Number.parseInt(match[1] ?? "", 10);
+    return Number.isFinite(value) ? Math.max(highest, value) : highest;
+  }, 0);
+
+  return `TR${String(maxCode + 1).padStart(3, "0")}`;
+}
+
+export async function listTrainers(): Promise<Array<TrainerRecordDto & { assignments: TrainingEnrollmentDto[] }>> {
+  const trainers = await prisma.trainer.findMany({
+    orderBy: [{ isActive: "desc" }, { createdAt: "asc" }],
+    include: {
+      enrollments: {
+        orderBy: { createdAt: "desc" },
+        include: {
+          trainer: { select: { fullName: true } },
+          packageProduct: { select: { name: true, sku: true } },
+        },
+      },
+    },
+  });
+
+  return trainers.map((trainer) => {
+    const now = new Date();
+    const assignments = trainer.enrollments.map((enrollment) => mapTrainingEnrollmentDto(enrollment, trainer.fullName, now));
+
+    return {
+      trainer_id: trainer.id,
+      trainer_code: trainer.trainerCode,
+      full_name: trainer.fullName,
+      nickname: trainer.nickname,
+      phone: trainer.phone,
+      is_active: trainer.isActive,
+      active_customer_count: assignments.filter((a) => a.status === "ACTIVE").length,
+      assignments,
+    };
+  });
+}
+
+export async function createTrainer(input: CreateTrainerInputDto): Promise<TrainerRecordDto> {
+  const fullName = input.full_name.trim();
+  if (!fullName) {
+    throw new Error("TRAINER_NAME_REQUIRED");
+  }
+
+  const existingCodes = await prisma.trainer.findMany({
+    select: { trainerCode: true },
+    orderBy: { createdAt: "asc" },
+  });
+
+  const trainer = await prisma.trainer.create({
+    data: {
+      trainerCode: toNextTrainerCode(existingCodes.map((item) => item.trainerCode)),
+      fullName,
+      nickname: normalizeOptionalText(input.nickname),
+      phone: normalizeOptionalText(input.phone),
+      isActive: true,
+    },
+  });
+
+  return {
+    trainer_id: trainer.id,
+    trainer_code: trainer.trainerCode,
+    full_name: trainer.fullName,
+    nickname: trainer.nickname,
+    phone: trainer.phone,
+    is_active: trainer.isActive,
+    active_customer_count: 0,
+  };
+}
+
+export async function toggleTrainerActive(trainerId: string): Promise<TrainerRecordDto> {
+  const normalizedTrainerId = trainerId.trim();
+  if (!normalizedTrainerId) {
+    throw new Error("TRAINER_NOT_FOUND");
+  }
+
+  const trainer = await prisma.trainer.findUnique({
+    where: { id: normalizedTrainerId },
+    include: {
+      enrollments: {
+        select: {
+          trainerId: true,
+          status: true,
+          expiresAt: true,
+          sessionsRemaining: true,
+        },
+      },
+    },
+  });
+
+  if (!trainer) {
+    throw new Error("TRAINER_NOT_FOUND");
+  }
+
+  const activeCustomerCount = trainer.enrollments.filter(
+    (enrollment) => resolveTrainingEnrollmentStatus(enrollment) === "ACTIVE",
+  ).length;
+
+  if (trainer.isActive && activeCustomerCount > 0) {
+    throw new Error("TRAINER_HAS_ACTIVE_ASSIGNMENTS");
+  }
+
+  const updated = await prisma.trainer.update({
+    where: { id: trainer.id },
+    data: {
+      isActive: !trainer.isActive,
+    },
+  });
+
+  return {
+    trainer_id: updated.id,
+    trainer_code: updated.trainerCode,
+    full_name: updated.fullName,
+    nickname: updated.nickname,
+    phone: updated.phone,
+    is_active: updated.isActive,
+    active_customer_count: activeCustomerCount,
+  };
+}
+
+export async function updateTrainingEnrollment(
+  enrollmentId: string,
+  input: UpdateTrainingEnrollmentInputDto,
+): Promise<TrainingEnrollmentDto> {
+  const enrollment = await prisma.trainingServiceEnrollment.findUnique({
+    where: { id: enrollmentId },
+    include: {
+      trainer: { select: { fullName: true } },
+      packageProduct: { select: { name: true, sku: true } },
+    },
+  });
+
+  if (!enrollment) {
+    throw new Error("TRAINING_ENROLLMENT_NOT_FOUND");
+  }
+
+  if (
+    input.sessions_remaining !== undefined &&
+    input.sessions_remaining !== null &&
+    (!Number.isInteger(input.sessions_remaining) || input.sessions_remaining < 0)
+  ) {
+    throw new Error("INVALID_SESSIONS_REMAINING");
+  }
+
+  const nextSessionsRemaining =
+    input.sessions_remaining === undefined
+      ? enrollment.sessionsRemaining ?? enrollment.sessionLimit
+      : input.sessions_remaining;
+
+  if (
+    enrollment.sessionLimit !== null &&
+    nextSessionsRemaining !== null &&
+    nextSessionsRemaining !== undefined &&
+    nextSessionsRemaining > enrollment.sessionLimit
+  ) {
+    throw new Error("INVALID_SESSIONS_REMAINING");
+  }
+
+  let nextStatus = input.status ?? (enrollment.status as "ACTIVE" | "EXPIRED" | "UNASSIGNED" | "CLOSED");
+
+  if (nextStatus === "ACTIVE" && nextSessionsRemaining !== null && nextSessionsRemaining !== undefined && nextSessionsRemaining <= 0) {
+    nextStatus = "EXPIRED";
+  }
+
+  const updated = await prisma.trainingServiceEnrollment.update({
+    where: { id: enrollmentId },
+    data: {
+      sessionsRemaining: nextSessionsRemaining,
+      status: nextStatus,
+      closeReason: nextStatus === "CLOSED" ? normalizeOptionalText(input.close_reason) : null,
+      closedAt: nextStatus === "CLOSED" ? enrollment.closedAt ?? new Date() : null,
+    },
+    include: {
+      trainer: { select: { fullName: true } },
+      packageProduct: { select: { name: true, sku: true } },
+    },
+  });
+
+  return mapTrainingEnrollmentDto(updated);
 }

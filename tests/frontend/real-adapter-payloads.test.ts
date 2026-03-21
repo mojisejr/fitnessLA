@@ -262,10 +262,10 @@ describe("real-app-adapter — request payload shapes", () => {
       shift_discrepancies: 0,
     });
 
-    await realAppAdapter.getDailySummary("2026-03-10");
+    await realAppAdapter.getDailySummary({ period: "DAY", date: "2026-03-10" });
 
     const [url] = fetchSpy.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe("/api/v1/reports/daily-summary?date=2026-03-10");
+    expect(url).toBe("/api/v1/reports/daily-summary?period=DAY&date=2026-03-10");
   });
 
   it("2E-12: createAdminUser POSTs /api/v1/admin/users with full_name, username, email, role", async () => {

@@ -190,7 +190,7 @@ describe("A-2 operations routes", () => {
   });
 
   it("opens shift and returns journal reference", async () => {
-    mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "CASHIER" });
+    mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "CASHIER", full_name: "Pim Counter" });
     mockOpenShiftWithJournal.mockResolvedValue({
       shift_id: "shift_1",
       opened_at: "2026-03-08T16:00:00.000Z",
@@ -209,6 +209,7 @@ describe("A-2 operations routes", () => {
 
     expect(response.status).toBe(201);
     expect(mockOpenShiftWithJournal).toHaveBeenCalledWith("u1", 500, "Pim Counter");
+    // Note: R3 means responsible_name must match session.full_name. The API always uses session.full_name.
     expect(body).toMatchObject({
       shift_id: "shift_1",
       journal_entry_id: "journal_1",
@@ -339,7 +340,7 @@ describe("A-2 operations routes", () => {
   });
 
   it("closes shift and returns discrepancy payload", async () => {
-    mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "CASHIER" });
+    mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "CASHIER", full_name: "Pim Counter" });
     mockCloseActiveShiftWithDifference.mockResolvedValue({
       shift_id: "shift_1",
       expected_cash: 2600,

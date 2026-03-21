@@ -1,5 +1,6 @@
 import type {
   AdminUserRecord,
+  CreateTrainerInput,
   CreateOrderRequest,
   DailySummary,
   MemberSubscriptionRecord,
@@ -10,13 +11,18 @@ import type {
   Product,
   ShiftCloseResult,
   ShiftOpenResult,
+  UpdateTrainingEnrollmentInput,
   UserSession,
+  TrainerRecord,
+  TrainingEnrollmentRecord,
 } from "@/lib/contracts";
 import type {
   AppAdapter,
   CreateAdminUserInput,
   CreateChartOfAccountInput,
   CreateProductInput,
+  DailySummaryQuery,
+  MemberListFilters,
   UpdateProductInput,
 } from "@/features/adapters/types";
 import { authClient } from "@/lib/auth-client";
@@ -94,8 +100,12 @@ export const realAppAdapter: AppAdapter = {
     return fetchOptionalJson<MockShiftRecord>("/api/v1/shifts/active");
   },
 
-  async listMembers() {
-    return fetchJson<MemberSubscriptionRecord[]>("/api/v1/members");
+  async listMembers(filters?: MemberListFilters) {
+    const params = new URLSearchParams();
+    if (filters?.search) params.set("search", filters.search);
+    if (filters?.status && filters.status !== "ALL") params.set("status", filters.status);
+    const qs = params.toString();
+    return fetchJson<MemberSubscriptionRecord[]>(`/api/v1/members${qs ? `?${qs}` : ""}`);
   },
 
   async listProducts() {
@@ -203,8 +213,13 @@ export const realAppAdapter: AppAdapter = {
     });
   },
 
-  async getDailySummary(date: string) {
-    return fetchJson<DailySummary>(`/api/v1/reports/daily-summary?date=${encodeURIComponent(date)}`);
+  async getDailySummary(query: DailySummaryQuery) {
+    const params = new URLSearchParams();
+    params.set("period", query.period);
+    if (query.date) params.set("date", query.date);
+    if (query.start_date) params.set("start_date", query.start_date);
+    if (query.end_date) params.set("end_date", query.end_date);
+    return fetchJson<DailySummary>(`/api/v1/reports/daily-summary?${params.toString()}`);
   },
 
   async getShiftSummary(date: string, responsibleName?: string) {
@@ -236,6 +251,53 @@ export const realAppAdapter: AppAdapter = {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(input),
+    });
+  },
+
+  async listTrainers() {
+    return fetchJson<Array<TrainerRecord & { assignments: TrainingEnrollmentRecord[] }>>("/api/v1/trainers");
+  },
+
+  async createTrainer(input: CreateTrainerInput) {
+    return fetchJson<TrainerRecord>("/api/v1/trainers", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    });
+  },
+
+  async toggleTrainerActive(trainerId: EntityId) {
+    return fetchJson<TrainerRecord>(`/api/v1/trainers/${encodeURIComponent(String(trainerId))}/toggle-active`, {
+      method: "PATCH",
+    });
+  },
+
+  async updateTrainingEnrollment(enrollmentId: string | number, input: UpdateTrainingEnrollmentInput) {
+    return fetchJson<TrainingEnrollmentRecord>(
+      `/api/v1/trainers/enrollments/${encodeURIComponent(String(enrollmentId))}`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(input),
+      },
+    );
+  },
+
+  async renewMember(memberId: EntityId) {
+    return fetchJson<MemberSubscriptionRecord>(`/api/v1/members/${encodeURIComponent(String(memberId))}/renew`, {
+      method: "POST",
+    });
+  },
+
+  async toggleMemberActive(memberId: EntityId) {
+    return fetchJson<MemberSubscriptionRecord>(`/api/v1/members/${encodeURIComponent(String(memberId))}/toggle-active`, {
+      method: "PATCH",
+    });
+  },
+
+  async restartMember(memberId: EntityId) {
+    return fetchJson<MemberSubscriptionRecord>(`/api/v1/members/${encodeURIComponent(String(memberId))}/restart`, {
+      method: "POST",
     });
   },
 };

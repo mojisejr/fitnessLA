@@ -11,6 +11,8 @@ function isValidDateInput(value: string | null): value is string {
   return /^\d{4}-\d{2}-\d{2}$/.test(value);
 }
 
+const VALID_PERIODS = ["DAY", "WEEK", "MONTH", "CUSTOM"] as const;
+
 export async function GET(request: Request) {
   const session = await resolveSessionFromRequest(request);
   if (!session) {
@@ -34,19 +36,47 @@ export async function GET(request: Request) {
   }
 
   const { searchParams } = new URL(request.url);
+  const period = searchParams.get("period") ?? "DAY";
   const date = searchParams.get("date");
-  if (!isValidDateInput(date)) {
+  const startDate = searchParams.get("start_date");
+  const endDate = searchParams.get("end_date");
+
+  if (!VALID_PERIODS.includes(period as (typeof VALID_PERIODS)[number])) {
     return NextResponse.json(
-      {
-        code: "VALIDATION_ERROR",
-        message: "รูปแบบวันที่ต้องเป็น YYYY-MM-DD",
-      },
+      { code: "VALIDATION_ERROR", message: "period ต้องเป็น DAY, WEEK, MONTH หรือ CUSTOM" },
       { status: 400 },
     );
   }
 
+  if (period === "CUSTOM") {
+    if (!isValidDateInput(startDate) || !isValidDateInput(endDate)) {
+      return NextResponse.json(
+        { code: "VALIDATION_ERROR", message: "CUSTOM ต้องระบุ start_date และ end_date เป็น YYYY-MM-DD" },
+        { status: 400 },
+      );
+    }
+    if (startDate > endDate) {
+      return NextResponse.json(
+        { code: "VALIDATION_ERROR", message: "start_date ต้องไม่เกิน end_date" },
+        { status: 400 },
+      );
+    }
+  } else {
+    if (!isValidDateInput(date)) {
+      return NextResponse.json(
+        { code: "VALIDATION_ERROR", message: "รูปแบบวันที่ต้องเป็น YYYY-MM-DD" },
+        { status: 400 },
+      );
+    }
+  }
+
   try {
-    const result = await getDailySummaryByDate(date);
+    const query =
+      period === "CUSTOM"
+        ? { period: period as "CUSTOM", start_date: startDate!, end_date: endDate! }
+        : { period: period as "DAY" | "WEEK" | "MONTH", date: date! };
+
+    const result = await getDailySummaryByDate(query);
     return NextResponse.json(result, { status: 200 });
   } catch (error) {
     if (error instanceof Error && error.message === "INVALID_DATE") {

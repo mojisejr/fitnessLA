@@ -15,3 +15,11 @@ export function canManageUsers(role: string | null | undefined): boolean {
   const appRole = toAppRole(role);
   return appRole === "OWNER" || appRole === "ADMIN";
 }
+
+export function canManageMembers(role: string | null | undefined): boolean {
+  return toAppRole(role) === "OWNER";
+}
+
+export function canManageTrainers(role: string | null | undefined): boolean {
+  return toAppRole(role) === "OWNER";
+}
