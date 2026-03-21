@@ -178,6 +178,16 @@ describe("real-app-adapter — request payload shapes", () => {
     );
   });
 
+  it("2C-7b: listMembers GETs the members endpoint with credentials included", async () => {
+    spyFetch([]);
+
+    await realAppAdapter.listMembers();
+
+    const [url, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/v1/members");
+    expect(init.credentials).toBe("include");
+  });
+
   // ── 2D: Expenses ───────────────────────────────────────────────────────
 
   it("2D-8: createExpense with file sends FormData with receipt_file field", async () => {

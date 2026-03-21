@@ -25,6 +25,8 @@ const createProductSchema = z.object({
   product_type: z.enum(["GOODS", "SERVICE", "MEMBERSHIP"]),
   revenue_account_id: z.string().trim().min(1).optional(),
   stock_on_hand: z.number().int().nonnegative().nullable().optional(),
+  membership_period: z.enum(["DAILY", "MONTHLY", "QUARTERLY", "SEMIANNUAL", "YEARLY"]).nullable().optional(),
+  membership_duration_days: z.number().int().positive().nullable().optional(),
 });
 
 export async function GET(request: Request) {

@@ -4,6 +4,20 @@
 
 ใช้คู่กับ `docs/Local_Real_Mode_Runbook.md`
 
+## Verified Baseline (2026-03-21)
+
+flow ที่ผ่านจริงแล้วบน dev DB ล่าสุดคือ:
+
+- login
+- open shift
+- create product
+- edit product
+- checkout membership
+- verify members
+- close shift
+
+ส่วน COA / GL export ด้านล่างยังคงเป็น extended verification ที่ควรทำต่อเมื่อ core flow ผ่านแล้ว
+
 ## Before Opening Browser
 
 - [ ] มีไฟล์ `.env` อยู่ที่ root project
@@ -14,6 +28,7 @@
 - [ ] `NEXT_PUBLIC_BETTER_AUTH_URL=http://localhost:3000/api/auth`
 - [ ] รัน `npm run db:seed:real-mode` ผ่านแล้ว
 - [ ] รัน `npm run dev` แล้วไม่มี startup error
+- [ ] `npx prisma migrate status` ไม่ฟ้อง drift ที่ยังไม่ได้จัดการ
 
 ## Screen 1: Login Page
 
@@ -46,20 +61,19 @@ Path: `/dashboard`
 - request `GET /api/auth/session`
 - ถ้า redirect ให้จด path ต้นทางและ path ปลายทาง
 
-## Screen 3: COA Page
+## Screen 3: Open Shift
 
-Path: `/coa`
+Path: `/shift/open` หรือ flow เปิดกะจาก `/pos`
 
-- [ ] เปิดหน้า COA ได้โดยไม่ถูกส่งกลับ `/login`
-- [ ] รายการบัญชีโหลดขึ้น
-- [ ] มีบัญชีหมวด `REVENUE` อย่างน้อย 1 รายการ
-- [ ] ถ้ามีบัญชี locked UI แสดงสถานะชัดเจน
-- [ ] ไม่มี 401 หรือ 403 ที่ไม่คาดหวัง
+- [ ] เปิด shift flow ได้
+- [ ] กรอก starting cash
+- [ ] เปิดกะสำเร็จ
+- [ ] หลังเปิดกะ หน้า POS พร้อมขายสินค้า
 
-สิ่งที่ควรจดระหว่างดูหน้า:
+Network assertions:
 
-- [ ] จำนวน revenue accounts ที่ active คร่าว ๆ
-- [ ] account code ของ 2 บัญชีที่จะใช้ผูกสินค้า
+- [ ] request `POST /api/v1/shifts/open`
+- [ ] status code เป็น 2xx
 
 ## Screen 4: POS Entry
 
@@ -71,12 +85,7 @@ Path: `/pos`
 - [ ] ส่วน `บัญชีรายได้` แสดง dropdown `เลือกบัญชีรายได้`
 - [ ] ไม่มี error โหลด COA ในส่วน revenue account ถ้า backend พร้อม
 
-ถ้า dropdown ว่าง:
-
-- [ ] ตรวจ `GET /api/v1/coa`
-- [ ] จดว่าหน้าว่างเพราะไม่มีข้อมูลหรือ request fail
-
-## Screen 5: Product Mapping Create Flow
+## Screen 5: Product Create Flow
 
 Path: `/pos`
 
@@ -95,16 +104,16 @@ Network assertions:
 
 - [ ] request เป็น `POST /api/v1/products`
 - [ ] payload มี `revenue_account_id`
+- [ ] payload มี `stock_on_hand` เมื่อสร้างสินค้า `GOODS`
 - [ ] status code เป็น 2xx
 
-## Screen 6: Product Mapping Update Flow
+## Screen 6: Product Update Flow
 
 Path: `/pos`
 
 - [ ] กด `แก้ไขสินค้าเดิม`
 - [ ] เลือกสินค้าที่มีอยู่
-- [ ] ยืนยันว่าค่า revenue account เดิมถูก preload ถ้ามี mapping อยู่แล้ว
-- [ ] เปลี่ยน revenue account เป็นอีกบัญชีหนึ่ง
+- [ ] เปลี่ยนชื่อ/ราคา/stock หรือ revenue account
 - [ ] กด `บันทึกสินค้า`
 - [ ] เห็น success message หลังบันทึก
 
@@ -112,9 +121,60 @@ Network assertions:
 
 - [ ] request เป็น `PATCH /api/v1/products/:productId`
 - [ ] payload มี `revenue_account_id`
+- [ ] ถ้าเป็น goods payload มี `stock_on_hand`
 - [ ] status code เป็น 2xx
 
-## Screen 7: Open Shift
+## Screen 7: Membership Checkout
+
+Path: `/pos`
+
+- [ ] เพิ่ม membership product ลงตะกร้า
+- [ ] กรอกชื่อลูกค้าใน flow สมาชิก
+- [ ] เลือกวิธีชำระเงิน
+- [ ] กด checkout สำเร็จ
+- [ ] ได้ success state หรือ receipt state ตาม UI ปัจจุบัน
+
+Network assertions:
+
+- [ ] request `POST /api/v1/orders`
+- [ ] payload ของ membership มี `customer_info.name`
+- [ ] status code เป็น 2xx
+- [ ] ถ้าตั้งใจทดสอบ fail path ให้สังเกต error codes เช่น `SHIFT_NOT_OPEN`, `SHIFT_OWNER_MISMATCH`, `INSUFFICIENT_STOCK`, `MEMBERSHIP_CUSTOMER_REQUIRED`, `MEMBERSHIP_SINGLE_QUANTITY`
+
+## Screen 8: Members Page
+
+Path: `/members`
+
+- [ ] เปิดหน้า members ได้
+- [ ] เห็นรายการสมาชิกจาก backend/API truth
+- [ ] member ที่เกิดจาก membership checkout ปรากฏหลัง reload/refetch
+- [ ] ไม่มี generic error banner `ไม่สามารถดึงข้อมูลสมาชิกได้`
+
+Network assertions:
+
+- [ ] request `GET /api/v1/members`
+- [ ] status code เป็น `200`
+
+## Screen 9: Close Shift
+
+Path: `/shift/close`
+
+- [ ] เปิด flow ปิดกะได้
+- [ ] ใส่ `actual_cash`
+- [ ] ปิดกะสำเร็จ
+- [ ] เห็น `expected_cash`, `actual_cash`, และ `difference`
+
+Network assertions:
+
+- [ ] request `POST /api/v1/shifts/close`
+- [ ] status code เป็น 2xx
+
+## Extended Verification: COA / Reports
+
+## Screen 10: COA Page
+
+Path: `/coa`
+## Screen 11: Sell Two Mapped Products
 
 Path: `/pos` หรือหน้า shift ตาม flow ปัจจุบัน
 
@@ -144,7 +204,7 @@ Network assertions:
 - [ ] status code เป็น 2xx
 - [ ] ไม่มี error เรื่อง shift หรือ stock ที่ไม่คาดหวัง
 
-## Screen 9: General Ledger Page
+## Screen 12: General Ledger Page
 
 Path: `/reports/general-ledger`
 
@@ -154,7 +214,7 @@ Path: `/reports/general-ledger`
 - [ ] เห็นปุ่ม `Download CSV`
 - [ ] ไม่มี role error ถ้าใช้ `owner` หรือ `admin`
 
-## Screen 10: Download GL CSV
+## Screen 13: Download GL CSV
 
 Path: `/reports/general-ledger`
 
@@ -172,7 +232,7 @@ Network assertions:
 - [ ] status code เป็น `200`
 - [ ] response content-type เป็น `text/csv`
 
-## Screen 11: CSV Validation
+## Screen 14: CSV Validation
 
 เปิดไฟล์ CSV ที่ดาวน์โหลดมาแล้วติ๊กตามนี้:
 
@@ -181,7 +241,7 @@ Network assertions:
 - [ ] debit รวมเท่ากับ credit รวม
 - [ ] ช่วงวันที่ในไฟล์ตรงกับช่วงวันที่ที่เลือก
 
-## Screen 12: Guard And Sign-out Regression
+## Screen 15: Guard And Sign-out Regression
 
 - [ ] เปิด incognito แล้วเข้าหน้า `/pos` โดยไม่ login
 - [ ] ระบบ redirect ไป `/login`

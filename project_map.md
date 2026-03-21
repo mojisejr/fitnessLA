@@ -16,10 +16,10 @@
 - [docs/Plan_Scaffold_Foundation.md](docs/Plan_Scaffold_Foundation.md): แผนการตั้งโครงสร้างพื้นฐาน (Phase 1)
 - [docs/WorkSplit_2People_Phase1.md](docs/WorkSplit_2People_Phase1.md): แผนการแบ่งงานและ **GitHub Parallel Workflow** (Integration Gate)
 
-## 👤 Current Occupation
-- **Agent A (Backend/Finance Core)**: GitHub Copilot (Oracle-Implementer)
-- **Primary Responsibility**: Database Schema, Double-Entry Logic, Better-Auth integration, and `/api` hardened routes.
-- **Status**: Active & Linked via Agent A Vow.
+## 👤 Current Operating Truth
+- **Current Mode:** real-mode recovery closed by solo full-stack pass on 2026-03-21
+- **Primary Responsibility Now:** keep frontend, backend, schema, and smoke docs aligned to the same runtime truth
+- **Current Status:** repo recovery for members/product/POS/checkout is complete; dev DB smoke is green; documentation refresh is the remaining housekeeping boundary
 
 ## 🏛️ System Architecture
 - **Frontend:** Next.js 15+ (App Router), Tailwind CSS, Lucide React, PWA (Serwist)
@@ -30,10 +30,11 @@
   - **Location:** All tests MUST be stored in the root `tests/` directory.
 
 ---
-- **Core Entities:** `users`, `products`, `chart_of_accounts`
+- **Core Entities:** `users`, `products`, `member_subscriptions`, `chart_of_accounts`
 - **Accounting & Logs:** `journal_entries`, `journal_lines`, `document_sequences`
 - **Transaction Flow:** `shifts` -> `orders`/`order_items` -> `tax_documents`
 - **Expense Control:** `expenses` (Linked to `shifts` and `chart_of_accounts`)
+- **Product Metadata Reality:** `products` now carry `trackStock`, `stockOnHand`, `membershipPeriod`, and `membershipDurationDays`
 
 ## �️ Testing Standards (Vitest)
 - **Unit Testing Focus:** เน้นทดสอบ Business Logic และ Utility Functions ที่สำคัญ
@@ -45,28 +46,35 @@
 - **Atomic Double-Entry:** ทุกธุรกรรม (Sale/Expense) ต้องเขียนลงทั้งตาราง Transaction และ Accounting (`journal_lines`) ภายใน Unit of Work เดียวกัน (ACID)
 - **Soft Control:** ห้ามลบข้อมูล (`DELETE`) ทุกอย่างใช้ `status` (ACTIVE, VOIDED, CLOSED) เพื่อรักษา Audit Trail
 - **Strict Blind Drop:** การคุมพนักงานตอนปิดกะ (`shifts.expected_cash` vs `shifts.actual_cash`) เพื่อตรวจจับส่วนต่าง (`difference`)
+- **Mock vs Real Drift:** หน้าที่เคยอาศัย browser-local member registry หรือ mock-only stock semantics ต้องถูกเช็กกับ backend truth ทุกครั้งก่อน release
+- **Migration Truth:** dev database อาจ drift จาก local migration history; ต้องเช็ก `prisma migrate status` ก่อนใช้ smoke results เป็น evidence
 
 ## 🚩 Status & Signals
-- **Current Phase:** Agent A Final 100% Closure Completed (Phase 1-5 done)
-- **Latest Update:** 2026-03-15 (Phase 1-5 complete with full hard gate pass and final handoff package locked for Agent B)
-- **Shared Agreement:** ยึด `API_Contract.md` เป็นหัวใจหลักในการคุยกัน และให้ Agent B เดินงานต่อผ่าน `real-app-adapter.ts` เป็นจุดเชื่อมเดียว พร้อมใช้ smoke checklist จาก handoff final
-- **Latest Handoff Docs:** [docs/Handoff_2026-03-15_Agent-A_Final_100_to_Agent-B.md](docs/Handoff_2026-03-15_Agent-A_Final_100_to_Agent-B.md), [docs/Status_2026-03-14_Shift_Expenses_Handoff.md](docs/Status_2026-03-14_Shift_Expenses_Handoff.md)
+- **Current Phase:** Recovery Phase 1-4 complete, dev DB real-mode smoke complete, docs refresh in progress
+- **Latest Update:** 2026-03-21 (members truth moved to backend/API, product stock + membership metadata implemented, checkout side effects validated on dev DB)
+- **Current Runtime Truth:**
+  - Better-Auth cookie session is the real auth path
+  - members page in real mode reads backend/API data, not browser-local registry
+  - product create/update supports `stock_on_hand`, `membership_period`, and `membership_duration_days`
+  - membership checkout creates persisted member records and goods checkout decrements stock in backend truth
+- **Latest Evidence Docs:** [docs/Local_Real_Mode_Runbook.md](docs/Local_Real_Mode_Runbook.md), [docs/Phase_G_Smoke_Checklist.md](docs/Phase_G_Smoke_Checklist.md)
 
 ## 🤝 Implementation Integration Matrix (Agent A ⬌ Agent B)
 *(Use this matrix to track feature handoffs from Mock to Real)*
 | Feature / Module | Backend (Agent A) | Frontend (Agent B) | Next Action |
 | :--- | :--- | :--- | :--- |
 | **Auth / Session** | ✅ DONE (Better-Auth) | 🏗️ Mocked | Agent B เปลี่ยนไปยิง API session จริง |
-| **List Products** | ✅ DONE (`GET /api/v1/products`) | 🏗️ Mocked (POS) | Agent B ผูก `real-app-adapter.ts` |
+| **List Products** | ✅ DONE (`GET /api/v1/products`) | ✅ Real adapter wired | Run smoke on product metadata parity |
 | **Open Shift** | ✅ DONE (`POST /api/v1/shifts/open`) | 🏗️ Mocked | Agent B ผูก `real-app-adapter.ts` |
 | **Active Shift Check**| ✅ DONE (`GET /api/v1/shifts/active`)| 🏗️ Mocked | Agent B ผูก `real-app-adapter.ts` |
-| **Orders & Checkout** | ✅ DONE (`POST /api/v1/orders`) | 🏗️ Mocked | Agent B ผูก `real-app-adapter.ts` |
+| **Orders & Checkout** | ✅ DONE (`POST /api/v1/orders`) | ✅ Real adapter wired | Keep validating stock/membership error UX |
 | **Petty Cash** | ✅ DONE (`POST /api/v1/expenses`) | 🏗️ Mocked | Agent B ผูก `real-app-adapter.ts` |
 | **Close Shift** | ✅ DONE (`POST /api/v1/shifts/close`) | 🏗️ Mocked | Agent B switch close flow to real adapter endpoint |
 | **Daily Summary** | ✅ DONE (`GET /api/v1/reports/daily-summary`) | 🏗️ Mocked | Agent B switch report page to real adapter endpoint |
 | **Shift Inventory Summary** | ✅ DONE (`GET /api/v1/shifts/:shiftId/inventory-summary`) | ✅ Real adapter wired | Agent B run smoke for cashier-owner boundary + no-data fallback |
-| **COA Management** | ✅ DONE (`GET/POST /api/v1/coa`, `PATCH /api/v1/coa/:id/toggle`) | 🏗️ Shell ready | Agent B ต่อหน้า COA กับ real adapter และจัดการ error state |
-| **Product-COA Mapping** | ✅ DONE (`POST/PATCH /api/v1/products` + `revenue_account_id`) | 🏗️ Partial | Agent B เพิ่ม UI เลือกบัญชีรายได้ตอน create/edit product |
+| **COA Management** | ✅ DONE (`GET/POST /api/v1/coa`, `PATCH /api/v1/coa/:id/toggle`) | 🏗️ Shell ready | Extended smoke remains optional after core flow |
+| **Product-COA Mapping** | ✅ DONE (`POST/PATCH /api/v1/products` + `revenue_account_id`) | ✅ Real mode verified | Product create/edit smoke passed on dev DB |
+| **Members API / Page** | ✅ DONE (`GET /api/v1/members`, `POST /api/v1/members/:memberId/renew`, `POST /api/v1/members/:memberId/restart`) | ✅ Members page reads API truth | UI controls for renew/restart are still not surfaced |
 | **General Ledger CSV** | ✅ DONE (`GET /api/v1/reports/gl`) | 🏗️ Placeholder | Agent B ต่อปุ่ม Download CSV ด้วย `start_date/end_date` |
 
 ## 🔄 2026-03-15 Grounding Delta (For Agent B Final Integration)
@@ -156,3 +164,25 @@
 - ถ้าเปลี่ยน contract ของ `DailySummary` ต้อง sync `contracts`, `mock-api`, `mock-data`, adapters, และ report pages พร้อมกัน
 - deploy รอบนี้ล้มเพราะ mock response shape ไม่ครบ ไม่ใช่เพราะ route จริงพัง
 - ให้ใช้ `docs/Handoff_2026-03-14_Agent-A_Next_After_Deploy_Fix.md` เป็น starting point ของ Agent A รอบถัดไป
+
+## 🔄 2026-03-21 Grounding Delta (Recovery Closure + Real Smoke)
+
+### ✅ Verified In Runtime
+- dev DB ถูก reset/reapplied จน `prisma migrate status` กลับมา `Database schema is up to date!`
+- `npm run db:seed:real-mode` สร้าง baseline users (`owner`, `admin`, `staff`) และ seeded products/accounts ได้จริง
+- browser smoke ผ่านครบเส้นหลัก:
+  - login as `owner`
+  - open shift
+  - create product `SNK-002`
+  - edit product to `Smoke Snack Plus`
+  - checkout `Monthly Membership` for `Somchai Smoke`
+  - verify member `MBR-2026-0001` on `/members`
+  - close shift with expected `1700`, actual `1700`, difference `0`
+
+### 🟡 Remaining Boundary
+- `project_map.md`, `README.md`, `API_Contract.md`, and schema docs must stay synchronized with the new members/product truth
+- members renew/restart routes exist and pass API-level behavior, but members-page action buttons are still intentionally absent
+
+### 🔴 Must Not Forget
+- `GET /api/v1/shifts/:shiftId/inventory-summary` still reports deterministic sold totals with a zeroed opening baseline; it is not a full opening-stock ledger yet
+- smoke confidence is meaningful only after confirming database migration truth first
