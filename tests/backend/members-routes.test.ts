@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { GET as membersGET } from "../../src/app/api/v1/members/route";
+import { PATCH as memberPATCH } from "../../src/app/api/v1/members/[memberId]/route";
 import { POST as memberRenewPOST } from "../../src/app/api/v1/members/[memberId]/renew/route";
 import { POST as memberRestartPOST } from "../../src/app/api/v1/members/[memberId]/restart/route";
 import { PATCH as memberToggleActivePATCH } from "../../src/app/api/v1/members/[memberId]/toggle-active/route";
@@ -10,6 +11,7 @@ const mockListMembers = vi.fn();
 const mockRenewMember = vi.fn();
 const mockRestartMember = vi.fn();
 const mockToggleMemberActive = vi.fn();
+const mockUpdateMemberDates = vi.fn();
 
 vi.mock("../../src/lib/session", () => ({
   resolveSessionFromRequest: (...args: unknown[]) => mockResolveSessionFromRequest(...args),
@@ -17,6 +19,7 @@ vi.mock("../../src/lib/session", () => ({
 
 vi.mock("../../src/features/operations/services", () => ({
   listMembers: (...args: unknown[]) => mockListMembers(...args),
+  updateMemberDates: (...args: unknown[]) => mockUpdateMemberDates(...args),
   renewMember: (...args: unknown[]) => mockRenewMember(...args),
   restartMember: (...args: unknown[]) => mockRestartMember(...args),
   toggleMemberActive: (...args: unknown[]) => mockToggleMemberActive(...args),
@@ -356,6 +359,95 @@ describe("members routes", () => {
     expect(body).toEqual({
       code: "MEMBER_NOT_FOUND",
       message: "ไม่พบสมาชิกที่ต้องการปรับสถานะ",
+    });
+  });
+
+  it("PATCH /members/:memberId updates member dates for owner", async () => {
+    mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "OWNER" });
+    mockUpdateMemberDates.mockResolvedValue({
+      member_id: "m1",
+      member_code: "MEM-0001",
+      full_name: "สมชาย ทดสอบ",
+      phone: "0812345678",
+      is_active: true,
+      membership_product_id: "p1",
+      membership_name: "Monthly Pass",
+      membership_period: "MONTHLY",
+      started_at: "2026-03-20T09:00:00.000Z",
+      expires_at: "2026-04-20T18:00:00.000Z",
+      checked_in_at: null,
+      renewed_at: null,
+      renewal_status: "ACTIVE",
+      renewal_method: "NONE",
+    });
+
+    const response = await memberPATCH(
+      new Request("http://localhost/api/v1/members/m1", {
+        method: "PATCH",
+        body: JSON.stringify({
+          started_at: "2026-03-20T09:00:00.000Z",
+          expires_at: "2026-04-20T18:00:00.000Z",
+        }),
+      }),
+      { params: Promise.resolve({ memberId: "m1" }) },
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toMatchObject({
+      member_id: "m1",
+      started_at: "2026-03-20T09:00:00.000Z",
+      expires_at: "2026-04-20T18:00:00.000Z",
+    });
+    expect(mockUpdateMemberDates).toHaveBeenCalledWith("m1", {
+      started_at: "2026-03-20T09:00:00.000Z",
+      expires_at: "2026-04-20T18:00:00.000Z",
+    });
+  });
+
+  it("PATCH /members/:memberId returns 403 for admin", async () => {
+    mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "ADMIN" });
+
+    const response = await memberPATCH(
+      new Request("http://localhost/api/v1/members/m1", {
+        method: "PATCH",
+        body: JSON.stringify({
+          started_at: "2026-03-20T09:00:00.000Z",
+          expires_at: "2026-04-20T18:00:00.000Z",
+        }),
+      }),
+      { params: Promise.resolve({ memberId: "m1" }) },
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(body).toEqual({
+      code: "FORBIDDEN",
+      message: "สิทธิ์ไม่เพียงพอสำหรับแก้ไขข้อมูลสมาชิก",
+    });
+    expect(mockUpdateMemberDates).not.toHaveBeenCalled();
+  });
+
+  it("PATCH /members/:memberId returns 400 for invalid dates", async () => {
+    mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "OWNER" });
+    mockUpdateMemberDates.mockRejectedValue(new Error("EXPIRES_BEFORE_START"));
+
+    const response = await memberPATCH(
+      new Request("http://localhost/api/v1/members/m1", {
+        method: "PATCH",
+        body: JSON.stringify({
+          started_at: "2026-04-20T18:00:00.000Z",
+          expires_at: "2026-03-20T09:00:00.000Z",
+        }),
+      }),
+      { params: Promise.resolve({ memberId: "m1" }) },
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(body).toEqual({
+      code: "EXPIRES_BEFORE_START",
+      message: "วันหมดอายุต้องมาหลังวันเริ่มต้น",
     });
   });
 });

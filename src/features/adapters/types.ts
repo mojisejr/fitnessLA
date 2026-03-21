@@ -70,6 +70,20 @@ export type MemberListFilters = {
   status?: "ALL" | "ACTIVE" | "EXPIRING_SOON" | "EXPIRED";
 };
 
+export type CreateMemberInput = {
+  full_name: string;
+  phone?: string;
+  membership_name: string;
+  membership_period: "DAILY" | "MONTHLY" | "QUARTERLY" | "SEMIANNUAL" | "YEARLY";
+  started_at: string;
+  expires_at: string;
+};
+
+export type UpdateMemberInput = {
+  started_at: string;
+  expires_at: string;
+};
+
 export interface AppAdapter {
   mode: "mock" | "real";
   authenticateUser: (username: string, password: string) => Promise<UserSession>;
@@ -108,6 +122,8 @@ export interface AppAdapter {
     enrollmentId: EntityId,
     input: UpdateTrainingEnrollmentInput,
   ) => Promise<TrainingEnrollmentRecord>;
+  createMember: (input: CreateMemberInput) => Promise<MemberSubscriptionRecord>;
+  updateMember: (memberId: EntityId, input: UpdateMemberInput) => Promise<MemberSubscriptionRecord>;
   toggleMemberActive: (memberId: EntityId) => Promise<MemberSubscriptionRecord>;
   renewMember: (memberId: EntityId) => Promise<MemberSubscriptionRecord>;
   restartMember: (memberId: EntityId) => Promise<MemberSubscriptionRecord>;

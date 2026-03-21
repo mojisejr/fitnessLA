@@ -32,7 +32,9 @@ import type {
   AppAdapter,
   CreateAdminUserInput,
   CreateChartOfAccountInput,
+  CreateMemberInput,
   CreateProductInput,
+  UpdateMemberInput,
   UpdateProductInput,
 } from "@/features/adapters/types";
 import { prependMemberRegistry, readMemberRegistry, writeMemberRegistry } from "@/features/members/member-registry";
@@ -43,6 +45,7 @@ let orderSequence = 1001;
 let expenseSequence = 3001;
 let shiftSequence = 701;
 let productSequence = Math.max(...mockProducts.map((item) => Number(item.product_id))) + 1;
+let memberSequence = 1;
 let chartOfAccountsState = mockChartOfAccounts.map((item) => ({ ...item }));
 let productsState = mockProducts.map((item) => ({ ...item }));
 let managedUsersState: AdminUserRecord[] = [];
@@ -126,6 +129,21 @@ function buildOrderItemsSummary(request: Parameters<AppAdapter["createOrder"]>[0
 
 function createError(code: string, message: string, details?: unknown): ApiError {
   return { code, message, details };
+}
+
+function validateMemberDates(input: Pick<CreateMemberInput, "started_at" | "expires_at">) {
+  const startedAt = new Date(input.started_at);
+  const expiresAt = new Date(input.expires_at);
+
+  if (Number.isNaN(startedAt.getTime()) || Number.isNaN(expiresAt.getTime())) {
+    throw createError("INVALID_DATE", "รูปแบบวันที่ไม่ถูกต้อง");
+  }
+
+  if (expiresAt <= startedAt) {
+    throw createError("EXPIRES_BEFORE_START", "วันหมดอายุต้องมาหลังวันเริ่มต้น");
+  }
+
+  return { startedAt, expiresAt };
 }
 
 function cloneSession(session: UserSession) {
@@ -911,6 +929,60 @@ export const mockAppAdapter: AppAdapter = {
     }
 
     return updatedAssignment as TrainingEnrollmentRecord;
+  },
+
+  async createMember(input: CreateMemberInput) {
+    await sleep(200);
+
+    const fullName = input.full_name.trim();
+    if (!fullName) {
+      throw createError("MEMBER_NAME_REQUIRED", "ต้องระบุชื่อสมาชิก");
+    }
+
+    const { startedAt, expiresAt } = validateMemberDates(input);
+    const currentSequence = memberSequence;
+    memberSequence += 1;
+
+    const createdMember: MemberSubscriptionRecord = {
+      member_id: `member-manual-${currentSequence}`,
+      member_code: `MBR-MANUAL-${String(currentSequence).padStart(4, "0")}`,
+      full_name: fullName,
+      phone: input.phone?.trim() || "รออัปเดตเบอร์โทร",
+      is_active: true,
+      membership_product_id: `special-membership-${currentSequence}`,
+      membership_name: input.membership_name.trim(),
+      membership_period: input.membership_period,
+      started_at: startedAt.toISOString(),
+      expires_at: expiresAt.toISOString(),
+      checked_in_at: null,
+      renewed_at: null,
+      renewal_status: "ACTIVE",
+      renewal_method: "NONE",
+    };
+
+    prependMemberRegistry([createdMember]);
+    return createdMember;
+  },
+
+  async updateMember(memberId: EntityId, input: UpdateMemberInput) {
+    await sleep(200);
+
+    const registry = readMemberRegistry();
+    const targetIndex = registry.findIndex((member) => String(member.member_id) === String(memberId));
+    if (targetIndex < 0) {
+      throw createError("MEMBER_NOT_FOUND", "ไม่พบสมาชิกที่ต้องการแก้ไข");
+    }
+
+    const { startedAt, expiresAt } = validateMemberDates(input);
+    const updatedMember: MemberSubscriptionRecord = {
+      ...registry[targetIndex],
+      started_at: startedAt.toISOString(),
+      expires_at: expiresAt.toISOString(),
+    };
+
+    registry.splice(targetIndex, 1, updatedMember);
+    writeMemberRegistry(registry);
+    return updatedMember;
   },
 
   async renewMember(memberId) {

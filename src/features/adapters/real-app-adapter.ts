@@ -20,9 +20,11 @@ import type {
   AppAdapter,
   CreateAdminUserInput,
   CreateChartOfAccountInput,
+  CreateMemberInput,
   CreateProductInput,
   DailySummaryQuery,
   MemberListFilters,
+  UpdateMemberInput,
   UpdateProductInput,
 } from "@/features/adapters/types";
 import { authClient } from "@/lib/auth-client";
@@ -281,6 +283,22 @@ export const realAppAdapter: AppAdapter = {
         body: JSON.stringify(input),
       },
     );
+  },
+
+  async createMember(input: CreateMemberInput) {
+    return fetchJson<MemberSubscriptionRecord>("/api/v1/members/special", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    });
+  },
+
+  async updateMember(memberId: EntityId, input: UpdateMemberInput) {
+    return fetchJson<MemberSubscriptionRecord>(`/api/v1/members/${encodeURIComponent(String(memberId))}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    });
   },
 
   async renewMember(memberId: EntityId) {

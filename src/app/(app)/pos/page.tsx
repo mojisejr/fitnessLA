@@ -137,6 +137,7 @@ export default function PosPage() {
     const [inventorySummary, setInventorySummary] = useState<ShiftInventorySummaryRow[]>([]);
     const [inventoryError, setInventoryError] = useState<string | null>(null);
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
+    const [postCheckoutWarning, setPostCheckoutWarning] = useState<string | null>(null);
     const [success, setSuccess] = useState<OrderResult | null>(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [isCheckoutConfirmOpen, setIsCheckoutConfirmOpen] = useState(false);
@@ -654,6 +655,7 @@ export default function PosPage() {
         }
 
         setErrorMessage(null);
+        setPostCheckoutWarning(null);
         setSuccess(null);
         setIsCheckoutConfirmOpen(true);
     }
@@ -676,6 +678,7 @@ export default function PosPage() {
         }
 
         setErrorMessage(null);
+        setPostCheckoutWarning(null);
         setSuccess(null);
         setIsSubmitting(true);
         setIsCheckoutConfirmOpen(false);
@@ -701,7 +704,6 @@ export default function PosPage() {
             clearCart();
             setCustomerName("");
             setCustomerTaxId("");
-            await Promise.all([refreshProducts(), refreshShiftInventory()]);
         } catch (error) {
             const errorCode = getErrorCode(error);
             if (errorCode === "SHIFT_OWNER_MISMATCH") {
@@ -723,6 +725,16 @@ export default function PosPage() {
             } else {
                 setErrorMessage(getErrorMessage(error, "ไม่สามารถสร้างรายการขายได้"));
             }
+            return;
+        }
+
+        try {
+            await Promise.all([refreshProducts(), refreshShiftInventory()]);
+        } catch (error) {
+            const refreshMessage = getErrorMessage(error, "รีเฟรชข้อมูลสินค้าไม่สำเร็จ กรุณารีเฟรชหน้าอีกครั้ง");
+            setPostCheckoutWarning(
+                `บันทึกรายการขายสำเร็จแล้ว แต่${refreshMessage}`,
+            );
         } finally {
             setIsSubmitting(false);
         }
@@ -1389,6 +1401,12 @@ export default function PosPage() {
                             <p className="mt-2">เลขคำสั่งขาย: {success.order_number}</p>
                             <p>เลขเอกสารภาษี: {success.tax_doc_number}</p>
                             <p>ยอดรวม: {formatCurrency(success.total_amount)}</p>
+                        </div>
+                    ) : null}
+
+                    {postCheckoutWarning ? (
+                        <div className="mt-5 rounded-[20px] border border-warning bg-warning-soft px-4 py-3 text-sm text-foreground">
+                            {postCheckoutWarning}
                         </div>
                     ) : null}
 

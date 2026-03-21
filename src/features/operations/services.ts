@@ -102,6 +102,11 @@ export type CreateSpecialMemberInputDto = {
   expires_at: string;
 };
 
+export type UpdateMemberDatesInputDto = {
+  started_at: string;
+  expires_at: string;
+};
+
 export type CloseShiftInput = {
   actual_cash: number;
   closing_note?: string;
@@ -994,6 +999,92 @@ export async function toggleMemberActive(memberId: string): Promise<MemberSubscr
     checked_in_at: updated.checkedInAt?.toISOString() ?? null,
     renewed_at: updated.renewedAt?.toISOString() ?? null,
     renewal_status: updated.renewalStatus === "RENEWED" ? "RENEWED" : "ACTIVE",
+    renewal_method: (updated.renewalMethod as MemberSubscriptionRecord["renewal_method"]) ?? "NONE",
+  };
+}
+
+export async function updateMemberDates(
+  memberId: string,
+  input: UpdateMemberDatesInputDto,
+): Promise<MemberSubscriptionRecord> {
+  const normalizedMemberId = memberId.trim();
+  if (!normalizedMemberId) {
+    throw new Error("MEMBER_NOT_FOUND");
+  }
+
+  const startedAt = new Date(input.started_at);
+  const expiresAt = new Date(input.expires_at);
+
+  if (Number.isNaN(startedAt.getTime()) || Number.isNaN(expiresAt.getTime())) {
+    throw new Error("INVALID_DATE");
+  }
+
+  if (expiresAt <= startedAt) {
+    throw new Error("EXPIRES_BEFORE_START");
+  }
+
+  const member = await prisma.memberSubscription.findUnique({
+    where: { id: normalizedMemberId },
+    select: {
+      id: true,
+    },
+  });
+
+  if (!member) {
+    throw new Error("MEMBER_NOT_FOUND");
+  }
+
+  const updated = await prisma.memberSubscription.update({
+    where: { id: member.id },
+    data: {
+      startedAt,
+      expiresAt,
+    },
+    select: {
+      id: true,
+      memberCode: true,
+      fullName: true,
+      phone: true,
+      isActive: true,
+      startedAt: true,
+      expiresAt: true,
+      checkedInAt: true,
+      renewedAt: true,
+      renewalStatus: true,
+      renewalMethod: true,
+      membershipProduct: {
+        select: {
+          id: true,
+          name: true,
+          sku: true,
+          membershipPeriod: true,
+        },
+      },
+    },
+  });
+
+  return {
+    member_id: updated.id,
+    member_code: updated.memberCode,
+    full_name: updated.fullName,
+    phone: updated.phone,
+    is_active: updated.isActive,
+    membership_product_id: updated.membershipProduct.id,
+    membership_name: updated.membershipProduct.name,
+    membership_period:
+      inferMembershipPeriod(updated.membershipProduct.sku, updated.membershipProduct.membershipPeriod) ?? "MONTHLY",
+    started_at: updated.startedAt.toISOString(),
+    expires_at: updated.expiresAt.toISOString(),
+    checked_in_at: updated.checkedInAt?.toISOString() ?? null,
+    renewed_at: updated.renewedAt?.toISOString() ?? null,
+    renewal_status:
+      updated.renewalStatus === "RENEWED"
+        ? "RENEWED"
+        : updated.renewalStatus === "EXPIRES_TODAY"
+          ? "EXPIRES_TODAY"
+          : updated.renewalStatus === "EXPIRED_NOT_RENEWED"
+            ? "EXPIRED_NOT_RENEWED"
+            : "ACTIVE",
     renewal_method: (updated.renewalMethod as MemberSubscriptionRecord["renewal_method"]) ?? "NONE",
   };
 }
