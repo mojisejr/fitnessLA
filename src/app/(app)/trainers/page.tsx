@@ -50,7 +50,12 @@ export default function TrainersPage() {
     const [isCreatingTrainer, setIsCreatingTrainer] = useState(false);
     const [savingEnrollmentId, setSavingEnrollmentId] = useState<string | null>(null);
     const [togglingTrainerId, setTogglingTrainerId] = useState<string | null>(null);
+    const [deletingTrainerId, setDeletingTrainerId] = useState<string | null>(null);
+    const [deletingEnrollmentId, setDeletingEnrollmentId] = useState<string | null>(null);
+    const [bulkDeletingTrainerId, setBulkDeletingTrainerId] = useState<string | null>(null);
+    const [selectedEnrollmentIds, setSelectedEnrollmentIds] = useState<Record<string, string[]>>({});
     const [mutationError, setMutationError] = useState<string | null>(null);
+    const [mutationMessage, setMutationMessage] = useState<string | null>(null);
     const canEditTrainers = session?.role === "OWNER";
 
     const loadTrainers = useCallback(async () => {
@@ -70,6 +75,7 @@ export default function TrainersPage() {
                     ),
                 ),
             );
+            setSelectedEnrollmentIds({});
         } catch (loadError) {
             setError(getErrorMessage(loadError, "ไม่สามารถโหลดรายชื่อเทรนเนอร์ได้"));
         } finally {
@@ -91,9 +97,32 @@ export default function TrainersPage() {
         }));
     }
 
+    function toggleEnrollmentSelection(trainerId: string | number, enrollmentId: string | number, checked: boolean) {
+        setSelectedEnrollmentIds((current) => {
+            const key = String(trainerId);
+            const currentIds = current[key] ?? [];
+            const nextIds = checked
+                ? Array.from(new Set([...currentIds, String(enrollmentId)]))
+                : currentIds.filter((id) => id !== String(enrollmentId));
+
+            return {
+                ...current,
+                [key]: nextIds,
+            };
+        });
+    }
+
+    function toggleAllEnrollments(trainerId: string | number, assignments: TrainingEnrollmentRecord[], checked: boolean) {
+        setSelectedEnrollmentIds((current) => ({
+            ...current,
+            [String(trainerId)]: checked ? assignments.map((assignment) => String(assignment.enrollment_id)) : [],
+        }));
+    }
+
     async function handleCreateTrainer(event: FormEvent<HTMLFormElement>) {
         event.preventDefault();
         setMutationError(null);
+        setMutationMessage(null);
         setIsCreatingTrainer(true);
 
         try {
@@ -104,6 +133,7 @@ export default function TrainersPage() {
             });
             setTrainerForm({ fullName: "", nickname: "", phone: "" });
             await loadTrainers();
+            setMutationMessage("เพิ่มเทรนเนอร์เรียบร้อยแล้ว");
         } catch (createError) {
             setMutationError(getErrorMessage(createError, "ไม่สามารถเพิ่มเทรนเนอร์ได้"));
         } finally {
@@ -123,6 +153,7 @@ export default function TrainersPage() {
         }
 
         setMutationError(null);
+        setMutationMessage(null);
         setSavingEnrollmentId(String(enrollment.enrollment_id));
 
         try {
@@ -132,6 +163,7 @@ export default function TrainersPage() {
                 close_reason: draft.status === "CLOSED" ? draft.closeReason || null : null,
             });
             await loadTrainers();
+            setMutationMessage("อัปเดตข้อมูลลูกเทรนเรียบร้อยแล้ว");
         } catch (saveError) {
             setMutationError(getErrorMessage(saveError, "ไม่สามารถบันทึกข้อมูลลูกเทรนได้"));
         } finally {
@@ -146,11 +178,13 @@ export default function TrainersPage() {
         }
 
         setMutationError(null);
+    setMutationMessage(null);
         setTogglingTrainerId(String(trainer.trainer_id));
 
         try {
             await adapter.toggleTrainerActive(trainer.trainer_id);
             await loadTrainers();
+            setMutationMessage(`${actionLabel}เทรนเนอร์เรียบร้อยแล้ว`);
         } catch (toggleError) {
             setMutationError(getErrorMessage(toggleError, `ไม่สามารถ${actionLabel}เทรนเนอร์ได้`));
         } finally {
@@ -158,7 +192,85 @@ export default function TrainersPage() {
         }
     }
 
-    function renderAssignmentsTable(assignments: TrainingEnrollmentRecord[], emptyLabel: string) {
+    async function handleDeleteTrainer(trainer: TrainerRecord) {
+        if (!window.confirm(`ลบเทรนเนอร์ ${trainer.full_name} ใช่หรือไม่`)) {
+            return;
+        }
+
+        setMutationError(null);
+        setMutationMessage(null);
+        setDeletingTrainerId(String(trainer.trainer_id));
+
+        try {
+            const result = await adapter.deleteTrainer(trainer.trainer_id);
+            await loadTrainers();
+            if (expandedTrainerId === trainer.trainer_id) {
+                setExpandedTrainerId(null);
+            }
+            setMutationMessage(`ลบเทรนเนอร์ ${result.full_name} เรียบร้อยแล้ว`);
+        } catch (deleteError) {
+            setMutationError(getErrorMessage(deleteError, "ไม่สามารถลบเทรนเนอร์ได้"));
+        } finally {
+            setDeletingTrainerId(null);
+        }
+    }
+
+    async function handleDeleteEnrollment(enrollment: TrainingEnrollmentRecord) {
+        if (!window.confirm(`ลบลูกเทรน ${enrollment.customer_name} แพ็กเกจ ${enrollment.package_name} ใช่หรือไม่`)) {
+            return;
+        }
+
+        setMutationError(null);
+        setMutationMessage(null);
+        setDeletingEnrollmentId(String(enrollment.enrollment_id));
+
+        try {
+            const result = await adapter.deleteTrainingEnrollment(enrollment.enrollment_id);
+            await loadTrainers();
+            setMutationMessage(`ลบลูกเทรน ${result.customer_name} เรียบร้อยแล้ว`);
+        } catch (deleteError) {
+            setMutationError(getErrorMessage(deleteError, "ไม่สามารถลบข้อมูลลูกเทรนได้"));
+        } finally {
+            setDeletingEnrollmentId(null);
+        }
+    }
+
+    async function handleBulkDeleteEnrollments(trainer: TrainerRecord, assignments: TrainingEnrollmentRecord[]) {
+        const selectedIds = selectedEnrollmentIds[String(trainer.trainer_id)] ?? [];
+        if (selectedIds.length === 0) {
+            setMutationError("กรุณาเลือกลูกเทรนที่ต้องการลบอย่างน้อย 1 รายการ");
+            return;
+        }
+
+        const selectedAssignments = assignments.filter((assignment) =>
+            selectedIds.includes(String(assignment.enrollment_id)),
+        );
+
+        if (!window.confirm(`ลบลูกเทรนที่เลือก ${selectedAssignments.length} รายการ ใช่หรือไม่`)) {
+            return;
+        }
+
+        setMutationError(null);
+        setMutationMessage(null);
+        setBulkDeletingTrainerId(String(trainer.trainer_id));
+
+        try {
+            const result = await adapter.deleteTrainingEnrollments(selectedIds);
+            await loadTrainers();
+            setMutationMessage(`ลบลูกเทรน ${result.deleted_count} รายการเรียบร้อยแล้ว`);
+        } catch (deleteError) {
+            setMutationError(getErrorMessage(deleteError, "ไม่สามารถลบข้อมูลลูกเทรนที่เลือกได้"));
+        } finally {
+            setBulkDeletingTrainerId(null);
+        }
+    }
+
+    function renderAssignmentsTable(
+        trainer: TrainerRecord,
+        assignments: TrainingEnrollmentRecord[],
+        emptyLabel: string,
+        options?: { allowDelete?: boolean },
+    ) {
         if (assignments.length === 0) {
             return (
                 <div className="rounded-[18px] border border-dashed border-line bg-background p-4 text-sm text-muted">
@@ -167,12 +279,48 @@ export default function TrainersPage() {
             );
         }
 
+        const allowDelete = Boolean(options?.allowDelete && canEditTrainers);
+        const selectedIds = selectedEnrollmentIds[String(trainer.trainer_id)] ?? [];
+        const allSelected = allowDelete && assignments.length > 0 && assignments.every((assignment) => selectedIds.includes(String(assignment.enrollment_id)));
+
         return (
             <div className="rounded-3xl border border-line bg-[#161510] p-3">
+                {allowDelete ? (
+                    <div className="mb-3 flex flex-col gap-3 rounded-[18px] border border-line bg-[#11110d] px-4 py-3 md:flex-row md:items-center md:justify-between">
+                        <div>
+                            <p className="text-sm font-semibold text-foreground">
+                                {selectedIds.length > 0 ? `เลือกลูกเทรนแล้ว ${selectedIds.length} รายการ` : "เลือกลูกเทรนเพื่อลบหลายรายการ"}
+                            </p>
+                            <p className="text-xs text-muted">ลบออกจากรายการลูกเทรนปัจจุบันและฐานข้อมูลทันที</p>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-3">
+                            <label className="inline-flex items-center gap-2 text-xs font-semibold text-foreground">
+                                <input
+                                    type="checkbox"
+                                    checked={allSelected}
+                                    onChange={(event) => toggleAllEnrollments(trainer.trainer_id, assignments, event.target.checked)}
+                                    disabled={bulkDeletingTrainerId === String(trainer.trainer_id)}
+                                    aria-label="เลือกทั้งหมด"
+                                    className="h-4 w-4 rounded border border-line bg-surface-strong accent-[#f4d54d]"
+                                />
+                                เลือกทั้งหมด
+                            </label>
+                            <button
+                                type="button"
+                                onClick={() => void handleBulkDeleteEnrollments(trainer, assignments)}
+                                disabled={selectedIds.length === 0 || bulkDeletingTrainerId === String(trainer.trainer_id)}
+                                className="rounded-full border border-[#b44b4b] bg-[rgba(180,75,75,0.14)] px-4 py-2 text-xs font-semibold text-[#f4c4c4] transition hover:bg-[rgba(180,75,75,0.24)] disabled:opacity-50"
+                            >
+                                {bulkDeletingTrainerId === String(trainer.trainer_id) ? "กำลังลบ..." : "ลบที่เลือก"}
+                            </button>
+                        </div>
+                    </div>
+                ) : null}
                 <div className="overflow-x-auto overscroll-x-contain pb-2">
                     <table className="min-w-270 divide-y divide-line text-sm">
                         <thead className="bg-[#0d0d0a]">
                             <tr>
+                                {allowDelete ? <th className="w-12 px-3 py-3 text-left font-semibold text-muted">เลือก</th> : null}
                                 <th className="min-w-35 px-4 py-3 text-left font-semibold text-muted">ลูกค้า</th>
                                 <th className="min-w-35 px-4 py-3 text-left font-semibold text-muted">แพ็กเกจ</th>
                                 <th className="min-w-24 px-4 py-3 text-left font-semibold text-muted">เริ่มต้น</th>
@@ -191,6 +339,20 @@ export default function TrainersPage() {
 
                                 return (
                                     <tr key={enrollment.enrollment_id}>
+                                        {allowDelete ? (
+                                            <td className="px-3 py-4 align-top">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={selectedIds.includes(String(enrollment.enrollment_id))}
+                                                    onChange={(event) =>
+                                                        toggleEnrollmentSelection(trainer.trainer_id, enrollment.enrollment_id, event.target.checked)
+                                                    }
+                                                    disabled={bulkDeletingTrainerId === String(trainer.trainer_id)}
+                                                    aria-label={`เลือก ${enrollment.customer_name}`}
+                                                    className="mt-1 h-4 w-4 rounded border border-line bg-surface-strong accent-[#f4d54d]"
+                                                />
+                                            </td>
+                                        ) : null}
                                         <td className="px-4 py-4 align-top text-[#f3e8ba]">
                                             <p className="font-semibold">{enrollment.customer_name}</p>
                                             <p className="text-xs text-muted">{enrollment.package_sku}</p>
@@ -272,14 +434,26 @@ export default function TrainersPage() {
                                         <td className="px-4 py-4 align-top text-[#f3e8ba] whitespace-nowrap">{formatDateTime(enrollment.updated_at)}</td>
                                         <td className="px-4 py-4 align-top">
                                             {canEditTrainers ? (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => void handleSaveEnrollment(enrollment)}
-                                                    disabled={savingEnrollmentId === String(enrollment.enrollment_id)}
-                                                    className="rounded-full border border-accent bg-accent-soft px-4 py-2 text-xs font-semibold text-foreground transition hover:bg-accent hover:text-black disabled:opacity-50"
-                                                >
-                                                    {savingEnrollmentId === String(enrollment.enrollment_id) ? "กำลังบันทึก..." : "บันทึก"}
-                                                </button>
+                                                <div className="flex flex-col gap-2">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => void handleSaveEnrollment(enrollment)}
+                                                        disabled={savingEnrollmentId === String(enrollment.enrollment_id) || deletingEnrollmentId === String(enrollment.enrollment_id)}
+                                                        className="rounded-full border border-accent bg-accent-soft px-4 py-2 text-xs font-semibold text-foreground transition hover:bg-accent hover:text-black disabled:opacity-50"
+                                                    >
+                                                        {savingEnrollmentId === String(enrollment.enrollment_id) ? "กำลังบันทึก..." : "บันทึก"}
+                                                    </button>
+                                                    {allowDelete ? (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => void handleDeleteEnrollment(enrollment)}
+                                                            disabled={deletingEnrollmentId === String(enrollment.enrollment_id) || savingEnrollmentId === String(enrollment.enrollment_id)}
+                                                            className="rounded-full border border-[#b44b4b] bg-[rgba(180,75,75,0.14)] px-4 py-2 text-xs font-semibold text-[#f4c4c4] transition hover:bg-[rgba(180,75,75,0.24)] disabled:opacity-50"
+                                                        >
+                                                            {deletingEnrollmentId === String(enrollment.enrollment_id) ? "กำลังลบ..." : "ลบ"}
+                                                        </button>
+                                                    ) : null}
+                                                </div>
                                             ) : (
                                                 <span className="text-xs text-muted">ดูอย่างเดียว</span>
                                             )}
@@ -371,6 +545,12 @@ export default function TrainersPage() {
                 </div>
             ) : null}
 
+            {mutationMessage ? (
+                <div className="rounded-[20px] border border-accent bg-accent-soft px-4 py-3 text-sm text-foreground">
+                    {mutationMessage}
+                </div>
+            ) : null}
+
             {loading ? (
                 <div className="rounded-3xl border border-dashed border-line bg-background p-6 text-sm text-muted">
                     กำลังโหลดรายชื่อเทรนเนอร์...
@@ -417,18 +597,28 @@ export default function TrainersPage() {
                                     </div>
                                     <div className="flex flex-wrap gap-2">
                                         {canEditTrainers ? (
-                                            <button
-                                                type="button"
-                                                onClick={() => void handleToggleTrainer(trainer)}
-                                                disabled={togglingTrainerId === String(trainer.trainer_id)}
-                                                className={`rounded-full px-4 py-2 text-sm font-semibold transition disabled:opacity-50 ${trainer.is_active ? "border border-warning-soft bg-warning-soft text-foreground hover:border-[#f0c06b]" : "border border-accent bg-accent-soft text-foreground hover:bg-accent hover:text-black"}`}
-                                            >
-                                                {togglingTrainerId === String(trainer.trainer_id)
-                                                    ? "กำลังบันทึก..."
-                                                    : trainer.is_active
-                                                        ? "ปิดใช้งาน"
-                                                        : "เปิดใช้งาน"}
-                                            </button>
+                                            <>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => void handleToggleTrainer(trainer)}
+                                                    disabled={togglingTrainerId === String(trainer.trainer_id) || deletingTrainerId === String(trainer.trainer_id)}
+                                                    className={`rounded-full px-4 py-2 text-sm font-semibold transition disabled:opacity-50 ${trainer.is_active ? "border border-warning-soft bg-warning-soft text-foreground hover:border-[#f0c06b]" : "border border-accent bg-accent-soft text-foreground hover:bg-accent hover:text-black"}`}
+                                                >
+                                                    {togglingTrainerId === String(trainer.trainer_id)
+                                                        ? "กำลังบันทึก..."
+                                                        : trainer.is_active
+                                                            ? "ปิดใช้งาน"
+                                                            : "เปิดใช้งาน"}
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => void handleDeleteTrainer(trainer)}
+                                                    disabled={deletingTrainerId === String(trainer.trainer_id) || togglingTrainerId === String(trainer.trainer_id)}
+                                                    className="rounded-full border border-[#b44b4b] bg-[rgba(180,75,75,0.14)] px-4 py-2 text-sm font-semibold text-[#f4c4c4] transition hover:bg-[rgba(180,75,75,0.24)] disabled:opacity-50"
+                                                >
+                                                    {deletingTrainerId === String(trainer.trainer_id) ? "กำลังลบ..." : "ลบเทรนเนอร์"}
+                                                </button>
+                                            </>
                                         ) : null}
                                         <button
                                             type="button"
@@ -451,9 +641,9 @@ export default function TrainersPage() {
                                         <div>
                                             <div className="mb-3 flex items-center justify-between">
                                                 <h3 className="text-base font-semibold text-foreground">ลูกเทรนปัจจุบัน</h3>
-                                                <span className="text-xs text-muted">แก้ไขจำนวนครั้ง, สถานะ, และปิดเคสได้ทันที</span>
+                                                <span className="text-xs text-muted">แก้ไขจำนวนครั้ง, สถานะ, ลบรายคน และลบหลายรายการได้ทันที</span>
                                             </div>
-                                            {renderAssignmentsTable(activeAssignments, "ยังไม่มีลูกเทรนที่กำลังดูแล")}
+                                            {renderAssignmentsTable(trainer, activeAssignments, "ยังไม่มีลูกเทรนที่กำลังดูแล", { allowDelete: true })}
                                         </div>
 
                                         <div>
@@ -461,7 +651,7 @@ export default function TrainersPage() {
                                                 <h3 className="text-base font-semibold text-foreground">ประวัติลูกเทรน</h3>
                                                 <span className="text-xs text-muted">เก็บรายการที่หมดแล้วหรือปิดเคสไว้ดูย้อนหลัง</span>
                                             </div>
-                                            {renderAssignmentsTable(historyAssignments, "ยังไม่มีประวัติลูกเทรน")}
+                                            {renderAssignmentsTable(trainer, historyAssignments, "ยังไม่มีประวัติลูกเทรน")}
                                         </div>
                                     </div>
                                 ) : null}

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { updateTrainingEnrollment } from "@/features/operations/services";
+import { deleteTrainingEnrollment, updateTrainingEnrollment } from "@/features/operations/services";
 import { canManageTrainers } from "@/lib/roles";
 import { resolveSessionFromRequest } from "@/lib/session";
 
@@ -70,6 +70,49 @@ export async function PATCH(request: Request, context: RouteContext) {
     console.error("PATCH /api/v1/trainers/enrollments failed", error);
     return NextResponse.json(
       { code: "INTERNAL_SERVER_ERROR", message: "ไม่สามารถแก้ไขข้อมูลลูกเทรนได้" },
+      { status: 500 },
+    );
+  }
+}
+
+export async function DELETE(request: Request, context: RouteContext) {
+  const session = await resolveSessionFromRequest(request);
+  if (!session) {
+    return NextResponse.json(
+      { code: "UNAUTHENTICATED", message: "ต้องยืนยันตัวตนก่อนลบลูกเทรน" },
+      { status: 401 },
+    );
+  }
+
+  if (!canManageTrainers(session.role)) {
+    return NextResponse.json(
+      { code: "FORBIDDEN", message: "สิทธิ์ไม่เพียงพอสำหรับลบลูกเทรน" },
+      { status: 403 },
+    );
+  }
+
+  const { enrollmentId } = await context.params;
+  if (!enrollmentId) {
+    return NextResponse.json(
+      { code: "VALIDATION_ERROR", message: "ไม่พบรายการลูกเทรนที่ต้องการลบ" },
+      { status: 400 },
+    );
+  }
+
+  try {
+    const deleted = await deleteTrainingEnrollment(enrollmentId);
+    return NextResponse.json(deleted, { status: 200 });
+  } catch (error) {
+    if (error instanceof Error && error.message === "TRAINING_ENROLLMENT_NOT_FOUND") {
+      return NextResponse.json(
+        { code: "TRAINING_ENROLLMENT_NOT_FOUND", message: "ไม่พบรายการลูกเทรนที่ต้องการลบ" },
+        { status: 404 },
+      );
+    }
+
+    console.error("DELETE /api/v1/trainers/enrollments failed", error);
+    return NextResponse.json(
+      { code: "INTERNAL_SERVER_ERROR", message: "ไม่สามารถลบข้อมูลลูกเทรนได้" },
       { status: 500 },
     );
   }

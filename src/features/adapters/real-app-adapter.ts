@@ -4,6 +4,7 @@ import type {
   CreateOrderRequest,
   DailySummary,
   MemberSubscriptionRecord,
+  SalesEntryUpdateResult,
   ShiftSummary,
   EntityId,
   MockShiftRecord,
@@ -121,8 +122,11 @@ export const realAppAdapter: AppAdapter = {
       body: JSON.stringify({
         sku: input.sku,
         name: input.name,
+        tagline: input.tagline === undefined ? undefined : input.tagline,
         price: input.price,
         product_type: input.productType,
+        pos_category: input.posCategory === undefined ? undefined : input.posCategory,
+        featured_slot: input.featuredSlot === undefined ? undefined : input.featuredSlot,
         revenue_account_id:
           input.revenueAccountId === undefined ? undefined : String(input.revenueAccountId),
         stock_on_hand: input.stockOnHand ?? undefined,
@@ -139,7 +143,10 @@ export const realAppAdapter: AppAdapter = {
       body: JSON.stringify({
         sku: input.sku,
         name: input.name,
+        tagline: input.tagline === undefined ? undefined : input.tagline,
         price: input.price,
+        pos_category: input.posCategory === undefined ? undefined : input.posCategory,
+        featured_slot: input.featuredSlot === undefined ? undefined : input.featuredSlot,
         revenue_account_id:
           input.revenueAccountId === undefined ? undefined : String(input.revenueAccountId),
         stock_on_hand: input.stockOnHand ?? undefined,
@@ -215,6 +222,36 @@ export const realAppAdapter: AppAdapter = {
     });
   },
 
+  async updateSalesEntry(orderId: EntityId, input) {
+    return fetchJson<SalesEntryUpdateResult>(`/api/v1/orders/${encodeURIComponent(String(orderId))}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        items: input.items,
+      }),
+    });
+  },
+
+  async deleteSalesEntry(orderId: EntityId) {
+    return fetchJson<{ order_id: EntityId; order_number: string }>(
+      `/api/v1/orders/${encodeURIComponent(String(orderId))}`,
+      {
+        method: "DELETE",
+      },
+    );
+  },
+
+  async deleteSalesEntries(orderIds: EntityId[]) {
+    return fetchJson<{
+      deleted_count: number;
+      deleted_orders: Array<{ order_id: EntityId; order_number: string }>;
+    }>("/api/v1/orders/bulk-delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ order_ids: orderIds }),
+    });
+  },
+
   async getDailySummary(query: DailySummaryQuery) {
     const params = new URLSearchParams();
     params.set("period", query.period);
@@ -268,9 +305,35 @@ export const realAppAdapter: AppAdapter = {
     });
   },
 
+  async deleteTrainer(trainerId: EntityId) {
+    return fetchJson<{ trainer_id: EntityId; full_name: string }>(`/api/v1/trainers/${encodeURIComponent(String(trainerId))}`, {
+      method: "DELETE",
+    });
+  },
+
   async toggleTrainerActive(trainerId: EntityId) {
     return fetchJson<TrainerRecord>(`/api/v1/trainers/${encodeURIComponent(String(trainerId))}/toggle-active`, {
       method: "PATCH",
+    });
+  },
+
+  async deleteTrainingEnrollment(enrollmentId: EntityId) {
+    return fetchJson<{ enrollment_id: EntityId; customer_name: string; package_name: string }>(
+      `/api/v1/trainers/enrollments/${encodeURIComponent(String(enrollmentId))}`,
+      {
+        method: "DELETE",
+      },
+    );
+  },
+
+  async deleteTrainingEnrollments(enrollmentIds: EntityId[]) {
+    return fetchJson<{
+      deleted_count: number;
+      deleted_enrollments: Array<{ enrollment_id: EntityId; customer_name: string; package_name: string }>;
+    }>("/api/v1/trainers/enrollments/bulk-delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enrollment_ids: enrollmentIds }),
     });
   },
 
@@ -298,6 +361,12 @@ export const realAppAdapter: AppAdapter = {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(input),
+    });
+  },
+
+  async deleteMember(memberId: EntityId) {
+    return fetchJson<{ member_id: EntityId; full_name: string }>(`/api/v1/members/${encodeURIComponent(String(memberId))}`, {
+      method: "DELETE",
     });
   },
 

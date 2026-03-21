@@ -60,7 +60,7 @@ describe("POS inventory management", () => {
 
     await waitForPosReady();
 
-    expect(screen.getByRole("option", { name: "อเมริกาโน่เย็น" })).toBeInTheDocument();
+    expect(screen.getAllByRole("option", { name: "Iced Americano" }).length).toBeGreaterThan(0);
 
     fireEvent.click(screen.getByRole("button", { name: "เพิ่มสินค้าใหม่" }));
     fireEvent.change(screen.getByLabelText("SKU"), {

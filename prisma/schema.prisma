@@ -24,6 +24,7 @@ model User {
 
   // Custom: Bio-Identity for fitnessLA
   username  String  @unique
+  phone     String?
   role      String  @default("STAFF") // ADMIN, OWNER, STAFF
   isActive  Boolean @default(true)
 
@@ -152,8 +153,11 @@ model Product {
   id               String         @id @default(cuid())
   sku              String         @unique
   name             String
+  tagline          String?
   price            Decimal        @db.Decimal(12, 2)
   productType      String
+  posCategoryCode  String?
+  featuredSlot     Int?
   isActive         Boolean        @default(true)
   trackStock       Boolean        @default(false)
   stockOnHand      Int?
@@ -211,6 +215,7 @@ model Order {
   shift         Shift         @relation(fields: [shiftId], references: [id])
   paymentMethod String // CASH, PROMPTPAY, CREDIT_CARD
   totalAmount   Decimal       @db.Decimal(12, 2)
+  itemsSummaryOverride String?
   customerName  String?
   customerTaxId String?
   status        String        @default("COMPLETED")

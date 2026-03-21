@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { GET as membersGET } from "../../src/app/api/v1/members/route";
-import { PATCH as memberPATCH } from "../../src/app/api/v1/members/[memberId]/route";
+import { DELETE as memberDELETE, PATCH as memberPATCH } from "../../src/app/api/v1/members/[memberId]/route";
 import { POST as memberRenewPOST } from "../../src/app/api/v1/members/[memberId]/renew/route";
 import { POST as memberRestartPOST } from "../../src/app/api/v1/members/[memberId]/restart/route";
 import { PATCH as memberToggleActivePATCH } from "../../src/app/api/v1/members/[memberId]/toggle-active/route";
@@ -12,6 +12,7 @@ const mockRenewMember = vi.fn();
 const mockRestartMember = vi.fn();
 const mockToggleMemberActive = vi.fn();
 const mockUpdateMemberDates = vi.fn();
+const mockDeleteMember = vi.fn();
 
 vi.mock("../../src/lib/session", () => ({
   resolveSessionFromRequest: (...args: unknown[]) => mockResolveSessionFromRequest(...args),
@@ -20,6 +21,7 @@ vi.mock("../../src/lib/session", () => ({
 vi.mock("../../src/features/operations/services", () => ({
   listMembers: (...args: unknown[]) => mockListMembers(...args),
   updateMemberDates: (...args: unknown[]) => mockUpdateMemberDates(...args),
+  deleteMember: (...args: unknown[]) => mockDeleteMember(...args),
   renewMember: (...args: unknown[]) => mockRenewMember(...args),
   restartMember: (...args: unknown[]) => mockRestartMember(...args),
   toggleMemberActive: (...args: unknown[]) => mockToggleMemberActive(...args),
@@ -481,6 +483,61 @@ describe("members routes", () => {
     expect(body).toEqual({
       code: "EXPIRES_BEFORE_START",
       message: "วันหมดอายุต้องมาหลังวันเริ่มต้น",
+    });
+  });
+
+  it("DELETE /members/:memberId deletes member for owner", async () => {
+    mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "OWNER" });
+    mockDeleteMember.mockResolvedValue({
+      member_id: "m1",
+      full_name: "สมชาย ทดสอบ",
+    });
+
+    const response = await memberDELETE(
+      new Request("http://localhost/api/v1/members/m1", { method: "DELETE" }),
+      { params: Promise.resolve({ memberId: "m1" }) },
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toEqual({
+      member_id: "m1",
+      full_name: "สมชาย ทดสอบ",
+    });
+    expect(mockDeleteMember).toHaveBeenCalledWith("m1");
+  });
+
+  it("DELETE /members/:memberId returns 403 for admin", async () => {
+    mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "ADMIN" });
+
+    const response = await memberDELETE(
+      new Request("http://localhost/api/v1/members/m1", { method: "DELETE" }),
+      { params: Promise.resolve({ memberId: "m1" }) },
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(body).toEqual({
+      code: "FORBIDDEN",
+      message: "สิทธิ์ไม่เพียงพอสำหรับลบสมาชิก",
+    });
+    expect(mockDeleteMember).not.toHaveBeenCalled();
+  });
+
+  it("DELETE /members/:memberId returns 404 when member is missing", async () => {
+    mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "OWNER" });
+    mockDeleteMember.mockRejectedValue(new Error("MEMBER_NOT_FOUND"));
+
+    const response = await memberDELETE(
+      new Request("http://localhost/api/v1/members/unknown", { method: "DELETE" }),
+      { params: Promise.resolve({ memberId: "unknown" }) },
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(404);
+    expect(body).toEqual({
+      code: "MEMBER_NOT_FOUND",
+      message: "ไม่พบสมาชิกที่ต้องการลบ",
     });
   });
 });

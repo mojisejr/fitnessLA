@@ -58,7 +58,7 @@ export async function POST(request: Request) {
         return NextResponse.json(
           {
             code: "SHIFT_NOT_FOUND",
-            message: "ไม่พบกะเปิดสำหรับผู้ใช้งานนี้",
+            message: "ไม่พบกะเปิดในระบบ",
           },
           { status: 404 },
         );

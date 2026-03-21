@@ -10,6 +10,7 @@ import type {
   MemberSubscriptionRecord,
   OrderResult,
   Product,
+  SalesEntryItem,
   ShiftInventorySummaryRow,
   ShiftCloseResult,
   ShiftOpenResult,
@@ -26,7 +27,7 @@ import {
   mockProducts,
   mockUsersByRole,
 } from "@/lib/mock-data";
-import { buildEmptyPosSalesCategoryRows } from "@/lib/pos-categories";
+import { buildEmptyPosSalesCategoryRows, getPosSalesCategoryFromProduct } from "@/lib/pos-categories";
 import { sleep } from "@/lib/utils";
 import type {
   AppAdapter,
@@ -40,6 +41,31 @@ import type {
 import { prependMemberRegistry, readMemberRegistry, writeMemberRegistry } from "@/features/members/member-registry";
 
 type MockTrainerWithAssignments = TrainerRecord & { assignments: TrainingEnrollmentRecord[] };
+type MockManagedUser = AdminUserRecord & { password: string };
+
+function removeTrainingEnrollmentsFromState(enrollmentIds: EntityId[]) {
+  const normalizedIds = new Set(enrollmentIds.map((id) => String(id)));
+  const deletedAssignments: TrainingEnrollmentRecord[] = [];
+
+  trainersState = trainersState.map((trainer) => {
+    const assignments = trainer.assignments.filter((assignment) => {
+      if (!normalizedIds.has(String(assignment.enrollment_id))) {
+        return true;
+      }
+
+      deletedAssignments.push({ ...assignment });
+      return false;
+    });
+
+    return {
+      ...trainer,
+      assignments,
+      active_customer_count: assignments.filter((assignment) => assignment.status === "ACTIVE").length,
+    };
+  });
+
+  return deletedAssignments;
+}
 
 let orderSequence = 1001;
 let expenseSequence = 3001;
@@ -48,10 +74,73 @@ let productSequence = Math.max(...mockProducts.map((item) => Number(item.product
 let memberSequence = 1;
 let chartOfAccountsState = mockChartOfAccounts.map((item) => ({ ...item }));
 let productsState = mockProducts.map((item) => ({ ...item }));
-let managedUsersState: AdminUserRecord[] = [];
+let managedUsersState: MockManagedUser[] = [];
 let trainersState: MockTrainerWithAssignments[] = [];
 let shiftInventoryState = new Map<string, Map<string, { product_id: EntityId; opening_stock: number; sold_quantity: number }>>();
 let salesRowsState: DailySummary["sales_rows"] = [];
+let salesRowOverridesState = new Map<string, { items: SalesEntryItem[]; items_summary: string; total_amount: number }>();
+let deletedSalesOrderIdsState = new Set<string>();
+
+function roundMoney(amount: number) {
+  return Number(amount.toFixed(2));
+}
+
+function buildSummaryFromSalesItems(items: SalesEntryItem[]) {
+  return items.map((item) => `${item.product_name} x${item.quantity}`).join(", ");
+}
+
+function parseSummaryItems(itemsSummary: string, totalAmount: number, orderId: EntityId): SalesEntryItem[] {
+  const parts = itemsSummary
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  if (parts.length === 0) {
+    return [];
+  }
+
+  const parsed = parts.map((part, index) => {
+    const match = /^(.*) x(\d+)$/u.exec(part);
+    const productName = match?.[1]?.trim() || part;
+    const quantity = Number(match?.[2] ?? 1);
+    return {
+      order_item_id: `${String(orderId)}-item-${index + 1}`,
+      product_name: productName,
+      quantity,
+      unit_price: 0,
+      line_total: 0,
+    } satisfies SalesEntryItem;
+  });
+
+  const totalQuantity = parsed.reduce((sum, item) => sum + item.quantity, 0) || 1;
+  let remainingTotal = roundMoney(totalAmount);
+
+  return parsed.map((item, index) => {
+    const isLastItem = index === parsed.length - 1;
+    const lineTotal = isLastItem
+      ? roundMoney(remainingTotal)
+      : roundMoney((totalAmount * item.quantity) / totalQuantity);
+    remainingTotal = roundMoney(remainingTotal - lineTotal);
+    const unitPrice = item.quantity > 0 ? roundMoney(lineTotal / item.quantity) : 0;
+
+    return {
+      ...item,
+      unit_price: unitPrice,
+      line_total: roundMoney(unitPrice * item.quantity),
+    } satisfies SalesEntryItem;
+  });
+}
+
+function withSalesItems(row: DailySummary["sales_rows"][number]): DailySummary["sales_rows"][number] {
+  if (row.items?.length) {
+    return row;
+  }
+
+  return {
+    ...row,
+    items: parseSummaryItems(row.items_summary, row.total_amount, row.order_id),
+  };
+}
 
 function buildBaseDailyShiftRows(date: string, discrepancyTotal: number): DailySummary["shift_rows"] {
   const overage = Math.max(discrepancyTotal, 0);
@@ -85,6 +174,7 @@ function buildBaseDailySalesRows(date: string, summary: Pick<DailySummary, "sale
       order_number: `POS-${date.replaceAll("-", "")}-001`,
       sold_at: `${date}T09:15:00.000Z`,
       items_summary: "อเมริกาโน่เย็น x2, น้ำดื่ม x1",
+      items: parseSummaryItems("อเมริกาโน่เย็น x2, น้ำดื่ม x1", summary.sales_by_method.CASH, `MOCK-${date}-001`),
       cashier_name: "Pim Counter",
       responsible_name: "Pim Counter",
       customer_name: "ลูกค้าทั่วไป",
@@ -97,6 +187,7 @@ function buildBaseDailySalesRows(date: string, summary: Pick<DailySummary, "sale
       order_number: `POS-${date.replaceAll("-", "")}-002`,
       sold_at: `${date}T12:40:00.000Z`,
       items_summary: "สมาชิกรายเดือน x1",
+      items: parseSummaryItems("สมาชิกรายเดือน x1", summary.sales_by_method.PROMPTPAY, `MOCK-${date}-002`),
       cashier_name: "June Desk",
       responsible_name: "June Desk",
       customer_name: "Nok Member",
@@ -109,6 +200,7 @@ function buildBaseDailySalesRows(date: string, summary: Pick<DailySummary, "sale
       order_number: `POS-${date.replaceAll("-", "")}-003`,
       sold_at: `${date}T17:25:00.000Z`,
       items_summary: "เทรนเดี่ยว 1 ครั้ง x1",
+      items: parseSummaryItems("เทรนเดี่ยว 1 ครั้ง x1", summary.sales_by_method.CREDIT_CARD, `MOCK-${date}-003`),
       cashier_name: "Ton Front",
       responsible_name: "Ton Front",
       customer_name: "Mild Training",
@@ -125,6 +217,42 @@ function buildOrderItemsSummary(request: Parameters<AppAdapter["createOrder"]>[0
       return `${product?.name ?? `สินค้า ${line.product_id}`} x${line.quantity}`;
     })
     .join(", ");
+}
+
+function applySalesRowOverrides(rows: DailySummary["sales_rows"]) {
+  return rows
+    .filter((row) => !deletedSalesOrderIdsState.has(String(row.order_id)))
+    .map((row) => {
+    const override = salesRowOverridesState.get(String(row.order_id));
+
+    if (!override) {
+      return withSalesItems(row);
+    }
+
+    return {
+      ...row,
+      items: override.items,
+      items_summary: override.items_summary,
+      total_amount: override.total_amount,
+    } satisfies DailySummary["sales_rows"][number];
+  });
+}
+
+function buildMockBaseSummary(date: string) {
+  const day = Number(date.split("-").at(-1) ?? 1);
+  const offset = day % 4;
+
+  return {
+    total_sales: mockDailySummary.total_sales + offset * 260,
+    sales_by_method: {
+      CASH: mockDailySummary.sales_by_method.CASH + offset * 120,
+      PROMPTPAY: mockDailySummary.sales_by_method.PROMPTPAY + offset * 70,
+      CREDIT_CARD: mockDailySummary.sales_by_method.CREDIT_CARD + offset * 70,
+    },
+    total_expenses: mockDailySummary.total_expenses + offset * 40,
+    net_cash_flow: mockDailySummary.net_cash_flow + offset * 80,
+    shift_discrepancies: mockDailySummary.shift_discrepancies + offset * 10,
+  };
 }
 
 function createError(code: string, message: string, details?: unknown): ApiError {
@@ -154,8 +282,9 @@ function cloneChartOfAccount(account: ChartOfAccountRecord) {
   return { ...account };
 }
 
-function cloneManagedUser(user: AdminUserRecord) {
-  return { ...user };
+function cloneManagedUser(user: MockManagedUser) {
+  const { password: _password, ...safeUser } = user;
+  return { ...safeUser };
 }
 
 function calculateExpectedCash(startingCash: number) {
@@ -198,6 +327,43 @@ function ensureShiftInventory(shiftId: EntityId) {
 
 function cloneProduct(product: Product) {
   return { ...product };
+}
+
+function normalizeFeaturedSlot(value: number | null | undefined) {
+  if (value == null) {
+    return null;
+  }
+
+  if (value === 1 || value === 2 || value === 3 || value === 4) {
+    return value;
+  }
+
+  throw createError("INVALID_FEATURED_SLOT", "ตำแหน่งสินค้าปักหมุดต้องอยู่ระหว่าง 1 ถึง 4");
+}
+
+function normalizeTagline(value?: string | null) {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : null;
+}
+
+function resolvePosCategory(input: Pick<Product, "sku" | "product_type"> & { pos_category?: Product["pos_category"] }) {
+  return getPosSalesCategoryFromProduct({
+    sku: input.sku,
+    product_type: input.product_type,
+    pos_category: input.pos_category ?? null,
+  });
+}
+
+function clearFeaturedSlotConflict(featuredSlot: 1 | 2 | 3 | 4 | null, excludedProductId?: EntityId) {
+  if (featuredSlot == null) {
+    return;
+  }
+
+  productsState = productsState.map((product) =>
+    product.featured_slot === featuredSlot && product.product_id !== excludedProductId
+      ? { ...product, featured_slot: null }
+      : product,
+  );
 }
 
 function resolveRevenueAccount(accountId: EntityId | undefined) {
@@ -291,6 +457,8 @@ export function resetMockAdapterState() {
   managedUsersState = [];
   shiftInventoryState = new Map();
   salesRowsState = [];
+  salesRowOverridesState = new Map();
+  deletedSalesOrderIdsState = new Set();
 }
 
 export const mockAppAdapter: AppAdapter = {
@@ -300,6 +468,22 @@ export const mockAppAdapter: AppAdapter = {
     await sleep(220);
 
     const normalized = username.trim().toLowerCase();
+    const managedUser = managedUsersState.find((candidate) => candidate.username.toLowerCase() === normalized);
+
+    if (managedUser) {
+      if (password !== managedUser.password) {
+        throw createError("INVALID_CREDENTIALS", "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง");
+      }
+
+      return {
+        user_id: managedUser.user_id,
+        username: managedUser.username,
+        full_name: managedUser.full_name,
+        role: managedUser.role,
+        active_shift_id: null,
+      } satisfies UserSession;
+    }
+
     const match = Object.values(mockUsersByRole).find(
       (candidate) => candidate.username.toLowerCase() === normalized,
     );
@@ -342,13 +526,18 @@ export const mockAppAdapter: AppAdapter = {
     }
 
     const revenueAccount = resolveRevenueAccount(input.revenueAccountId);
+    const featuredSlot = normalizeFeaturedSlot(input.featuredSlot);
+    clearFeaturedSlotConflict(featuredSlot);
 
     const nextProduct: Product = {
       product_id: productSequence,
       sku: input.sku.trim(),
       name: input.name.trim(),
+      tagline: normalizeTagline(input.tagline),
       price: input.price,
       product_type: input.productType,
+      pos_category: input.posCategory ?? resolvePosCategory({ sku: input.sku.trim(), product_type: input.productType }),
+      featured_slot: featuredSlot,
       revenue_account_id: revenueAccount?.account_id,
       track_stock: input.productType === "GOODS",
       stock_on_hand: input.productType === "GOODS" ? (input.stockOnHand ?? 0) : null,
@@ -395,6 +584,8 @@ export const mockAppAdapter: AppAdapter = {
     }
 
     const revenueAccount = resolveRevenueAccount(input.revenueAccountId);
+  const featuredSlot = normalizeFeaturedSlot(input.featuredSlot === undefined ? (targetProduct.featured_slot ?? null) : input.featuredSlot);
+    clearFeaturedSlotConflict(featuredSlot, input.productId);
 
     productsState = productsState.map((product) => {
       if (product.product_id !== input.productId) {
@@ -405,7 +596,14 @@ export const mockAppAdapter: AppAdapter = {
         ...product,
         name: input.name.trim(),
         sku: input.sku.trim(),
+        tagline: normalizeTagline(input.tagline),
         price: input.price,
+        pos_category: input.posCategory ?? resolvePosCategory({
+          sku: input.sku.trim(),
+          product_type: product.product_type,
+          pos_category: product.pos_category,
+        }),
+        featured_slot: featuredSlot,
         revenue_account_id: revenueAccount?.account_id,
         stock_on_hand: product.track_stock ? (input.stockOnHand ?? product.stock_on_hand ?? 0) : product.stock_on_hand,
       } satisfies Product;
@@ -586,6 +784,17 @@ export const mockAppAdapter: AppAdapter = {
         order_number: `POS-${new Date().getFullYear()}-${String(currentSequence).padStart(4, "0")}`,
         sold_at: purchasedAt,
         items_summary: buildOrderItemsSummary(request),
+        items: request.items.map((line, index) => {
+          const product = productsState.find((candidate) => candidate.product_id === line.product_id);
+          const unitPrice = product?.price ?? 0;
+          return {
+            order_item_id: `${currentSequence}-item-${index + 1}`,
+            product_name: product?.name ?? `สินค้า ${line.product_id}`,
+            quantity: line.quantity,
+            unit_price: unitPrice,
+            line_total: roundMoney(unitPrice * line.quantity),
+          } satisfies SalesEntryItem;
+        }),
         cashier_name: "แคชเชียร์หน้าร้าน",
         responsible_name: "แคชเชียร์หน้าร้าน",
         customer_name: request.customer_info?.name?.trim() || null,
@@ -626,27 +835,140 @@ export const mockAppAdapter: AppAdapter = {
     } satisfies ExpenseResult;
   },
 
+  async updateSalesEntry(orderId, input) {
+    await sleep(180);
+
+    if (!Array.isArray(input.items)) {
+      throw createError("INVALID_ORDER_ITEMS_SUMMARY", "กรุณาระบุรายการที่ขาย");
+    }
+
+    if (
+      input.items.some(
+        (item) =>
+          !item.order_item_id ||
+          !Number.isInteger(item.quantity) ||
+          item.quantity < 0 ||
+          !Number.isFinite(item.unit_price) ||
+          item.unit_price < 0,
+      )
+    ) {
+      throw createError("INVALID_ORDER_TOTAL", "ข้อมูลจำนวนหรือราคาต่อหน่วยไม่ถูกต้อง");
+    }
+
+    const items = input.items
+      .filter((item) => item.quantity > 0)
+      .map((item) => {
+      const lineTotal = roundMoney(item.quantity * item.unit_price);
+      const existingRow = salesRowsState.find((row) => String(row.order_id) === String(orderId));
+      const existingItem = existingRow?.items?.find((candidate) => String(candidate.order_item_id) === String(item.order_item_id));
+      return {
+        order_item_id: String(item.order_item_id),
+        product_name: existingItem?.product_name ?? `สินค้า ${item.order_item_id}`,
+        quantity: item.quantity,
+        unit_price: roundMoney(item.unit_price),
+        line_total: lineTotal,
+      } satisfies SalesEntryItem;
+      });
+
+    if (items.length === 0) {
+      throw createError("INVALID_ORDER_ITEMS_SUMMARY", "บิลต้องมีอย่างน้อย 1 รายการ");
+    }
+
+    const itemsSummary = buildSummaryFromSalesItems(items);
+    const normalizedTotal = roundMoney(items.reduce((sum, item) => sum + item.line_total, 0));
+    const orderKey = String(orderId);
+    const appendedIndex = salesRowsState.findIndex((row) => String(row.order_id) === orderKey);
+
+    if (appendedIndex >= 0) {
+      salesRowsState[appendedIndex] = {
+        ...salesRowsState[appendedIndex],
+        items,
+        items_summary: itemsSummary,
+        total_amount: normalizedTotal,
+      };
+      salesRowOverridesState.delete(orderKey);
+
+      return {
+        order_id: salesRowsState[appendedIndex].order_id,
+        items,
+        items_summary: itemsSummary,
+        total_amount: normalizedTotal,
+      };
+    }
+
+    salesRowOverridesState.set(orderKey, {
+      items,
+      items_summary: itemsSummary,
+      total_amount: normalizedTotal,
+    });
+
+    return {
+      order_id: orderId,
+      items,
+      items_summary: itemsSummary,
+      total_amount: normalizedTotal,
+    };
+  },
+
+  async deleteSalesEntry(orderId) {
+    await sleep(180);
+
+    const orderKey = String(orderId);
+    const targetRow = salesRowsState.find((row) => String(row.order_id) === orderKey)
+      ?? (() => {
+        const match = /^MOCK-(\d{4}-\d{2}-\d{2})-\d+$/u.exec(orderKey);
+        if (!match) {
+          return undefined;
+        }
+
+        const date = match[1];
+        const baseSummary = buildMockBaseSummary(date);
+        return buildBaseDailySalesRows(date, baseSummary).find((row) => String(row.order_id) === orderKey);
+      })();
+
+    if (!targetRow) {
+      throw createError("ORDER_NOT_FOUND", "ไม่พบบิลขายที่ต้องการลบ");
+    }
+
+    salesRowsState = salesRowsState.filter((row) => String(row.order_id) !== orderKey);
+    salesRowOverridesState.delete(orderKey);
+    deletedSalesOrderIdsState.add(orderKey);
+
+    return {
+      order_id: targetRow.order_id,
+      order_number: targetRow.order_number,
+    };
+  },
+
+  async deleteSalesEntries(orderIds) {
+    await sleep(180);
+
+    const normalizedOrderIds = Array.from(new Set(orderIds.map((orderId) => String(orderId)).filter(Boolean)));
+    if (normalizedOrderIds.length === 0) {
+      throw createError("ORDER_IDS_REQUIRED", "ต้องเลือกรายการขายอย่างน้อย 1 บิล");
+    }
+
+    const deletedOrders = [] as Array<{ order_id: EntityId; order_number: string }>;
+    for (const orderId of normalizedOrderIds) {
+      const deleted = await this.deleteSalesEntry(orderId);
+      deletedOrders.push(deleted);
+    }
+
+    return {
+      deleted_count: deletedOrders.length,
+      deleted_orders: deletedOrders,
+    };
+  },
+
   async getDailySummary(query) {
     await sleep(220);
 
     const date = query.date ?? query.start_date ?? new Date().toISOString().slice(0, 10);
-    const day = Number(date.split("-").at(-1) ?? 1);
-    const offset = day % 4;
-
-    const baseSummary = {
-      total_sales: mockDailySummary.total_sales + offset * 260,
-      sales_by_method: {
-        CASH: mockDailySummary.sales_by_method.CASH + offset * 120,
-        PROMPTPAY: mockDailySummary.sales_by_method.PROMPTPAY + offset * 70,
-        CREDIT_CARD: mockDailySummary.sales_by_method.CREDIT_CARD + offset * 70,
-      },
-      total_expenses: mockDailySummary.total_expenses + offset * 40,
-      net_cash_flow: mockDailySummary.net_cash_flow + offset * 80,
-      shift_discrepancies: mockDailySummary.shift_discrepancies + offset * 10,
-    };
+    const baseSummary = buildMockBaseSummary(date);
 
     const appendedRows = salesRowsState.filter((row) => row.sold_at.slice(0, 10) === date);
-    const appendedByMethod = appendedRows.reduce(
+    const combinedRows = applySalesRowOverrides([...appendedRows, ...buildBaseDailySalesRows(date, baseSummary)]);
+    const salesByMethod = combinedRows.reduce(
       (summary, row) => {
         summary[row.payment_method] += row.total_amount;
         return summary;
@@ -658,18 +980,18 @@ export const mockAppAdapter: AppAdapter = {
       report_period: query.period,
       range_start: date,
       range_end: query.end_date ?? date,
-      total_sales: Number((baseSummary.total_sales + appendedRows.reduce((sum, row) => sum + row.total_amount, 0)).toFixed(2)),
+      total_sales: Number(combinedRows.reduce((sum, row) => sum + row.total_amount, 0).toFixed(2)),
       sales_by_method: {
-        CASH: Number((baseSummary.sales_by_method.CASH + appendedByMethod.CASH).toFixed(2)),
-        PROMPTPAY: Number((baseSummary.sales_by_method.PROMPTPAY + appendedByMethod.PROMPTPAY).toFixed(2)),
-        CREDIT_CARD: Number((baseSummary.sales_by_method.CREDIT_CARD + appendedByMethod.CREDIT_CARD).toFixed(2)),
+        CASH: Number(salesByMethod.CASH.toFixed(2)),
+        PROMPTPAY: Number(salesByMethod.PROMPTPAY.toFixed(2)),
+        CREDIT_CARD: Number(salesByMethod.CREDIT_CARD.toFixed(2)),
       },
       sales_by_category: buildEmptyPosSalesCategoryRows(),
       total_expenses: baseSummary.total_expenses,
-      net_cash_flow: Number((baseSummary.net_cash_flow + appendedByMethod.CASH).toFixed(2)),
+      net_cash_flow: Number((salesByMethod.CASH - baseSummary.total_expenses).toFixed(2)),
       shift_discrepancies: baseSummary.shift_discrepancies,
       shift_rows: buildBaseDailyShiftRows(date, baseSummary.shift_discrepancies),
-      sales_rows: [...appendedRows, ...buildBaseDailySalesRows(date, baseSummary)],
+      sales_rows: combinedRows,
     } satisfies DailySummary;
   },
 
@@ -801,18 +1123,19 @@ export const mockAppAdapter: AppAdapter = {
     await sleep(180);
 
     if (
-      managedUsersState.some((user) => user.username === input.username || user.email === input.email) ||
+      managedUsersState.some((user) => user.username === input.username) ||
       Object.values(mockUsersByRole).some((user) => user.username === input.username)
     ) {
       throw createError("DUPLICATE_USERNAME", "ชื่อผู้ใช้นี้ถูกใช้งานแล้ว");
     }
 
-    const nextUser: AdminUserRecord = {
+    const nextUser: MockManagedUser = {
       user_id: `mock-user-${managedUsersState.length + 1}`,
       full_name: input.full_name,
+      phone: input.phone.trim(),
       username: input.username,
-      email: input.email,
       role: input.role,
+      password: input.password,
     };
 
     managedUsersState = [nextUser, ...managedUsersState];
@@ -843,6 +1166,36 @@ export const mockAppAdapter: AppAdapter = {
 
     trainersState = [nextTrainer, ...trainersState];
     return { ...nextTrainer, assignments: [] };
+  },
+
+  async deleteTrainer(trainerId: EntityId) {
+    await sleep(120);
+    const target = trainersState.find((trainer) => String(trainer.trainer_id) === String(trainerId));
+
+    if (!target) {
+      throw createError("TRAINER_NOT_FOUND", "ไม่พบเทรนเนอร์ที่ต้องการลบ");
+    }
+
+    trainersState = trainersState.filter((trainer) => String(trainer.trainer_id) !== String(trainerId));
+    trainersState = trainersState.map((trainer) => ({
+      ...trainer,
+      assignments: trainer.assignments.map((assignment) =>
+        String(assignment.trainer_id) === String(trainerId)
+          ? {
+              ...assignment,
+              trainer_id: null,
+              trainer_name: null,
+              status: assignment.status === "ACTIVE" ? "UNASSIGNED" : assignment.status,
+              updated_at: new Date().toISOString(),
+            }
+          : assignment,
+      ),
+    }));
+
+    return {
+      trainer_id: target.trainer_id,
+      full_name: target.full_name,
+    };
   },
 
   async toggleTrainerActive(trainerId: EntityId) {
@@ -884,6 +1237,46 @@ export const mockAppAdapter: AppAdapter = {
     }
 
     return updatedTrainer;
+  },
+
+  async deleteTrainingEnrollment(enrollmentId: EntityId) {
+    await sleep(120);
+    const deletedAssignments = removeTrainingEnrollmentsFromState([enrollmentId]);
+    const deletedAssignment = deletedAssignments[0];
+
+    if (!deletedAssignment) {
+      throw createError("TRAINING_ENROLLMENT_NOT_FOUND", "ไม่พบรายการลูกเทรนที่ต้องการลบ");
+    }
+
+    return {
+      enrollment_id: deletedAssignment.enrollment_id,
+      customer_name: deletedAssignment.customer_name,
+      package_name: deletedAssignment.package_name,
+    };
+  },
+
+  async deleteTrainingEnrollments(enrollmentIds: EntityId[]) {
+    await sleep(120);
+    const normalizedIds = Array.from(new Set(enrollmentIds.map((id) => String(id)).filter(Boolean)));
+
+    if (normalizedIds.length === 0) {
+      throw createError("TRAINING_ENROLLMENT_IDS_REQUIRED", "ต้องเลือกรายการลูกเทรนอย่างน้อย 1 รายการ");
+    }
+
+    const deletedAssignments = removeTrainingEnrollmentsFromState(normalizedIds);
+
+    if (deletedAssignments.length !== normalizedIds.length) {
+      throw createError("TRAINING_ENROLLMENT_NOT_FOUND", "ไม่พบรายการลูกเทรนที่ต้องการลบบางรายการ");
+    }
+
+    return {
+      deleted_count: deletedAssignments.length,
+      deleted_enrollments: deletedAssignments.map((assignment) => ({
+        enrollment_id: assignment.enrollment_id,
+        customer_name: assignment.customer_name,
+        package_name: assignment.package_name,
+      })),
+    };
   },
 
   async updateTrainingEnrollment(enrollmentId: EntityId, input: UpdateTrainingEnrollmentInput) {
@@ -983,6 +1376,24 @@ export const mockAppAdapter: AppAdapter = {
     registry.splice(targetIndex, 1, updatedMember);
     writeMemberRegistry(registry);
     return updatedMember;
+  },
+
+  async deleteMember(memberId: EntityId) {
+    await sleep(200);
+
+    const registry = readMemberRegistry();
+    const targetIndex = registry.findIndex((member) => String(member.member_id) === String(memberId));
+    if (targetIndex < 0) {
+      throw createError("MEMBER_NOT_FOUND", "ไม่พบสมาชิกที่ต้องการลบ");
+    }
+
+    const [removedMember] = registry.splice(targetIndex, 1);
+    writeMemberRegistry(registry);
+
+    return {
+      member_id: removedMember.member_id,
+      full_name: removedMember.full_name,
+    };
   },
 
   async renewMember(memberId) {

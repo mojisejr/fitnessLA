@@ -5,6 +5,8 @@ import { GET as activeShiftGET } from "../../src/app/api/v1/shifts/active/route"
 import { GET as shiftInventorySummaryGET } from "../../src/app/api/v1/shifts/[shiftId]/inventory-summary/route";
 import { POST as openShiftPOST } from "../../src/app/api/v1/shifts/open/route";
 import { POST as createOrderPOST } from "../../src/app/api/v1/orders/route";
+import { DELETE as orderDELETE, PATCH as orderPATCH } from "../../src/app/api/v1/orders/[orderId]/route";
+import { POST as ordersBulkDeletePOST } from "../../src/app/api/v1/orders/bulk-delete/route";
 import { POST as createExpensePOST } from "../../src/app/api/v1/expenses/route";
 import { POST as closeShiftPOST } from "../../src/app/api/v1/shifts/close/route";
 import { GET as dailySummaryGET } from "../../src/app/api/v1/reports/daily-summary/route";
@@ -17,6 +19,9 @@ const mockGetActiveShiftByStaff = vi.fn();
 const mockGetShiftInventorySummaryByShiftId = vi.fn();
 const mockOpenShiftWithJournal = vi.fn();
 const mockCreateOrderWithJournal = vi.fn();
+const mockUpdateOrderSale = vi.fn();
+const mockDeleteOrderSale = vi.fn();
+const mockDeleteOrderSales = vi.fn();
 const mockPostExpenseWithJournal = vi.fn();
 const mockCloseActiveShiftWithDifference = vi.fn();
 const mockGetDailySummaryByDate = vi.fn();
@@ -34,6 +39,9 @@ vi.mock("../../src/features/operations/services", () => ({
     mockGetShiftInventorySummaryByShiftId(...args),
   openShiftWithJournal: (...args: unknown[]) => mockOpenShiftWithJournal(...args),
   createOrderWithJournal: (...args: unknown[]) => mockCreateOrderWithJournal(...args),
+  updateOrderSale: (...args: unknown[]) => mockUpdateOrderSale(...args),
+  deleteOrderSale: (...args: unknown[]) => mockDeleteOrderSale(...args),
+  deleteOrderSales: (...args: unknown[]) => mockDeleteOrderSales(...args),
   postExpenseWithJournal: (...args: unknown[]) => mockPostExpenseWithJournal(...args),
   closeActiveShiftWithDifference: (...args: unknown[]) =>
     mockCloseActiveShiftWithDifference(...args),
@@ -217,6 +225,74 @@ describe("A-2 operations routes", () => {
     });
   });
 
+  it("deletes order sale for owner", async () => {
+    mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "OWNER" });
+    mockDeleteOrderSale.mockResolvedValue({ order_id: "ord_1", order_number: "ORD-2026-0035" });
+
+    const response = await orderDELETE(
+      new Request("http://localhost/api/v1/orders/ord_1", { method: "DELETE" }),
+      { params: Promise.resolve({ orderId: "ord_1" }) },
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toEqual({ order_id: "ord_1", order_number: "ORD-2026-0035" });
+    expect(mockDeleteOrderSale).toHaveBeenCalledWith("ord_1");
+  });
+
+  it("rejects order sale deletion for admin", async () => {
+    mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "ADMIN" });
+
+    const response = await orderDELETE(
+      new Request("http://localhost/api/v1/orders/ord_1", { method: "DELETE" }),
+      { params: Promise.resolve({ orderId: "ord_1" }) },
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(body.code).toBe("FORBIDDEN");
+    expect(mockDeleteOrderSale).not.toHaveBeenCalled();
+  });
+
+  it("bulk deletes order sales for owner", async () => {
+    mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "OWNER" });
+    mockDeleteOrderSales.mockResolvedValue({
+      deleted_count: 2,
+      deleted_orders: [
+        { order_id: "ord_1", order_number: "ORD-2026-0035" },
+        { order_id: "ord_2", order_number: "ORD-2026-0034" },
+      ],
+    });
+
+    const response = await ordersBulkDeletePOST(
+      new Request("http://localhost/api/v1/orders/bulk-delete", {
+        method: "POST",
+        body: JSON.stringify({ order_ids: ["ord_1", "ord_2"] }),
+      }),
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.deleted_count).toBe(2);
+    expect(mockDeleteOrderSales).toHaveBeenCalledWith(["ord_1", "ord_2"]);
+  });
+
+  it("bulk delete order sales returns 403 for admin", async () => {
+    mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "ADMIN" });
+
+    const response = await ordersBulkDeletePOST(
+      new Request("http://localhost/api/v1/orders/bulk-delete", {
+        method: "POST",
+        body: JSON.stringify({ order_ids: ["ord_1"] }),
+      }),
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(body.code).toBe("FORBIDDEN");
+    expect(mockDeleteOrderSales).not.toHaveBeenCalled();
+  });
+
   it("creates order with 201", async () => {
     mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "CASHIER" });
     mockCreateOrderWithJournal.mockResolvedValue({
@@ -309,6 +385,83 @@ describe("A-2 operations routes", () => {
 
     expect(response.status).toBe(409);
     expect(body.code).toBe("INSUFFICIENT_STOCK");
+  });
+
+  it("lets owner update sale rows", async () => {
+    mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "OWNER" });
+    mockUpdateOrderSale.mockResolvedValue({
+      order_id: "o1",
+      items: [
+        {
+          order_item_id: "item-1",
+          product_name: "Protein Shake",
+          quantity: 1,
+          unit_price: 999,
+          line_total: 999,
+        },
+      ],
+      items_summary: "แก้รายการขายแล้ว x1",
+      total_amount: 999,
+    });
+
+    const response = await orderPATCH(
+      new Request("http://localhost/api/v1/orders/o1", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          items: [
+            {
+              order_item_id: "item-1",
+              quantity: 1,
+              unit_price: 999,
+            },
+          ],
+        }),
+      }),
+      { params: Promise.resolve({ orderId: "o1" }) },
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(mockUpdateOrderSale).toHaveBeenCalledWith({
+      order_id: "o1",
+      items: [
+        {
+          order_item_id: "item-1",
+          quantity: 1,
+          unit_price: 999,
+        },
+      ],
+    });
+    expect(body).toMatchObject({
+      order_id: "o1",
+      total_amount: 999,
+    });
+  });
+
+  it("blocks admin from updating sale rows", async () => {
+    mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "ADMIN" });
+
+    const response = await orderPATCH(
+      new Request("http://localhost/api/v1/orders/o1", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          items: [
+            {
+              order_item_id: "item-1",
+              quantity: 1,
+              unit_price: 999,
+            },
+          ],
+        }),
+      }),
+      { params: Promise.resolve({ orderId: "o1" }) },
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(body.code).toBe("FORBIDDEN");
   });
 
   it("creates expense with 201", async () => {

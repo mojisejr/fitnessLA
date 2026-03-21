@@ -2,14 +2,17 @@ import { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
 import type { MemberSubscriptionRecord } from "@/lib/contracts";
-import { POS_CATEGORY_DEFINITIONS, getPosSalesCategoryFromSku } from "@/lib/pos-categories";
+import { POS_CATEGORY_DEFINITIONS, getPosSalesCategoryFromProduct, getPosSalesCategoryFromSku, isPosSalesCategory } from "@/lib/pos-categories";
 
 export type ProductDto = {
   product_id: string;
   sku: string;
   name: string;
+  tagline?: string | null;
   price: number;
   product_type: "GOODS" | "SERVICE" | "MEMBERSHIP";
+  pos_category?: "COFFEE" | "MEMBERSHIP" | "FOOD" | "TRAINING" | "COUNTER" | null;
+  featured_slot?: 1 | 2 | 3 | 4 | null;
   revenue_account_id?: string;
   track_stock?: boolean;
   stock_on_hand?: number | null;
@@ -20,8 +23,11 @@ export type ProductDto = {
 export type CreateProductInputDto = {
   sku: string;
   name: string;
+  tagline?: string | null;
   price: number;
   product_type: "GOODS" | "SERVICE" | "MEMBERSHIP";
+  pos_category?: "COFFEE" | "MEMBERSHIP" | "FOOD" | "TRAINING" | "COUNTER" | null;
+  featured_slot?: 1 | 2 | 3 | 4 | null;
   revenue_account_id?: string;
   stock_on_hand?: number | null;
   membership_period?: "DAILY" | "MONTHLY" | "QUARTERLY" | "SEMIANNUAL" | "YEARLY" | null;
@@ -32,7 +38,10 @@ export type UpdateProductInputDto = {
   product_id: string;
   sku: string;
   name: string;
+  tagline?: string | null;
   price: number;
+  pos_category?: "COFFEE" | "MEMBERSHIP" | "FOOD" | "TRAINING" | "COUNTER" | null;
+  featured_slot?: 1 | 2 | 3 | 4 | null;
   revenue_account_id?: string;
   stock_on_hand?: number | null;
   membership_period?: "DAILY" | "MONTHLY" | "QUARTERLY" | "SEMIANNUAL" | "YEARLY" | null;
@@ -80,6 +89,38 @@ export type CreateOrderResultDto = {
   status: "COMPLETED";
 };
 
+export type UpdateOrderSaleInputDto = {
+  order_id: string;
+  items: Array<{
+    order_item_id: string;
+    quantity: number;
+    unit_price: number;
+  }>;
+};
+
+export type UpdateOrderSaleResultDto = {
+  order_id: string;
+  items_summary: string;
+  total_amount: number;
+  items: Array<{
+    order_item_id: string;
+    product_name: string;
+    quantity: number;
+    unit_price: number;
+    line_total: number;
+  }>;
+};
+
+export type DeleteOrderSaleResultDto = {
+  order_id: string;
+  order_number: string;
+};
+
+export type BulkDeleteOrderSalesResultDto = {
+  deleted_count: number;
+  deleted_orders: DeleteOrderSaleResultDto[];
+};
+
 export type CreateExpenseInput = {
   shift_id: string;
   account_id: string;
@@ -105,6 +146,16 @@ export type CreateSpecialMemberInputDto = {
 export type UpdateMemberDatesInputDto = {
   started_at: string;
   expires_at: string;
+};
+
+export type DeleteMemberResultDto = {
+  member_id: string;
+  full_name: string;
+};
+
+export type DeleteTrainerResultDto = {
+  trainer_id: string;
+  full_name: string;
 };
 
 export type CloseShiftInput = {
@@ -149,6 +200,13 @@ export type DailySummaryDto = {
     order_number: string;
     sold_at: string;
     items_summary: string;
+    items?: Array<{
+      order_item_id: string;
+      product_name: string;
+      quantity: number;
+      unit_price: number;
+      line_total: number;
+    }>;
     cashier_name: string;
     responsible_name?: string;
     customer_name: string | null;
@@ -347,12 +405,35 @@ function defaultMembershipDurationDays(period: ProductDto["membership_period"]):
   }
 }
 
+function deriveTrainingDurationDays(packageSku: string): number | null {
+  switch (packageSku) {
+    case "PT-10":
+      return 30;
+    case "PT-20":
+      return 60;
+    case "PT-MONTH":
+    case "PT-COUPLE":
+      return 30;
+    default:
+      return null;
+  }
+}
+
 function normalizeMembershipMetadata(input: {
   productType: "GOODS" | "SERVICE" | "MEMBERSHIP";
   sku: string;
   membershipPeriod?: ProductDto["membership_period"];
   membershipDurationDays?: number | null;
 }) {
+  if (input.productType === "SERVICE" && input.sku.startsWith("PT-")) {
+    return {
+      membershipPeriod: null,
+      membershipDurationDays: input.membershipDurationDays ?? deriveTrainingDurationDays(input.sku),
+      trackStock: false,
+      stockOnHand: null,
+    };
+  }
+
   if (input.productType !== "MEMBERSHIP") {
     return {
       membershipPeriod: null,
@@ -449,8 +530,11 @@ function mapProductRecord(product: {
   id: string;
   sku: string;
   name: string;
+  tagline?: string | null;
   price: Prisma.Decimal;
   productType: string;
+  posCategoryCode?: string | null;
+  featuredSlot?: number | null;
   revenueAccountId?: string | null;
   trackStock?: boolean | null;
   stockOnHand?: number | null;
@@ -459,13 +543,24 @@ function mapProductRecord(product: {
 }): ProductDto {
   const productType = assertProductType(product.productType);
   const membershipPeriod = inferMembershipPeriod(product.sku, product.membershipPeriod);
+  const posCategory = getPosSalesCategoryFromProduct({
+    sku: product.sku,
+    product_type: productType,
+    pos_category: isPosSalesCategory(product.posCategoryCode) ? product.posCategoryCode : null,
+  });
+  const featuredSlot = product.featuredSlot === 1 || product.featuredSlot === 2 || product.featuredSlot === 3 || product.featuredSlot === 4
+    ? product.featuredSlot
+    : null;
 
   return {
     product_id: product.id,
     sku: product.sku,
     name: product.name,
+    tagline: product.tagline ?? null,
     price: Number(product.price),
     product_type: productType,
+    pos_category: posCategory,
+    featured_slot: featuredSlot,
     revenue_account_id: product.revenueAccountId ?? undefined,
     track_stock: product.trackStock ?? productType === "GOODS",
     stock_on_hand: product.trackStock ?? productType === "GOODS" ? product.stockOnHand ?? 0 : null,
@@ -524,6 +619,138 @@ function assertPaymentMethod(value: string): PaymentMethod {
 
 function asMoney(amount: number): Prisma.Decimal {
   return new Prisma.Decimal(amount.toFixed(2));
+}
+
+function normalizeProductTagline(value?: string | null) {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : null;
+}
+
+function normalizeFeaturedSlot(value?: number | null) {
+  if (value == null) {
+    return null;
+  }
+
+  if (value === 1 || value === 2 || value === 3 || value === 4) {
+    return value;
+  }
+
+  throw new Error("INVALID_FEATURED_SLOT");
+}
+
+function resolvePosCategoryCode(input: {
+  sku: string;
+  productType: "GOODS" | "SERVICE" | "MEMBERSHIP";
+  posCategory?: string | null;
+}) {
+  if (input.posCategory == null) {
+    return getPosSalesCategoryFromProduct({
+      sku: input.sku,
+      product_type: input.productType,
+      pos_category: null,
+    });
+  }
+
+  if (!isPosSalesCategory(input.posCategory)) {
+    throw new Error("INVALID_POS_CATEGORY");
+  }
+
+  return input.posCategory;
+}
+
+async function clearFeaturedSlotConflict(
+  client: Prisma.TransactionClient | typeof prisma,
+  featuredSlot: number | null,
+  excludedProductId?: string,
+) {
+  if (featuredSlot == null) {
+    return;
+  }
+
+  await client.product.updateMany({
+    where: {
+      featuredSlot,
+      ...(excludedProductId ? { id: { not: excludedProductId } } : {}),
+    },
+    data: {
+      featuredSlot: null,
+    },
+  });
+}
+
+function buildOrderItemsSummary(items: Array<{ quantity: number; product: { name: string } }>, fallback: string): string {
+  const summary = items
+    .map((item) => `${item.product.name} x${item.quantity}`)
+    .join(", ")
+    .trim();
+
+  return summary || fallback;
+}
+
+function buildOrderItemsSummaryFromEditableItems(
+  items: Array<{ product_name: string; quantity: number }>,
+  fallback: string,
+): string {
+  const summary = items
+    .filter((item) => item.quantity > 0)
+    .map((item) => `${item.product_name} x${item.quantity}`)
+    .join(", ")
+    .trim();
+
+  return summary || fallback;
+}
+
+function mapEditableSalesItems(
+  items: Array<{
+    id: string;
+    quantity: number;
+    unitPrice: Prisma.Decimal;
+    totalPrice: Prisma.Decimal;
+    product: { name: string };
+  }>,
+) {
+  return items.map((item) => ({
+    order_item_id: item.id,
+    product_name: item.product.name,
+    quantity: item.quantity,
+    unit_price: Number(item.unitPrice.toFixed(2)),
+    line_total: Number(item.totalPrice.toFixed(2)),
+  }));
+}
+
+function distributeOrderItemTotals(
+  items: Array<{ id: string; quantity: number; totalPrice: Prisma.Decimal }>,
+  nextTotalAmount: Prisma.Decimal,
+) {
+  const currentTotalAmount = items.reduce(
+    (sum, item) => sum.add(item.totalPrice),
+    new Prisma.Decimal(0),
+  );
+  const totalQuantity = items.reduce((sum, item) => sum + item.quantity, 0);
+  let remainingAmount = nextTotalAmount;
+
+  return items.map((item, index) => {
+    const isLastItem = index === items.length - 1;
+
+    const nextItemTotal = isLastItem
+      ? remainingAmount
+      : currentTotalAmount.gt(0)
+        ? nextTotalAmount.mul(item.totalPrice).div(currentTotalAmount).toDecimalPlaces(2)
+        : totalQuantity > 0
+          ? nextTotalAmount.mul(item.quantity).div(totalQuantity).toDecimalPlaces(2)
+          : new Prisma.Decimal(0);
+
+    remainingAmount = remainingAmount.sub(nextItemTotal);
+
+    return {
+      id: item.id,
+      totalPrice: nextItemTotal,
+      unitPrice:
+        item.quantity > 0
+          ? nextItemTotal.div(item.quantity).toDecimalPlaces(2)
+          : new Prisma.Decimal(0),
+    };
+  });
 }
 
 async function reserveDocumentNumber(
@@ -1089,6 +1316,41 @@ export async function updateMemberDates(
   };
 }
 
+export async function deleteMember(memberId: string): Promise<DeleteMemberResultDto> {
+  const normalizedMemberId = memberId.trim();
+  if (!normalizedMemberId) {
+    throw new Error("MEMBER_NOT_FOUND");
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const member = await tx.memberSubscription.findUnique({
+      where: { id: normalizedMemberId },
+      select: {
+        id: true,
+        fullName: true,
+      },
+    });
+
+    if (!member) {
+      throw new Error("MEMBER_NOT_FOUND");
+    }
+
+    await tx.trainingServiceEnrollment.updateMany({
+      where: { memberSubscriptionId: member.id },
+      data: { memberSubscriptionId: null },
+    });
+
+    await tx.memberSubscription.delete({
+      where: { id: member.id },
+    });
+
+    return {
+      member_id: member.id,
+      full_name: member.fullName,
+    };
+  });
+}
+
 export async function createProduct(input: CreateProductInputDto): Promise<ProductDto> {
   const sku = input.sku.trim();
   const name = input.name.trim();
@@ -1104,6 +1366,13 @@ export async function createProduct(input: CreateProductInputDto): Promise<Produ
   const productType = assertProductType(input.product_type);
   const revenueAccountId = await resolveRevenueAccountId(prisma, input.revenue_account_id);
   const stockOnHand = productType === "GOODS" ? Math.max(0, input.stock_on_hand ?? 0) : null;
+  const tagline = normalizeProductTagline(input.tagline);
+  const posCategoryCode = resolvePosCategoryCode({
+    sku,
+    productType,
+    posCategory: input.pos_category,
+  });
+  const featuredSlot = normalizeFeaturedSlot(input.featured_slot);
   const membershipMetadata = normalizeMembershipMetadata({
     productType,
     sku,
@@ -1111,23 +1380,33 @@ export async function createProduct(input: CreateProductInputDto): Promise<Produ
     membershipDurationDays: input.membership_duration_days ?? null,
   });
 
-  const created = await prisma.product.create({
-    data: {
-      sku,
-      name,
-      price: asMoney(input.price),
-      productType,
-      trackStock: productType === "GOODS",
-      stockOnHand,
-      membershipPeriod: membershipMetadata.membershipPeriod,
-      membershipDurationDays: membershipMetadata.membershipDurationDays,
-      isActive: true,
-      revenueAccountId,
-    },
+  const created = await prisma.$transaction(async (tx) => {
+    await clearFeaturedSlotConflict(tx, featuredSlot);
+
+    return tx.product.create({
+      data: {
+        sku,
+        name,
+        tagline,
+        price: asMoney(input.price),
+        productType,
+        posCategoryCode,
+        featuredSlot,
+        trackStock: productType === "GOODS",
+        stockOnHand,
+        membershipPeriod: membershipMetadata.membershipPeriod,
+        membershipDurationDays: membershipMetadata.membershipDurationDays,
+        isActive: true,
+        revenueAccountId,
+      },
+    });
   });
 
   return mapProductRecord({
     ...created,
+    tagline: created.tagline,
+    posCategoryCode: created.posCategoryCode,
+    featuredSlot: created.featuredSlot,
     revenueAccountId: created.revenueAccountId,
   });
 }
@@ -1151,6 +1430,13 @@ export async function updateProduct(input: UpdateProductInputDto): Promise<Produ
 
   const revenueAccountId = await resolveRevenueAccountId(prisma, input.revenue_account_id);
   const productType = assertProductType(existing.productType);
+  const tagline = normalizeProductTagline(input.tagline);
+  const posCategoryCode = resolvePosCategoryCode({
+    sku,
+    productType,
+    posCategory: input.pos_category ?? existing.posCategoryCode,
+  });
+  const featuredSlot = normalizeFeaturedSlot(input.featured_slot === undefined ? existing.featuredSlot : input.featured_slot);
   const membershipMetadata = normalizeMembershipMetadata({
     productType,
     sku,
@@ -1158,30 +1444,41 @@ export async function updateProduct(input: UpdateProductInputDto): Promise<Produ
     membershipDurationDays: input.membership_duration_days ?? existing.membershipDurationDays ?? null,
   });
 
-  const updated = await prisma.product.update({
-    where: { id: existing.id },
-    data: {
-      sku,
-      name,
-      price: asMoney(input.price),
-      trackStock: productType === "GOODS",
-      stockOnHand: productType === "GOODS" ? Math.max(0, input.stock_on_hand ?? existing.stockOnHand ?? 0) : null,
-      membershipPeriod: membershipMetadata.membershipPeriod,
-      membershipDurationDays: membershipMetadata.membershipDurationDays,
-      revenueAccountId,
-    },
+  const updated = await prisma.$transaction(async (tx) => {
+    await clearFeaturedSlotConflict(tx, featuredSlot, existing.id);
+
+    return tx.product.update({
+      where: { id: existing.id },
+      data: {
+        sku,
+        name,
+        tagline,
+        price: asMoney(input.price),
+        posCategoryCode,
+        featuredSlot,
+        trackStock: productType === "GOODS",
+        stockOnHand: productType === "GOODS" ? Math.max(0, input.stock_on_hand ?? existing.stockOnHand ?? 0) : null,
+        membershipPeriod: membershipMetadata.membershipPeriod,
+        membershipDurationDays: membershipMetadata.membershipDurationDays,
+        revenueAccountId,
+      },
+    });
   });
 
   return mapProductRecord({
     ...updated,
+    tagline: updated.tagline,
+    posCategoryCode: updated.posCategoryCode,
+    featuredSlot: updated.featuredSlot,
     revenueAccountId: updated.revenueAccountId,
   });
 }
 
 export async function getActiveShiftByStaff(staffId: string): Promise<ActiveShiftDto | null> {
+  void staffId;
+
   const shift = await prisma.shift.findFirst({
     where: {
-      staffId,
       status: "OPEN",
       endTime: null,
     },
@@ -1281,6 +1578,8 @@ export async function createOrderWithJournal(
   staffId: string,
   input: CreateOrderInput,
 ): Promise<CreateOrderResultDto> {
+  void staffId;
+
   if (input.items.length === 0) {
     throw new Error("ORDER_ITEMS_REQUIRED");
   }
@@ -1299,12 +1598,20 @@ export async function createOrderWithJournal(
       throw new Error("SHIFT_NOT_FOUND");
     }
 
-    if (shift.staffId !== staffId) {
-      throw new Error("SHIFT_OWNER_MISMATCH");
-    }
-
     if (shift.status !== "OPEN" || shift.endTime !== null) {
       throw new Error("SHIFT_NOT_OPEN");
+    }
+
+    const activeShift = await tx.shift.findFirst({
+      where: {
+        status: "OPEN",
+        endTime: null,
+      },
+      orderBy: { startTime: "desc" },
+    });
+
+    if (!activeShift || activeShift.id !== shift.id) {
+      throw new Error("SHIFT_OWNER_MISMATCH");
     }
 
     const productIds = input.items.map((item) => item.product_id);
@@ -1439,7 +1746,7 @@ export async function createOrderWithJournal(
         if (!orderItem) continue;
 
         const startedAt = ptItem.service_start_date ? new Date(ptItem.service_start_date) : new Date();
-        const durationDays = product.membershipDurationDays;
+        const durationDays = product.membershipDurationDays ?? deriveTrainingDurationDays(product.sku);
         const expiresAt = durationDays ? new Date(startedAt.getTime() + durationDays * 86400000) : null;
         const sessionLimit = deriveTrainingSessionLimit(product.sku);
 
@@ -1570,10 +1877,375 @@ export async function createOrderWithJournal(
   });
 }
 
+export async function updateOrderSale(input: UpdateOrderSaleInputDto): Promise<UpdateOrderSaleResultDto> {
+  const orderId = input.order_id.trim();
+
+  if (!orderId) {
+    throw new Error("ORDER_NOT_FOUND");
+  }
+
+  if (!Array.isArray(input.items)) {
+    throw new Error("INVALID_ORDER_ITEMS_SUMMARY");
+  }
+
+  const normalizedInputItems = input.items.map((item) => ({
+    order_item_id: item.order_item_id.trim(),
+    quantity: item.quantity,
+    unit_price: item.unit_price,
+  }));
+
+  if (
+    normalizedInputItems.some(
+      (item) =>
+        !item.order_item_id ||
+        !Number.isInteger(item.quantity) ||
+        item.quantity < 0 ||
+        !Number.isFinite(item.unit_price) ||
+        item.unit_price < 0,
+    )
+  ) {
+    throw new Error("INVALID_ORDER_TOTAL");
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const order = await tx.order.findUnique({
+      where: { id: orderId },
+      select: {
+        id: true,
+        paymentMethod: true,
+        totalAmount: true,
+        shift: {
+          select: {
+            id: true,
+            startingCash: true,
+            expectedCash: true,
+          },
+        },
+        items: {
+          orderBy: { createdAt: "asc" },
+          select: {
+            id: true,
+            quantity: true,
+            unitPrice: true,
+            totalPrice: true,
+            product: {
+              select: {
+                name: true,
+                revenueAccountId: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!order) {
+      throw new Error("ORDER_NOT_FOUND");
+    }
+
+    if (order.items.length === 0) {
+      throw new Error("ORDER_ITEMS_NOT_FOUND");
+    }
+
+    const existingItemIds = new Set(order.items.map((item) => item.id));
+    if (normalizedInputItems.some((item) => !existingItemIds.has(item.order_item_id))) {
+      throw new Error("INVALID_ORDER_ITEMS_SUMMARY");
+    }
+
+    const normalizedInputItemsToKeep = normalizedInputItems.filter((item) => item.quantity > 0);
+
+    if (normalizedInputItemsToKeep.length === 0) {
+      throw new Error("INVALID_ORDER_ITEMS_SUMMARY");
+    }
+
+    const removedItemIds = order.items
+      .map((item) => item.id)
+      .filter((itemId) => !normalizedInputItemsToKeep.some((item) => item.order_item_id === itemId));
+
+    const defaultRevenueAccount = await tx.chartOfAccount.findUnique({ where: { code: "4010" } });
+    const cashAccount = await tx.chartOfAccount.findUnique({ where: { code: "1010" } });
+
+    if (!defaultRevenueAccount || !cashAccount) {
+      throw new Error("CHART_OF_ACCOUNT_NOT_FOUND");
+    }
+
+    const nextItemAmounts = order.items.flatMap((item) => {
+      const nextInput = normalizedInputItemsToKeep.find((candidate) => candidate.order_item_id === item.id);
+      if (!nextInput) {
+        return [];
+      }
+
+      const unitPrice = asMoney(nextInput.unit_price);
+      const totalPrice = unitPrice.mul(new Prisma.Decimal(nextInput.quantity));
+
+      return {
+        id: item.id,
+        productName: item.product.name,
+        quantity: nextInput.quantity,
+        unitPrice,
+        totalPrice,
+        revenueAccountId: item.product.revenueAccountId,
+      };
+    });
+
+    if (removedItemIds.length > 0) {
+      await tx.orderItem.deleteMany({
+        where: {
+          id: { in: removedItemIds },
+        },
+      });
+    }
+
+    const nextTotalAmount = nextItemAmounts.reduce(
+      (sum, item) => sum.add(item.totalPrice),
+      new Prisma.Decimal(0),
+    );
+
+    for (const item of nextItemAmounts) {
+      await tx.orderItem.update({
+        where: { id: item.id },
+        data: {
+          quantity: item.quantity,
+          unitPrice: item.unitPrice,
+          totalPrice: item.totalPrice,
+        },
+      });
+    }
+
+    await tx.order.update({
+      where: { id: order.id },
+      data: {
+        itemsSummaryOverride: null,
+        totalAmount: nextTotalAmount,
+      },
+    });
+
+    const journalEntry = await tx.journalEntry.findFirst({
+      where: {
+        sourceType: "SALE",
+        sourceId: order.id,
+      },
+      select: { id: true },
+    });
+
+    if (!journalEntry) {
+      throw new Error("JOURNAL_ENTRY_NOT_FOUND");
+    }
+
+    const revenueCreditsByAccount = new Map<string, Prisma.Decimal>();
+    for (const item of nextItemAmounts) {
+      const accountId = item.revenueAccountId ?? defaultRevenueAccount.id;
+      const currentCredit = revenueCreditsByAccount.get(accountId) ?? new Prisma.Decimal(0);
+      revenueCreditsByAccount.set(accountId, currentCredit.add(item.totalPrice));
+    }
+
+    await tx.journalLine.deleteMany({ where: { journalEntryId: journalEntry.id } });
+    await tx.journalLine.createMany({
+      data: [
+        {
+          journalEntryId: journalEntry.id,
+          chartOfAccountId: cashAccount.id,
+          debit: nextTotalAmount,
+          credit: new Prisma.Decimal(0),
+        },
+        ...Array.from(revenueCreditsByAccount.entries())
+          .sort(([left], [right]) => left.localeCompare(right))
+          .map(([accountId, creditAmount]) => ({
+            journalEntryId: journalEntry.id,
+            chartOfAccountId: accountId,
+            debit: new Prisma.Decimal(0),
+            credit: creditAmount,
+          })),
+      ],
+    });
+
+    if (order.paymentMethod === "CASH") {
+      const amountDelta = nextTotalAmount.sub(order.totalAmount);
+      const baselineExpectedCash = new Prisma.Decimal(order.shift.expectedCash ?? order.shift.startingCash);
+
+      await tx.shift.update({
+        where: { id: order.shift.id },
+        data: {
+          expectedCash: baselineExpectedCash.add(amountDelta),
+        },
+      });
+    }
+
+    const updatedItems = nextItemAmounts.map((item) => ({
+      order_item_id: item.id,
+      product_name: item.productName,
+      quantity: item.quantity,
+      unit_price: Number(item.unitPrice.toFixed(2)),
+      line_total: Number(item.totalPrice.toFixed(2)),
+    }));
+
+    return {
+      order_id: order.id,
+      items_summary: buildOrderItemsSummaryFromEditableItems(updatedItems, order.id),
+      total_amount: Number(nextTotalAmount.toFixed(2)),
+      items: updatedItems,
+    };
+  });
+}
+
+export async function deleteOrderSale(orderId: string): Promise<DeleteOrderSaleResultDto> {
+  const normalizedOrderId = orderId.trim();
+
+  if (!normalizedOrderId) {
+    throw new Error("ORDER_NOT_FOUND");
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const order = await tx.order.findUnique({
+      where: { id: normalizedOrderId },
+      select: {
+        id: true,
+        orderNumber: true,
+        paymentMethod: true,
+        totalAmount: true,
+        shift: {
+          select: {
+            id: true,
+            startingCash: true,
+            expectedCash: true,
+          },
+        },
+      },
+    });
+
+    if (!order) {
+      throw new Error("ORDER_NOT_FOUND");
+    }
+
+    const journalEntry = await tx.journalEntry.findFirst({
+      where: {
+        sourceType: "SALE",
+        sourceId: order.id,
+      },
+      select: { id: true },
+    });
+
+    if (journalEntry) {
+      await tx.journalLine.deleteMany({ where: { journalEntryId: journalEntry.id } });
+      await tx.journalEntry.delete({ where: { id: journalEntry.id } });
+    }
+
+    if (order.paymentMethod === "CASH") {
+      const baselineExpectedCash = new Prisma.Decimal(order.shift.expectedCash ?? order.shift.startingCash);
+      await tx.shift.update({
+        where: { id: order.shift.id },
+        data: {
+          expectedCash: baselineExpectedCash.sub(order.totalAmount),
+        },
+      });
+    }
+
+    await tx.order.delete({
+      where: { id: order.id },
+    });
+
+    return {
+      order_id: order.id,
+      order_number: order.orderNumber,
+    };
+  });
+}
+
+export async function deleteOrderSales(orderIds: string[]): Promise<BulkDeleteOrderSalesResultDto> {
+  const normalizedOrderIds = Array.from(new Set(orderIds.map((orderId) => orderId.trim()).filter(Boolean)));
+
+  if (normalizedOrderIds.length === 0) {
+    throw new Error("ORDER_IDS_REQUIRED");
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const orders = await tx.order.findMany({
+      where: { id: { in: normalizedOrderIds } },
+      select: {
+        id: true,
+        orderNumber: true,
+        paymentMethod: true,
+        totalAmount: true,
+        shift: {
+          select: {
+            id: true,
+            startingCash: true,
+            expectedCash: true,
+          },
+        },
+      },
+    });
+
+    if (orders.length !== normalizedOrderIds.length) {
+      throw new Error("ORDER_NOT_FOUND");
+    }
+
+    const orderMap = new Map(orders.map((order) => [order.id, order]));
+    const orderedOrders = normalizedOrderIds.map((orderId) => orderMap.get(orderId)!);
+    const saleJournalEntries = await tx.journalEntry.findMany({
+      where: {
+        sourceType: "SALE",
+        sourceId: { in: normalizedOrderIds },
+      },
+      select: { id: true },
+    });
+
+    if (saleJournalEntries.length > 0) {
+      const journalEntryIds = saleJournalEntries.map((entry) => entry.id);
+      await tx.journalLine.deleteMany({
+        where: { journalEntryId: { in: journalEntryIds } },
+      });
+      await tx.journalEntry.deleteMany({
+        where: { id: { in: journalEntryIds } },
+      });
+    }
+
+    const cashDeltaByShiftId = new Map<string, Prisma.Decimal>();
+    for (const order of orderedOrders) {
+      if (order.paymentMethod !== "CASH") {
+        continue;
+      }
+
+      const current = cashDeltaByShiftId.get(order.shift.id) ?? new Prisma.Decimal(0);
+      cashDeltaByShiftId.set(order.shift.id, current.add(order.totalAmount));
+    }
+
+    for (const order of orderedOrders) {
+      const cashDelta = cashDeltaByShiftId.get(order.shift.id);
+      if (!cashDelta) {
+        continue;
+      }
+
+      const baselineExpectedCash = new Prisma.Decimal(order.shift.expectedCash ?? order.shift.startingCash);
+      await tx.shift.update({
+        where: { id: order.shift.id },
+        data: {
+          expectedCash: baselineExpectedCash.sub(cashDelta),
+        },
+      });
+      cashDeltaByShiftId.delete(order.shift.id);
+    }
+
+    await tx.order.deleteMany({
+      where: { id: { in: normalizedOrderIds } },
+    });
+
+    return {
+      deleted_count: orderedOrders.length,
+      deleted_orders: orderedOrders.map((order) => ({
+        order_id: order.id,
+        order_number: order.orderNumber,
+      })),
+    };
+  });
+}
+
 export async function postExpenseWithJournal(
   staffId: string,
   input: CreateExpenseInput,
 ): Promise<CreateExpenseResultDto> {
+  void staffId;
+
   if (!input.account_id) {
     throw new Error("ACCOUNT_ID_REQUIRED");
   }
@@ -1594,12 +2266,20 @@ export async function postExpenseWithJournal(
       throw new Error("SHIFT_NOT_FOUND");
     }
 
-    if (shift.staffId !== staffId) {
-      throw new Error("SHIFT_OWNER_MISMATCH");
-    }
-
     if (shift.status !== "OPEN" || shift.endTime !== null) {
       throw new Error("SHIFT_NOT_OPEN");
+    }
+
+    const activeShift = await tx.shift.findFirst({
+      where: {
+        status: "OPEN",
+        endTime: null,
+      },
+      orderBy: { startTime: "desc" },
+    });
+
+    if (!activeShift || activeShift.id !== shift.id) {
+      throw new Error("SHIFT_OWNER_MISMATCH");
     }
 
     const expenseAccount = await tx.chartOfAccount.findUnique({ where: { id: input.account_id } });
@@ -1663,6 +2343,8 @@ export async function closeActiveShiftWithDifference(
   staffId: string,
   input: CloseShiftInput,
 ): Promise<CloseShiftResultDto> {
+  void staffId;
+
   if (input.actual_cash < 0) {
     throw new Error("INVALID_ACTUAL_CASH");
   }
@@ -1670,7 +2352,6 @@ export async function closeActiveShiftWithDifference(
   return prisma.$transaction(async (tx) => {
     const shift = await tx.shift.findFirst({
       where: {
-        staffId,
         status: "OPEN",
         endTime: null,
       },
@@ -1881,6 +2562,7 @@ export async function getDailySummaryByDate(dateOrInput: string | ReportQueryInp
         id: true,
         orderNumber: true,
         createdAt: true,
+        itemsSummaryOverride: true,
         customerName: true,
         paymentMethod: true,
         totalAmount: true,
@@ -1893,7 +2575,9 @@ export async function getDailySummaryByDate(dateOrInput: string | ReportQueryInp
         },
         items: {
           select: {
+            id: true,
             quantity: true,
+            unitPrice: true,
             totalPrice: true,
             product: {
               select: {
@@ -1983,10 +2667,8 @@ export async function getDailySummaryByDate(dateOrInput: string | ReportQueryInp
     shift_id: order.shift.id,
     order_number: order.orderNumber,
     sold_at: order.createdAt.toISOString(),
-    items_summary:
-      order.items
-        .map((item) => `${item.product.name} x${item.quantity}`)
-        .join(", ") || order.orderNumber,
+    items_summary: order.itemsSummaryOverride ?? buildOrderItemsSummary(order.items, order.orderNumber),
+    items: mapEditableSalesItems(order.items),
     cashier_name: staffNameById.get(order.shift.staffId) ?? order.shift.staffId,
     responsible_name:
       order.shift.responsibleName ??
@@ -2141,6 +2823,7 @@ export async function getShiftSummaryByDate(
       id: true,
       orderNumber: true,
       createdAt: true,
+        itemsSummaryOverride: true,
       customerName: true,
       paymentMethod: true,
       totalAmount: true,
@@ -2153,7 +2836,10 @@ export async function getShiftSummaryByDate(
       },
       items: {
         select: {
+          id: true,
           quantity: true,
+          unitPrice: true,
+          totalPrice: true,
           product: {
             select: {
               name: true,
@@ -2190,10 +2876,8 @@ export async function getShiftSummaryByDate(
     shift_id: order.shift.id,
     order_number: order.orderNumber,
     sold_at: order.createdAt.toISOString(),
-    items_summary:
-      order.items
-        .map((item) => `${item.product.name} x${item.quantity}`)
-        .join(", ") || order.orderNumber,
+    items_summary: order.itemsSummaryOverride ?? buildOrderItemsSummary(order.items, order.orderNumber),
+    items: mapEditableSalesItems(order.items),
     cashier_name: staffNameById.get(order.shift.staffId) ?? order.shift.staffId,
     responsible_name:
       order.shift.responsibleName ??
@@ -2331,6 +3015,8 @@ export async function getShiftInventorySummaryByShiftId(
     select: {
       id: true,
       staffId: true,
+      status: true,
+      endTime: true,
     },
   });
 
@@ -2338,7 +3024,9 @@ export async function getShiftInventorySummaryByShiftId(
     throw new Error("SHIFT_NOT_FOUND");
   }
 
-  if (requesterRole === "CASHIER" && shift.staffId !== requesterId) {
+  const isSharedActiveShift = shift.status === "OPEN" && shift.endTime === null;
+
+  if (requesterRole === "CASHIER" && shift.staffId !== requesterId && !isSharedActiveShift) {
     throw new Error("SHIFT_OWNER_MISMATCH");
   }
 
@@ -2585,6 +3273,17 @@ export type UpdateTrainingEnrollmentInputDto = {
   close_reason?: string | null;
 };
 
+export type DeleteTrainingEnrollmentResultDto = {
+  enrollment_id: string;
+  customer_name: string;
+  package_name: string;
+};
+
+export type BulkDeleteTrainingEnrollmentsResultDto = {
+  deleted_count: number;
+  deleted_enrollments: DeleteTrainingEnrollmentResultDto[];
+};
+
 function normalizeOptionalText(value?: string | null) {
   const trimmed = value?.trim();
   return trimmed ? trimmed : null;
@@ -2801,6 +3500,44 @@ export async function toggleTrainerActive(trainerId: string): Promise<TrainerRec
   };
 }
 
+export async function deleteTrainer(trainerId: string): Promise<DeleteTrainerResultDto> {
+  const normalizedTrainerId = trainerId.trim();
+  if (!normalizedTrainerId) {
+    throw new Error("TRAINER_NOT_FOUND");
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const trainer = await tx.trainer.findUnique({
+      where: { id: normalizedTrainerId },
+      select: {
+        id: true,
+        fullName: true,
+      },
+    });
+
+    if (!trainer) {
+      throw new Error("TRAINER_NOT_FOUND");
+    }
+
+    await tx.trainingServiceEnrollment.updateMany({
+      where: { trainerId: trainer.id },
+      data: {
+        trainerId: null,
+        status: "UNASSIGNED",
+      },
+    });
+
+    await tx.trainer.delete({
+      where: { id: trainer.id },
+    });
+
+    return {
+      trainer_id: trainer.id,
+      full_name: trainer.fullName,
+    };
+  });
+}
+
 export async function updateTrainingEnrollment(
   enrollmentId: string,
   input: UpdateTrainingEnrollmentInputDto,
@@ -2860,4 +3597,82 @@ export async function updateTrainingEnrollment(
   });
 
   return mapTrainingEnrollmentDto(updated);
+}
+
+export async function deleteTrainingEnrollment(
+  enrollmentId: string,
+): Promise<DeleteTrainingEnrollmentResultDto> {
+  const normalizedEnrollmentId = enrollmentId.trim();
+  if (!normalizedEnrollmentId) {
+    throw new Error("TRAINING_ENROLLMENT_NOT_FOUND");
+  }
+
+  const enrollment = await prisma.trainingServiceEnrollment.findUnique({
+    where: { id: normalizedEnrollmentId },
+    select: {
+      id: true,
+      customerNameSnapshot: true,
+      packageNameSnapshot: true,
+    },
+  });
+
+  if (!enrollment) {
+    throw new Error("TRAINING_ENROLLMENT_NOT_FOUND");
+  }
+
+  await prisma.trainingServiceEnrollment.delete({
+    where: { id: enrollment.id },
+  });
+
+  return {
+    enrollment_id: enrollment.id,
+    customer_name: enrollment.customerNameSnapshot,
+    package_name: enrollment.packageNameSnapshot,
+  };
+}
+
+export async function deleteTrainingEnrollments(
+  enrollmentIds: string[],
+): Promise<BulkDeleteTrainingEnrollmentsResultDto> {
+  const normalizedEnrollmentIds = Array.from(
+    new Set(enrollmentIds.map((enrollmentId) => enrollmentId.trim()).filter(Boolean)),
+  );
+
+  if (normalizedEnrollmentIds.length === 0) {
+    throw new Error("TRAINING_ENROLLMENT_IDS_REQUIRED");
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const enrollments = await tx.trainingServiceEnrollment.findMany({
+      where: { id: { in: normalizedEnrollmentIds } },
+      select: {
+        id: true,
+        customerNameSnapshot: true,
+        packageNameSnapshot: true,
+      },
+    });
+
+    if (enrollments.length !== normalizedEnrollmentIds.length) {
+      throw new Error("TRAINING_ENROLLMENT_NOT_FOUND");
+    }
+
+    await tx.trainingServiceEnrollment.deleteMany({
+      where: { id: { in: normalizedEnrollmentIds } },
+    });
+
+    const enrollmentMap = new Map(enrollments.map((enrollment) => [enrollment.id, enrollment]));
+    const deletedEnrollments = normalizedEnrollmentIds.map((enrollmentId) => {
+      const enrollment = enrollmentMap.get(enrollmentId)!;
+      return {
+        enrollment_id: enrollment.id,
+        customer_name: enrollment.customerNameSnapshot,
+        package_name: enrollment.packageNameSnapshot,
+      };
+    });
+
+    return {
+      deleted_count: deletedEnrollments.length,
+      deleted_enrollments: deletedEnrollments,
+    };
+  });
 }

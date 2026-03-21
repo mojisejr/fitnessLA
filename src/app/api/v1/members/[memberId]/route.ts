@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { updateMemberDates } from "@/features/operations/services";
+import { deleteMember, updateMemberDates } from "@/features/operations/services";
 import { canManageMembers } from "@/lib/roles";
 import { resolveSessionFromRequest } from "@/lib/session";
 
@@ -99,6 +99,63 @@ export async function PATCH(request: Request, context: RouteContext) {
       {
         code: "INTERNAL_SERVER_ERROR",
         message: "ไม่สามารถแก้ไขข้อมูลสมาชิกได้",
+      },
+      { status: 500 },
+    );
+  }
+}
+
+export async function DELETE(request: Request, context: RouteContext) {
+  const session = await resolveSessionFromRequest(request);
+  if (!session) {
+    return NextResponse.json(
+      {
+        code: "UNAUTHENTICATED",
+        message: "ต้องยืนยันตัวตนก่อนลบสมาชิก",
+      },
+      { status: 401 },
+    );
+  }
+
+  if (!canManageMembers(session.role)) {
+    return NextResponse.json(
+      {
+        code: "FORBIDDEN",
+        message: "สิทธิ์ไม่เพียงพอสำหรับลบสมาชิก",
+      },
+      { status: 403 },
+    );
+  }
+
+  const { memberId } = await context.params;
+  if (!memberId) {
+    return NextResponse.json(
+      {
+        code: "VALIDATION_ERROR",
+        message: "ไม่พบรหัสสมาชิกที่ต้องการลบ",
+      },
+      { status: 400 },
+    );
+  }
+
+  try {
+    const result = await deleteMember(memberId);
+    return NextResponse.json(result, { status: 200 });
+  } catch (error) {
+    if (error instanceof Error && error.message === "MEMBER_NOT_FOUND") {
+      return NextResponse.json(
+        {
+          code: "MEMBER_NOT_FOUND",
+          message: "ไม่พบสมาชิกที่ต้องการลบ",
+        },
+        { status: 404 },
+      );
+    }
+
+    return NextResponse.json(
+      {
+        code: "INTERNAL_SERVER_ERROR",
+        message: "ไม่สามารถลบสมาชิกได้",
       },
       { status: 500 },
     );

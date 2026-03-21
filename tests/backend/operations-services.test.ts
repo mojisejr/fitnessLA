@@ -12,11 +12,13 @@ type ShiftState = {
 
 type State = {
   shifts: ShiftState[];
-  products: Array<{ id: string; isActive: boolean; price: number; revenueAccountId: string | null; sku: string }>;
+  products: Array<{ id: string; isActive: boolean; price: number; revenueAccountId: string | null; sku: string; membershipDurationDays?: number | null }>;
+  trainers: Array<{ id: string; isActive: boolean }>;
   chartOfAccounts: Array<{ id: string; code: string; type?: string; isActive?: boolean }>;
   documentSequences: Array<{ id: string; type: string; prefix: string; currentNo: number }>;
   orders: Array<{ id: string; orderNumber: string }>;
-  orderItems: Array<{ id: string; orderId: string }>;
+  orderItems: Array<{ id: string; orderId: string; productId: string }>;
+  trainingServiceEnrollments: Array<{ id: string; orderId: string; orderItemId: string; packageProductId: string; startedAt: Date; expiresAt: Date | null; sessionLimit: number | null; sessionsRemaining: number | null; status: string }>;
   taxDocuments: Array<{ id: string; docNumber: string }>;
   journalEntries: Array<{ id: string; sourceType: string }>;
   journalLines: Array<{
@@ -33,10 +35,12 @@ function cloneState(state: State): State {
   return {
     shifts: state.shifts.map((item) => ({ ...item })),
     products: state.products.map((item) => ({ ...item })),
+    trainers: state.trainers.map((item) => ({ ...item })),
     chartOfAccounts: state.chartOfAccounts.map((item) => ({ ...item })),
     documentSequences: state.documentSequences.map((item) => ({ ...item })),
     orders: state.orders.map((item) => ({ ...item })),
     orderItems: state.orderItems.map((item) => ({ ...item })),
+    trainingServiceEnrollments: state.trainingServiceEnrollments.map((item) => ({ ...item })),
     taxDocuments: state.taxDocuments.map((item) => ({ ...item })),
     journalEntries: state.journalEntries.map((item) => ({ ...item })),
     journalLines: state.journalLines.map((item) => ({ ...item })),
@@ -48,10 +52,12 @@ const mocked = vi.hoisted(() => {
   const state: State = {
     shifts: [],
     products: [],
+    trainers: [],
     chartOfAccounts: [],
     documentSequences: [],
     orders: [],
     orderItems: [],
+    trainingServiceEnrollments: [],
     taxDocuments: [],
     journalEntries: [],
     journalLines: [],
@@ -68,6 +74,22 @@ const mocked = vi.hoisted(() => {
 
   const txMock = {
     shift: {
+      findFirst: async ({ where }: { where: { status: string; endTime: null } }) => {
+        const shift = state.shifts
+          .filter((item) => item.status === where.status && item.endTime === where.endTime)
+          .sort((left, right) => right.id.localeCompare(left.id))[0];
+
+        if (!shift) {
+          return null;
+        }
+
+        return {
+          ...shift,
+          startingCash: new Prisma.Decimal(shift.startingCash),
+          expectedCash:
+            shift.expectedCash === null ? null : new Prisma.Decimal(shift.expectedCash),
+        };
+      },
       findUnique: async ({ where }: { where: { id: string } }) => {
         const shift = state.shifts.find((item) => item.id === where.id);
         if (!shift) {
@@ -117,7 +139,23 @@ const mocked = vi.hoisted(() => {
             sku: item.sku,
             price: new Prisma.Decimal(item.price),
             revenueAccountId: item.revenueAccountId,
+            membershipDurationDays: item.membershipDurationDays ?? null,
+            productType: "SERVICE",
+            trackStock: false,
+            stockOnHand: null,
           }));
+      },
+    },
+    trainer: {
+      findMany: async ({
+        where,
+      }: {
+        where: { id: { in: string[] }; isActive: boolean };
+        select: { id: true };
+      }) => {
+        return state.trainers
+          .filter((item) => where.id.in.includes(item.id) && item.isActive === where.isActive)
+          .map((item) => ({ id: item.id }));
       },
     },
     chartOfAccount: {
@@ -192,11 +230,33 @@ const mocked = vi.hoisted(() => {
       },
     },
     orderItem: {
-      createMany: async ({ data }: { data: Array<{ orderId: string }> }) => {
+      createMany: async ({ data }: { data: Array<{ orderId: string; productId: string }> }) => {
         for (const item of data) {
-          state.orderItems.push({ id: nextId("item"), orderId: item.orderId });
+          state.orderItems.push({ id: nextId("item"), orderId: item.orderId, productId: item.productId });
         }
         return { count: data.length };
+      },
+      findMany: async ({ where }: { where: { orderId: string }; select: { id: true; productId: true } }) => {
+        return state.orderItems
+          .filter((item) => item.orderId === where.orderId)
+          .map((item) => ({ id: item.id, productId: item.productId }));
+      },
+    },
+    trainingServiceEnrollment: {
+      create: async ({ data }: { data: { orderId: string; orderItemId: string; packageProductId: string; startedAt: Date; expiresAt: Date | null; sessionLimit: number | null; sessionsRemaining: number | null; status: string } }) => {
+        const created = {
+          id: nextId("enr"),
+          orderId: data.orderId,
+          orderItemId: data.orderItemId,
+          packageProductId: data.packageProductId,
+          startedAt: data.startedAt,
+          expiresAt: data.expiresAt,
+          sessionLimit: data.sessionLimit,
+          sessionsRemaining: data.sessionsRemaining,
+          status: data.status,
+        };
+        state.trainingServiceEnrollments.push(created);
+        return created;
       },
     },
     taxDocument: {
@@ -258,10 +318,12 @@ const mocked = vi.hoisted(() => {
         } catch (error) {
           state.shifts = snapshot.shifts;
           state.products = snapshot.products;
+          state.trainers = snapshot.trainers;
           state.chartOfAccounts = snapshot.chartOfAccounts;
           state.documentSequences = snapshot.documentSequences;
           state.orders = snapshot.orders;
           state.orderItems = snapshot.orderItems;
+          state.trainingServiceEnrollments = snapshot.trainingServiceEnrollments;
           state.taxDocuments = snapshot.taxDocuments;
           state.journalEntries = snapshot.journalEntries;
           state.journalLines = snapshot.journalLines;
@@ -291,9 +353,13 @@ const mocked = vi.hoisted(() => {
       },
     ];
     state.products = [
-      { id: "p1", isActive: true, price: 1500, revenueAccountId: null, sku: "WATER-01" },
-      { id: "p2", isActive: true, price: 500, revenueAccountId: "coa_rev_pt", sku: "SAUNA-01" },
+      { id: "p1", isActive: true, price: 1500, revenueAccountId: null, sku: "WATER-01", membershipDurationDays: null },
+      { id: "p2", isActive: true, price: 500, revenueAccountId: "coa_rev_pt", sku: "SAUNA-01", membershipDurationDays: null },
+      { id: "p3", isActive: true, price: 3500, revenueAccountId: "coa_rev_pt", sku: "PT-10", membershipDurationDays: 30 },
+      { id: "p4", isActive: true, price: 6500, revenueAccountId: "coa_rev_pt", sku: "PT-20", membershipDurationDays: 60 },
+      { id: "p5", isActive: true, price: 4500, revenueAccountId: "coa_rev_pt", sku: "PT-MONTH", membershipDurationDays: 30 },
     ];
+    state.trainers = [{ id: "trainer_1", isActive: true }];
     state.chartOfAccounts = [
       { id: "coa_cash", code: "1010", type: "ASSET", isActive: true },
       { id: "coa_rev", code: "4010", type: "REVENUE", isActive: true },
@@ -303,6 +369,7 @@ const mocked = vi.hoisted(() => {
     state.documentSequences = [];
     state.orders = [];
     state.orderItems = [];
+    state.trainingServiceEnrollments = [];
     state.taxDocuments = [];
     state.journalEntries = [];
     state.journalLines = [];
@@ -374,6 +441,19 @@ describe("A-3 operations services", () => {
     expect(mocked.state.shifts[0]?.expectedCash).toBe(400);
   });
 
+  it("allows another logged-in user to post into the shared open shift", async () => {
+    const result = await postExpenseWithJournal("u2", {
+      shift_id: "shift_1",
+      account_id: "coa_exp",
+      amount: 75,
+      description: "Shared shift expense",
+    });
+
+    expect(result.status).toBe("POSTED");
+    expect(mocked.state.expenses).toHaveLength(1);
+    expect(mocked.state.shifts[0]?.expectedCash).toBe(425);
+  });
+
   it("credits mixed revenue accounts per product mapping with fallback to 4010", async () => {
     const result = await createOrderWithJournal("u1", {
       shift_id: "shift_1",
@@ -403,5 +483,80 @@ describe("A-3 operations services", () => {
 
     expect(mappedRevenueLine?.debit).toBe(0);
     expect(mappedRevenueLine?.credit).toBe(1000);
+  });
+
+  it("sets PT-10 enrollment expiry to 30 days from service start date", async () => {
+    const serviceStartDate = "2026-03-21T00:00:00.000Z";
+
+    await createOrderWithJournal("u1", {
+      shift_id: "shift_1",
+      items: [{ product_id: "p3", quantity: 1, trainer_id: "trainer_1", service_start_date: serviceStartDate }],
+      payment_method: "CASH",
+      customer_info: { name: "PT-10 member" },
+    });
+
+    expect(mocked.state.trainingServiceEnrollments).toHaveLength(1);
+    expect(mocked.state.trainingServiceEnrollments[0]).toMatchObject({
+      packageProductId: "p3",
+      sessionLimit: 10,
+      sessionsRemaining: 10,
+      status: "ACTIVE",
+    });
+    expect(mocked.state.trainingServiceEnrollments[0]?.startedAt.toISOString()).toBe(serviceStartDate);
+    expect(mocked.state.trainingServiceEnrollments[0]?.expiresAt?.toISOString()).toBe("2026-04-20T00:00:00.000Z");
+  });
+
+  it("sets PT-20 enrollment expiry to 60 days from service start date", async () => {
+    const serviceStartDate = "2026-03-21T00:00:00.000Z";
+
+    await createOrderWithJournal("u1", {
+      shift_id: "shift_1",
+      items: [{ product_id: "p4", quantity: 1, trainer_id: "trainer_1", service_start_date: serviceStartDate }],
+      payment_method: "CASH",
+      customer_info: { name: "PT-20 member" },
+    });
+
+    expect(mocked.state.trainingServiceEnrollments).toHaveLength(1);
+    expect(mocked.state.trainingServiceEnrollments[0]).toMatchObject({
+      packageProductId: "p4",
+      sessionLimit: 20,
+      sessionsRemaining: 20,
+      status: "ACTIVE",
+    });
+    expect(mocked.state.trainingServiceEnrollments[0]?.startedAt.toISOString()).toBe(serviceStartDate);
+    expect(mocked.state.trainingServiceEnrollments[0]?.expiresAt?.toISOString()).toBe("2026-05-20T00:00:00.000Z");
+  });
+
+  it("sets PT-MONTH enrollment expiry to 30 days from service start date", async () => {
+    const serviceStartDate = "2026-03-21T00:00:00.000Z";
+
+    await createOrderWithJournal("u1", {
+      shift_id: "shift_1",
+      items: [{ product_id: "p5", quantity: 1, trainer_id: "trainer_1", service_start_date: serviceStartDate }],
+      payment_method: "CASH",
+      customer_info: { name: "PT monthly member" },
+    });
+
+    expect(mocked.state.trainingServiceEnrollments).toHaveLength(1);
+    expect(mocked.state.trainingServiceEnrollments[0]).toMatchObject({
+      packageProductId: "p5",
+      sessionLimit: null,
+      sessionsRemaining: null,
+      status: "ACTIVE",
+    });
+    expect(mocked.state.trainingServiceEnrollments[0]?.startedAt.toISOString()).toBe(serviceStartDate);
+    expect(mocked.state.trainingServiceEnrollments[0]?.expiresAt?.toISOString()).toBe("2026-04-20T00:00:00.000Z");
+  });
+
+  it("allows another logged-in user to sell on the shared open shift", async () => {
+    const result = await createOrderWithJournal("u2", {
+      shift_id: "shift_1",
+      items: [{ product_id: "p1", quantity: 1 }],
+      payment_method: "CASH",
+    });
+
+    expect(result.status).toBe("COMPLETED");
+    expect(mocked.state.orders).toHaveLength(1);
+    expect(mocked.state.shifts[0]?.expectedCash).toBe(2000);
   });
 });

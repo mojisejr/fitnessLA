@@ -44,8 +44,11 @@ export interface Product {
   product_id: EntityId;
   sku: string;
   name: string;
+  tagline?: string | null;
   price: number;
   product_type: ProductType;
+  pos_category?: PosSalesCategory | null;
+  featured_slot?: 1 | 2 | 3 | 4 | null;
   revenue_account_id?: EntityId;
   track_stock?: boolean;
   stock_on_hand?: number | null;
@@ -76,6 +79,29 @@ export interface OrderResult {
   status: "COMPLETED";
 }
 
+export interface SalesEntryItem {
+  order_item_id: EntityId;
+  product_name: string;
+  quantity: number;
+  unit_price: number;
+  line_total: number;
+}
+
+export interface UpdateSalesEntryInput {
+  items: Array<{
+    order_item_id: EntityId;
+    quantity: number;
+    unit_price: number;
+  }>;
+}
+
+export interface SalesEntryUpdateResult {
+  order_id: EntityId;
+  items_summary: string;
+  total_amount: number;
+  items: SalesEntryItem[];
+}
+
 export interface ExpenseResult {
   expense_id: EntityId;
   status: "POSTED";
@@ -87,6 +113,7 @@ export interface DailySalesRow {
   order_number: string;
   sold_at: string;
   items_summary: string;
+  items?: SalesEntryItem[];
   cashier_name: string;
   responsible_name?: string;
   customer_name: string | null;
@@ -199,7 +226,8 @@ export interface AdminUserRecord {
   user_id: EntityId;
   username: string;
   full_name: string;
-  email: string;
+  phone?: string | null;
+  email?: string;
   role: Role;
 }
 

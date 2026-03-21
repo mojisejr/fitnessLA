@@ -58,9 +58,9 @@ describe("close shift blind drop", () => {
     const posView = renderWithProviders(<PosPage />);
 
     await waitForPosReady();
-    fireEvent.click(screen.getByRole("button", { name: "น้ำดื่ม" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "Mineral Water" })[0]);
 
-    const selectedProductPanel = screen.getByRole("heading", { name: "น้ำดื่ม", level: 2 }).closest("section");
+    const selectedProductPanel = screen.getByRole("heading", { name: "Mineral Water", level: 2 }).closest("section");
 
     expect(selectedProductPanel).not.toBeNull();
 

@@ -48,6 +48,10 @@ export const POS_CATEGORY_LABEL: Record<PosSalesCategory, string> = {
   COUNTER: "สินค้าเสริมหน้าเคาน์เตอร์",
 };
 
+export function isPosSalesCategory(value: string | null | undefined): value is PosSalesCategory {
+  return value === "COFFEE" || value === "MEMBERSHIP" || value === "FOOD" || value === "TRAINING" || value === "COUNTER";
+}
+
 export function getPosSalesCategoryFromSku(sku: string): PosSalesCategory {
   if (sku.startsWith("COFFEE-") || sku.startsWith("SHAKE-") || sku.startsWith("WATER-")) {
     return "COFFEE";
@@ -68,7 +72,11 @@ export function getPosSalesCategoryFromSku(sku: string): PosSalesCategory {
   return "COUNTER";
 }
 
-export function getPosSalesCategoryFromProduct(product: Pick<Product, "sku" | "product_type">): PosSalesCategory {
+export function getPosSalesCategoryFromProduct(product: Pick<Product, "sku" | "product_type"> & { pos_category?: PosSalesCategory | null }): PosSalesCategory {
+  if (isPosSalesCategory(product.pos_category)) {
+    return product.pos_category;
+  }
+
   if (product.product_type === "MEMBERSHIP") {
     return "MEMBERSHIP";
   }

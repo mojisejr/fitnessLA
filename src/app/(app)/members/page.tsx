@@ -81,6 +81,7 @@ export default function MembersPage() {
     const [editingMemberId, setEditingMemberId] = useState<string | null>(null);
     const [editStartedAt, setEditStartedAt] = useState("");
     const [editExpiresAt, setEditExpiresAt] = useState("");
+    const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>([]);
 
     const loadMembers = useCallback(async () => {
         setIsLoading(true);
@@ -100,6 +101,11 @@ export default function MembersPage() {
     useEffect(() => {
         void loadMembers();
     }, [loadMembers]);
+
+    useEffect(() => {
+        const registryIds = new Set(memberRegistry.map((member) => String(member.member_id)));
+        setSelectedMemberIds((current) => current.filter((memberId) => registryIds.has(memberId)));
+    }, [memberRegistry]);
 
     const memberRows = useMemo(() => {
         const reference = new Date(`${referenceDate}T23:59:59`);
@@ -160,6 +166,9 @@ export default function MembersPage() {
     const expiredMembers = memberRows.filter((m) => m.statusGroup === "EXPIRED");
     const inactiveMembers = memberRows.filter((m) => m.statusGroup === "INACTIVE");
     const canEditMembers = session?.role === "OWNER";
+    const filteredMemberIds = filteredRows.map((member) => String(member.member_id));
+    const selectedVisibleCount = filteredMemberIds.filter((memberId) => selectedMemberIds.includes(memberId)).length;
+    const allVisibleSelected = filteredMemberIds.length > 0 && selectedVisibleCount === filteredMemberIds.length;
 
     function resetCreateForm() {
         const startedAt = datetimeLocalNow();
@@ -177,6 +186,22 @@ export default function MembersPage() {
         setEditExpiresAt(toDateTimeInputValue(member.expires_at));
         setActionError(null);
         setActionMessage(null);
+    }
+
+    function toggleMemberSelection(memberId: string) {
+        setSelectedMemberIds((current) =>
+            current.includes(memberId) ? current.filter((id) => id !== memberId) : [...current, memberId],
+        );
+    }
+
+    function toggleSelectAllVisible() {
+        setSelectedMemberIds((current) => {
+            if (allVisibleSelected) {
+                return current.filter((memberId) => !filteredMemberIds.includes(memberId));
+            }
+
+            return Array.from(new Set([...current, ...filteredMemberIds]));
+        });
     }
 
     async function handleCreateMember() {
@@ -267,6 +292,66 @@ export default function MembersPage() {
             await loadMembers();
         } catch (error) {
             setActionError(getErrorMessage(error, `ไม่สามารถ${actionLabel}สมาชิกได้`));
+        } finally {
+            setActionLoading(null);
+        }
+    }
+
+    async function handleDeleteMember(member: MemberSubscriptionRecord) {
+        if (!window.confirm(`ลบสมาชิก ${member.full_name} ใช่หรือไม่`)) {
+            return;
+        }
+
+        setActionLoading(`delete-${String(member.member_id)}`);
+        setActionError(null);
+        setActionMessage(null);
+
+        try {
+            const result = await adapter.deleteMember(member.member_id);
+            await loadMembers();
+            setSelectedMemberIds((current) => current.filter((memberId) => memberId !== String(member.member_id)));
+            if (editingMemberId === String(member.member_id)) {
+                setEditingMemberId(null);
+                setEditStartedAt("");
+                setEditExpiresAt("");
+            }
+            setActionMessage(`ลบสมาชิก ${result.full_name} เรียบร้อยแล้ว`);
+        } catch (error) {
+            setActionError(getErrorMessage(error, "ไม่สามารถลบสมาชิกได้"));
+        } finally {
+            setActionLoading(null);
+        }
+    }
+
+    async function handleDeleteSelectedMembers() {
+        if (selectedMemberIds.length === 0) {
+            return;
+        }
+
+        if (!window.confirm(`ลบสมาชิกที่เลือก ${selectedMemberIds.length} คน ใช่หรือไม่`)) {
+            return;
+        }
+
+        setActionLoading("delete-selected");
+        setActionError(null);
+        setActionMessage(null);
+
+        try {
+            const selectedMembers = memberRegistry.filter((member) => selectedMemberIds.includes(String(member.member_id)));
+            for (const member of selectedMembers) {
+                await adapter.deleteMember(member.member_id);
+            }
+
+            await loadMembers();
+            if (editingMemberId && selectedMemberIds.includes(editingMemberId)) {
+                setEditingMemberId(null);
+                setEditStartedAt("");
+                setEditExpiresAt("");
+            }
+            setSelectedMemberIds([]);
+            setActionMessage(`ลบสมาชิก ${selectedMembers.length} คนเรียบร้อยแล้ว`);
+        } catch (error) {
+            setActionError(getErrorMessage(error, "ไม่สามารถลบสมาชิกที่เลือกได้"));
         } finally {
             setActionLoading(null);
         }
@@ -462,6 +547,33 @@ export default function MembersPage() {
                 ) : null}
 
                 <section className="rounded-[28px] border border-line bg-surface-strong p-6 md:p-8">
+                    {canEditMembers ? (
+                        <div className="mb-5 flex flex-col gap-3 rounded-3xl border border-line bg-[#12110c] px-4 py-4 md:flex-row md:items-center md:justify-between">
+                            <div className="flex flex-wrap items-center gap-3">
+                                <label className="inline-flex items-center gap-2 text-sm font-medium text-foreground">
+                                    <input
+                                        type="checkbox"
+                                        aria-label="เลือกสมาชิกทั้งหมดที่แสดง"
+                                        checked={allVisibleSelected}
+                                        onChange={toggleSelectAllVisible}
+                                        className="h-4 w-4 rounded border border-line bg-background accent-[#f6d94a]"
+                                    />
+                                    เลือกทั้งหมดในรายการนี้
+                                </label>
+                                <span className="text-sm text-muted">เลือกแล้ว {selectedMemberIds.length} คน</span>
+                            </div>
+
+                            <button
+                                type="button"
+                                disabled={selectedMemberIds.length === 0 || actionLoading === "delete-selected"}
+                                onClick={() => void handleDeleteSelectedMembers()}
+                                className="rounded-full border border-[#b44b4b] bg-[rgba(180,75,75,0.14)] px-4 py-2 text-sm font-semibold text-[#f4c4c4] transition hover:bg-[rgba(180,75,75,0.24)] disabled:opacity-50"
+                            >
+                                {actionLoading === "delete-selected" ? "กำลังลบสมาชิก..." : "ลบสมาชิกที่เลือก"}
+                            </button>
+                        </div>
+                    ) : null}
+
                     {isLoading ? (
                         <div className="rounded-3xl border border-dashed border-line bg-[#161510] p-8 text-sm leading-7 text-muted">
                             กำลังโหลดสมาชิก...
@@ -477,144 +589,183 @@ export default function MembersPage() {
                                 : "ไม่พบสมาชิกที่ตรงกับเงื่อนไข"}
                         </div>
                     ) : (
-                        <div className="overflow-x-auto rounded-3xl border border-line bg-[#161510]">
-                            <table className="min-w-full divide-y divide-line text-sm">
-                                <thead className="bg-[#0d0d0a]">
-                                    <tr>
-                                        <th className="px-4 py-3 text-left font-semibold text-muted">สมาชิก</th>
-                                        <th className="px-4 py-3 text-left font-semibold text-muted">แพ็กเกจ</th>
-                                        <th className="px-4 py-3 text-left font-semibold text-muted">เริ่มใช้</th>
-                                        <th className="px-4 py-3 text-left font-semibold text-muted">วันหมดอายุ</th>
-                                        <th className="px-4 py-3 text-left font-semibold text-muted">วิธีต่ออายุ</th>
-                                        <th className="px-4 py-3 text-left font-semibold text-muted">เทรนเนอร์</th>
-                                        <th className="px-4 py-3 text-left font-semibold text-muted">สถานะ</th>
-                                        <th className="px-4 py-3 text-left font-semibold text-muted">จัดการ</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-line">
-                                    {filteredRows.map((member) => (
-                                        <tr key={String(member.member_id)}>
-                                            <td className="px-4 py-4 text-[#f3e8ba]">
-                                                <p className="font-semibold">{member.full_name}</p>
-                                                <p className="text-xs text-muted">{member.member_code} · {member.phone}</p>
-                                            </td>
-                                            <td className="px-4 py-4 text-[#f3e8ba]">{member.membership_name}</td>
-                                            <td className="px-4 py-4 text-[#f3e8ba]">
-                                                {editingMemberId === String(member.member_id) ? (
-                                                    <input
-                                                        aria-label={`วันเวลาเริ่ม-${member.full_name}`}
-                                                        type="datetime-local"
-                                                        value={editStartedAt}
-                                                        onChange={(event) => setEditStartedAt(event.target.value)}
-                                                        className="w-full rounded-[14px] border border-line bg-[#fff8de] px-3 py-2 text-[#17130a] outline-none transition focus:border-accent"
-                                                    />
-                                                ) : (
-                                                    formatDateTime(member.started_at)
-                                                )}
-                                            </td>
-                                            <td className="px-4 py-4 text-[#f3e8ba]">
-                                                {editingMemberId === String(member.member_id) ? (
-                                                    <input
-                                                        aria-label={`วันเวลาหมดอายุ-${member.full_name}`}
-                                                        type="datetime-local"
-                                                        value={editExpiresAt}
-                                                        onChange={(event) => setEditExpiresAt(event.target.value)}
-                                                        className="w-full rounded-[14px] border border-line bg-[#fff8de] px-3 py-2 text-[#17130a] outline-none transition focus:border-accent"
-                                                    />
-                                                ) : (
-                                                    formatDateTime(member.expires_at)
-                                                )}
-                                            </td>
-                                            <td className="px-4 py-4 text-[#f3e8ba]">{renewalMethodLabel[member.renewal_method ?? "NONE"] ?? "-"}</td>
-                                            <td className="px-4 py-4 text-[#f3e8ba]">
-                                                {member.training_summary?.trainer_name ? (
-                                                    <div>
-                                                        <p className="font-semibold">{member.training_summary.trainer_name}</p>
-                                                        <p className="text-xs text-muted">{member.training_summary.training_package_name ?? ""}</p>
+                        <div className="grid gap-3">
+                            {filteredRows.map((member) => {
+                                const isEditing = editingMemberId === String(member.member_id);
+                                const isBusy = actionLoading === String(member.member_id) || actionLoading === `edit-${String(member.member_id)}` || actionLoading === `delete-${String(member.member_id)}` || actionLoading === "delete-selected";
+                                const isSelected = selectedMemberIds.includes(String(member.member_id));
+
+                                return (
+                                    <article key={String(member.member_id)} className="rounded-[26px] border border-line bg-[#161510] p-4 shadow-[0_10px_28px_rgba(0,0,0,0.18)]">
+                                        <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+                                            <div className="min-w-0 flex-1">
+                                                <div className="flex flex-wrap items-start gap-3">
+                                                    {canEditMembers ? (
+                                                        <label className="mt-1 inline-flex items-center">
+                                                            <input
+                                                                type="checkbox"
+                                                                aria-label={`เลือกสมาชิก ${member.full_name}`}
+                                                                checked={isSelected}
+                                                                disabled={isBusy}
+                                                                onChange={() => toggleMemberSelection(String(member.member_id))}
+                                                                className="h-4 w-4 rounded border border-line bg-background accent-[#f6d94a]"
+                                                            />
+                                                        </label>
+                                                    ) : null}
+                                                    <div className="min-w-0 flex-1">
+                                                        <div className="flex flex-wrap items-center gap-2">
+                                                            <p className="truncate text-lg font-semibold text-[#f3e8ba]">{member.full_name}</p>
+                                                            <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${member.statusGroup === "EXPIRED" ? "bg-warning-soft text-foreground" : member.statusGroup === "EXPIRING_SOON" ? "bg-accent text-black" : member.statusGroup === "INACTIVE" ? "bg-[#2d1d1d] text-[#f5d4d4]" : "bg-accent-soft text-foreground"}`}>
+                                                                {member.statusLabel}
+                                                            </span>
+                                                        </div>
+                                                        <p className="mt-1 text-xs text-muted">{member.member_code} · {member.phone}</p>
                                                     </div>
-                                                ) : member.training_summary?.training_status === "UNASSIGNED" ? (
-                                                    <span className="text-xs text-muted">ยังไม่มอบหมาย</span>
-                                                ) : (
-                                                    <span className="text-xs text-muted">-</span>
-                                                )}
-                                            </td>
-                                            <td className="px-4 py-4">
-                                                <span className={`rounded-full px-3 py-1 text-xs font-semibold ${member.statusGroup === "EXPIRED" ? "bg-warning-soft text-foreground" : member.statusGroup === "EXPIRING_SOON" ? "bg-accent text-black" : member.statusGroup === "INACTIVE" ? "bg-[#2d1d1d] text-[#f5d4d4]" : "bg-accent-soft text-foreground"}`}>
-                                                    {member.statusLabel}
-                                                </span>
-                                            </td>
-                                            <td className="px-4 py-4">
-                                                {canEditMembers ? (
-                                                    <div className="flex gap-2">
-                                                        {editingMemberId === String(member.member_id) ? (
-                                                            <>
-                                                                <button
-                                                                    type="button"
-                                                                    disabled={actionLoading === `edit-${String(member.member_id)}`}
-                                                                    onClick={() => void handleSaveMemberDates(member.member_id)}
-                                                                    className="rounded-full border border-accent bg-accent-soft px-3 py-1 text-xs font-semibold text-foreground transition hover:bg-accent hover:text-black disabled:opacity-50"
-                                                                >
-                                                                    บันทึกวันเวลา
-                                                                </button>
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() => {
-                                                                        setEditingMemberId(null);
-                                                                        setEditStartedAt("");
-                                                                        setEditExpiresAt("");
-                                                                    }}
-                                                                    className="rounded-full border border-line bg-surface-strong px-3 py-1 text-xs font-semibold text-foreground transition hover:border-accent hover:bg-accent-soft"
-                                                                >
-                                                                    ยกเลิก
-                                                                </button>
-                                                            </>
+                                                </div>
+
+                                                <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                                                    <div className="rounded-2xl border border-line/70 bg-[#0e0d09] px-3 py-3">
+                                                        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted">แพ็กเกจ</p>
+                                                        <p className="mt-1 text-sm font-semibold text-[#f3e8ba]">{member.membership_name}</p>
+                                                    </div>
+
+                                                    <div className="rounded-2xl border border-line/70 bg-[#0e0d09] px-3 py-3">
+                                                        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted">เริ่มใช้</p>
+                                                        {isEditing ? (
+                                                            <input
+                                                                aria-label={`วันเวลาเริ่ม-${member.full_name}`}
+                                                                type="datetime-local"
+                                                                value={editStartedAt}
+                                                                onChange={(event) => setEditStartedAt(event.target.value)}
+                                                                className="mt-2 w-full rounded-[14px] border border-line bg-[#fff8de] px-3 py-2 text-sm text-[#17130a] outline-none transition focus:border-accent"
+                                                            />
                                                         ) : (
+                                                            <p className="mt-1 text-sm font-semibold text-[#f3e8ba]">{formatDateTime(member.started_at)}</p>
+                                                        )}
+                                                    </div>
+
+                                                    <div className="rounded-2xl border border-line/70 bg-[#0e0d09] px-3 py-3">
+                                                        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted">วันหมดอายุ</p>
+                                                        {isEditing ? (
+                                                            <input
+                                                                aria-label={`วันเวลาหมดอายุ-${member.full_name}`}
+                                                                type="datetime-local"
+                                                                value={editExpiresAt}
+                                                                onChange={(event) => setEditExpiresAt(event.target.value)}
+                                                                className="mt-2 w-full rounded-[14px] border border-line bg-[#fff8de] px-3 py-2 text-sm text-[#17130a] outline-none transition focus:border-accent"
+                                                            />
+                                                        ) : (
+                                                            <p className="mt-1 text-sm font-semibold text-[#f3e8ba]">{formatDateTime(member.expires_at)}</p>
+                                                        )}
+                                                    </div>
+
+                                                    <div className="rounded-2xl border border-line/70 bg-[#0e0d09] px-3 py-3">
+                                                        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted">วิธีต่ออายุ</p>
+                                                        <p className="mt-1 text-sm font-semibold text-[#f3e8ba]">{renewalMethodLabel[member.renewal_method ?? "NONE"] ?? "-"}</p>
+                                                    </div>
+
+                                                    <div className="rounded-2xl border border-line/70 bg-[#0e0d09] px-3 py-3 sm:col-span-2 xl:col-span-4">
+                                                        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted">เทรนเนอร์</p>
+                                                        {member.training_summary?.trainer_name ? (
+                                                            <div className="mt-1 flex flex-wrap items-center gap-2">
+                                                                <p className="text-sm font-semibold text-[#f3e8ba]">{member.training_summary.trainer_name}</p>
+                                                                <p className="text-xs text-muted">{member.training_summary.training_package_name ?? ""}</p>
+                                                            </div>
+                                                        ) : member.training_summary?.training_status === "UNASSIGNED" ? (
+                                                            <p className="mt-1 text-xs text-muted">ยังไม่มอบหมาย</p>
+                                                        ) : (
+                                                            <p className="mt-1 text-xs text-muted">-</p>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div className="xl:w-70">
+                                                <div className="rounded-3xl border border-line/70 bg-[#0e0d09] p-3">
+                                                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted">จัดการสมาชิก</p>
+                                                    {canEditMembers ? (
+                                                        <div className="mt-3 grid grid-cols-2 gap-2">
+                                                            {isEditing ? (
+                                                                <>
+                                                                    <button
+                                                                        type="button"
+                                                                        disabled={actionLoading === `edit-${String(member.member_id)}`}
+                                                                        onClick={() => void handleSaveMemberDates(member.member_id)}
+                                                                        className="rounded-full border border-accent bg-accent px-3 py-2 text-xs font-semibold text-black transition hover:bg-accent-strong disabled:opacity-50"
+                                                                    >
+                                                                        บันทึกวันเวลา
+                                                                    </button>
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => {
+                                                                            setEditingMemberId(null);
+                                                                            setEditStartedAt("");
+                                                                            setEditExpiresAt("");
+                                                                        }}
+                                                                        className="rounded-full border border-line bg-surface-strong px-3 py-2 text-xs font-semibold text-foreground transition hover:border-accent hover:bg-accent-soft"
+                                                                    >
+                                                                        ยกเลิก
+                                                                    </button>
+                                                                </>
+                                                            ) : (
+                                                                <button
+                                                                    type="button"
+                                                                    disabled={isBusy}
+                                                                    onClick={() => beginEditingMember(member)}
+                                                                    className="rounded-full border border-line bg-surface-strong px-3 py-2 text-xs font-semibold text-foreground transition hover:border-accent hover:bg-accent-soft disabled:opacity-50"
+                                                                >
+                                                                    แก้วันเวลา
+                                                                </button>
+                                                            )}
+
+                                                            {member.is_active ? (
+                                                                <>
+                                                                    <button
+                                                                        type="button"
+                                                                        disabled={isBusy}
+                                                                        onClick={() => handleRenew(member.member_id)}
+                                                                        className="rounded-full border border-accent bg-accent-soft px-3 py-2 text-xs font-semibold text-foreground transition hover:bg-accent hover:text-black disabled:opacity-50"
+                                                                    >
+                                                                        ต่ออายุ
+                                                                    </button>
+                                                                    <button
+                                                                        type="button"
+                                                                        disabled={isBusy}
+                                                                        onClick={() => handleRestart(member.member_id)}
+                                                                        className="rounded-full border border-line bg-surface-strong px-3 py-2 text-xs font-semibold text-foreground transition hover:border-accent hover:bg-accent-soft disabled:opacity-50"
+                                                                    >
+                                                                        เริ่มใหม่
+                                                                    </button>
+                                                                </>
+                                                            ) : null}
+
                                                             <button
                                                                 type="button"
-                                                                disabled={actionLoading === String(member.member_id)}
-                                                                onClick={() => beginEditingMember(member)}
-                                                                className="rounded-full border border-line bg-surface-strong px-3 py-1 text-xs font-semibold text-foreground transition hover:border-accent hover:bg-accent-soft disabled:opacity-50"
+                                                                disabled={isBusy}
+                                                                onClick={() => void handleToggleMember(member)}
+                                                                className={`rounded-full px-3 py-2 text-xs font-semibold transition disabled:opacity-50 ${member.is_active ? "border border-warning-soft bg-warning-soft text-foreground hover:border-[#f0c06b]" : "border border-accent bg-accent-soft text-foreground hover:bg-accent hover:text-black"}`}
                                                             >
-                                                                แก้วันเวลา
+                                                                {member.is_active ? "ปิดใช้งาน" : "เปิดใช้งาน"}
                                                             </button>
-                                                        )}
-                                                        {member.is_active ? (
-                                                            <>
-                                                                <button
-                                                                    type="button"
-                                                                    disabled={actionLoading === String(member.member_id)}
-                                                                    onClick={() => handleRenew(member.member_id)}
-                                                                    className="rounded-full border border-accent bg-accent-soft px-3 py-1 text-xs font-semibold text-foreground transition hover:bg-accent hover:text-black disabled:opacity-50"
-                                                                >
-                                                                    ต่ออายุ
-                                                                </button>
-                                                                <button
-                                                                    type="button"
-                                                                    disabled={actionLoading === String(member.member_id)}
-                                                                    onClick={() => handleRestart(member.member_id)}
-                                                                    className="rounded-full border border-line bg-surface-strong px-3 py-1 text-xs font-semibold text-foreground transition hover:border-accent hover:bg-accent-soft disabled:opacity-50"
-                                                                >
-                                                                    เริ่มใหม่
-                                                                </button>
-                                                            </>
-                                                        ) : null}
-                                                        <button
-                                                            type="button"
-                                                            disabled={actionLoading === String(member.member_id)}
-                                                            onClick={() => void handleToggleMember(member)}
-                                                            className={`rounded-full px-3 py-1 text-xs font-semibold transition disabled:opacity-50 ${member.is_active ? "border border-warning-soft bg-warning-soft text-foreground hover:border-[#f0c06b]" : "border border-accent bg-accent-soft text-foreground hover:bg-accent hover:text-black"}`}
-                                                        >
-                                                            {member.is_active ? "ปิดใช้งาน" : "เปิดใช้งาน"}
-                                                        </button>
-                                                    </div>
-                                                ) : (
-                                                    <span className="text-xs text-muted">ดูอย่างเดียว</span>
-                                                )}
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
+
+                                                            <button
+                                                                type="button"
+                                                                disabled={isBusy}
+                                                                onClick={() => void handleDeleteMember(member)}
+                                                                className="rounded-full border border-[#b44b4b] bg-[rgba(180,75,75,0.14)] px-3 py-2 text-xs font-semibold text-[#f4c4c4] transition hover:bg-[rgba(180,75,75,0.24)] disabled:opacity-50"
+                                                            >
+                                                                ลบสมาชิก
+                                                            </button>
+                                                        </div>
+                                                    ) : (
+                                                        <span className="mt-4 inline-block text-sm text-muted">ดูอย่างเดียว</span>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </article>
+                                );
+                            })}
                         </div>
                     )}
                 </section>

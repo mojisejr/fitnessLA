@@ -34,11 +34,44 @@ const membershipPeriodLabel = {
 } as const;
 
 type SellCategory = "ALL" | keyof typeof POS_CATEGORY_LABEL;
+type PosEditorCategory = Exclude<SellCategory, "ALL">;
+type FeaturedSlot = 1 | 2 | 3 | 4;
 
 const sellCategoryLabel: Record<SellCategory, string> = {
     ALL: "ทุกหมวด",
     ...POS_CATEGORY_LABEL,
 };
+
+const featuredSlotChoices: Array<{ value: "" | `${FeaturedSlot}`; label: string }> = [
+    { value: "", label: "ไม่ปักหมุด" },
+    { value: "1", label: "ช่องด่วน 1" },
+    { value: "2", label: "ช่องด่วน 2" },
+    { value: "3", label: "ช่องด่วน 3" },
+    { value: "4", label: "ช่องด่วน 4" },
+];
+
+function getValidationErrorMessage(error: unknown) {
+    if (
+        typeof error === "object" &&
+        error !== null &&
+        "details" in error &&
+        typeof error.details === "object" &&
+        error.details !== null &&
+        "fieldErrors" in error.details &&
+        typeof error.details.fieldErrors === "object" &&
+        error.details.fieldErrors !== null
+    ) {
+        const fieldErrors = Object.values(error.details.fieldErrors as Record<string, unknown>)
+            .flatMap((value) => Array.isArray(value) ? value : [])
+            .filter((value): value is string => typeof value === "string" && value.length > 0);
+
+        if (fieldErrors.length > 0) {
+            return fieldErrors[0];
+        }
+    }
+
+    return null;
+}
 
 const productDisplayLabelBySku: Record<string, { title: string; subtitle?: string }> = {
     "WATER-01": { title: "น้ำดื่ม", subtitle: "ขวดเล็กแช่เย็น" },
@@ -81,15 +114,19 @@ const productDisplayLabelBySku: Record<string, { title: string; subtitle?: strin
 };
 
 function getProductDisplayTitle(product: Product) {
-    return productDisplayLabelBySku[product.sku]?.title ?? product.name;
+    return product.name;
 }
 
 function getProductDisplaySubtitle(product: Product) {
-    return productDisplayLabelBySku[product.sku]?.subtitle ?? product.sku;
+    return product.tagline?.trim() || productDisplayLabelBySku[product.sku]?.subtitle || product.sku;
 }
 
 function getSellCategory(product: Product): Exclude<SellCategory, "ALL"> {
     return getPosSalesCategoryFromProduct(product);
+}
+
+function getDefaultPosCategory(productType: Product["product_type"], sku: string): PosEditorCategory {
+    return getPosSalesCategoryFromProduct({ sku, product_type: productType, pos_category: null });
 }
 
 function normalizeSearchText(value: string) {
@@ -105,6 +142,7 @@ function buildProductSearchIndex(product: Product) {
             getProductDisplayTitle(product),
             getProductDisplaySubtitle(product),
             product.name,
+            product.tagline,
             product.sku,
             product.product_type,
             sellCategory,
@@ -146,8 +184,11 @@ export default function PosPage() {
     const [newProductType, setNewProductType] = useState<"GOODS" | "SERVICE">("GOODS");
     const [editSku, setEditSku] = useState("");
     const [editName, setEditName] = useState("");
+    const [editTagline, setEditTagline] = useState("");
     const [editPrice, setEditPrice] = useState("");
     const [editStockOnHand, setEditStockOnHand] = useState("");
+    const [editPosCategory, setEditPosCategory] = useState<PosEditorCategory>("COUNTER");
+    const [editFeaturedSlot, setEditFeaturedSlot] = useState<"" | `${FeaturedSlot}`>("");
     const [editorMessage, setEditorMessage] = useState<string | null>(null);
     const [editorError, setEditorError] = useState<string | null>(null);
     const [isSavingProduct, setIsSavingProduct] = useState(false);
@@ -337,8 +378,11 @@ export default function PosPage() {
 
         setEditSku(selectedProduct.sku);
         setEditName(selectedProduct.name);
+        setEditTagline(selectedProduct.tagline ?? "");
         setEditPrice(String(selectedProduct.price));
         setEditStockOnHand(selectedProduct.track_stock ? String(selectedProduct.stock_on_hand ?? 0) : "");
+        setEditPosCategory(getSellCategory(selectedProduct));
+        setEditFeaturedSlot(selectedProduct.featured_slot ? String(selectedProduct.featured_slot) as `${FeaturedSlot}` : "");
         setSelectedRevenueAccountId(
             selectedProduct.revenue_account_id === undefined ? "" : String(selectedProduct.revenue_account_id),
         );
@@ -381,6 +425,14 @@ export default function PosPage() {
     const selectedSellProduct = useMemo(
         () => visibleSellProducts.find((product) => String(product.product_id) === selectedSellProductId) ?? null,
         [selectedSellProductId, visibleSellProducts],
+    );
+
+    const featuredProducts = useMemo(
+        () =>
+            ([1, 2, 3, 4] as FeaturedSlot[]).map((slot) =>
+                products.find((product) => product.featured_slot === slot) ?? null,
+            ),
+        [products],
     );
 
     useEffect(() => {
@@ -568,8 +620,11 @@ export default function PosPage() {
                 const createdProduct = await adapter.createProduct({
                     sku: editSku,
                     name: editName,
+                    tagline: editTagline || null,
                     price: parsedPrice,
                     productType: newProductType,
+                    posCategory: editPosCategory,
+                    featuredSlot: editFeaturedSlot ? Number(editFeaturedSlot) as FeaturedSlot : null,
                     revenueAccountId: selectedRevenueAccountId || undefined,
                     stockOnHand: newProductType === "GOODS" ? parsedStockOnHand : null,
                 });
@@ -579,7 +634,10 @@ export default function PosPage() {
                     productId: selectedProduct.product_id,
                     sku: editSku,
                     name: editName,
+                    tagline: editTagline || null,
                     price: parsedPrice,
+                    posCategory: editPosCategory,
+                    featuredSlot: editFeaturedSlot ? Number(editFeaturedSlot) as FeaturedSlot : null,
                     revenueAccountId: selectedRevenueAccountId || undefined,
                     stockOnHand: selectedProduct.track_stock ? parsedStockOnHand : null,
                 });
@@ -596,14 +654,21 @@ export default function PosPage() {
             }
         } catch (error) {
             const errorCode = getErrorCode(error);
+            const validationErrorMessage = getValidationErrorMessage(error);
             if (errorCode === "REVENUE_ACCOUNT_NOT_FOUND") {
                 setEditorError("ไม่พบบัญชีรายได้ที่เลือก กรุณารีเฟรชรายการบัญชีก่อนลองใหม่");
             } else if (errorCode === "REVENUE_ACCOUNT_INACTIVE") {
                 setEditorError("บัญชีรายได้ที่เลือกถูกปิดใช้งานอยู่ กรุณาเลือกบัญชีที่ยัง active");
             } else if (errorCode === "INVALID_REVENUE_ACCOUNT_TYPE") {
                 setEditorError("บัญชีที่เลือกไม่ใช่หมวดรายได้ จึงไม่สามารถผูกกับสินค้าได้");
+            } else if (errorCode === "INVALID_POS_CATEGORY") {
+                setEditorError("หมวดขาย POS ที่เลือกไม่ถูกต้อง");
+            } else if (errorCode === "INVALID_FEATURED_SLOT") {
+                setEditorError("ตำแหน่งสินค้าปักหมุดต้องอยู่ระหว่าง 1 ถึง 4 เท่านั้น");
+            } else if (errorCode === "VALIDATION_ERROR" && validationErrorMessage) {
+                setEditorError(validationErrorMessage);
             } else {
-                setEditorError(getErrorMessage(error, "ไม่สามารถอัปเดตสินค้าได้"));
+                setEditorError(getErrorMessage(error, isCreateMode ? "ไม่สามารถสร้างสินค้าได้" : "ไม่สามารถอัปเดตสินค้าได้"));
             }
         } finally {
             setIsSavingProduct(false);
@@ -793,6 +858,65 @@ export default function PosPage() {
 
                     <p className="mt-4 text-sm text-muted">เลือกหมวดสินค้าแบบง่าย ๆ จาก drop-down แล้วเลือกรายการที่ต้องการก่อนกดเพิ่มลงบิล</p>
 
+                    <section className="mt-6 rounded-3xl border border-line/80 bg-background/60 p-5 md:p-6">
+                        <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+                            <div>
+                                <p className="text-xs font-semibold text-muted">สินค้าปักหมุดขายดี</p>
+                                <h2 className="mt-2 text-2xl font-semibold text-foreground">กดเลือกได้ทันที 4 ช่อง</h2>
+                            </div>
+                            <p className="text-sm text-muted">ตั้งค่าจากฟอร์มด้านล่างเพื่อให้หน้าเคาน์เตอร์หยิบสินค้าเร็วขึ้น</p>
+                        </div>
+
+                        <div className="mt-5 grid gap-3 lg:grid-cols-2 2xl:grid-cols-4">
+                            {featuredProducts.map((product, index) => {
+                                const slot = index + 1 as FeaturedSlot;
+                                const isOutOfStock = Boolean(
+                                    product?.track_stock && typeof product.stock_on_hand === "number" && product.stock_on_hand <= 0,
+                                );
+
+                                return (
+                                    <article key={slot} className="rounded-[24px] border border-line bg-[#161510] p-4">
+                                        <div className="flex items-center justify-between gap-3">
+                                            <span className="rounded-full bg-accent-soft px-3 py-1 text-xs font-semibold text-foreground">ช่อง {slot}</span>
+                                            {product ? <span className="text-xs text-muted">{sellCategoryLabel[getSellCategory(product)]}</span> : null}
+                                        </div>
+
+                                        {product ? (
+                                            <>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setSelectedSellProductId(String(product.product_id))}
+                                                    className="mt-4 block text-left text-lg font-semibold text-[#f3e8ba] transition hover:text-accent"
+                                                >
+                                                    {getProductDisplayTitle(product)}
+                                                </button>
+                                                <p className="mt-2 min-h-12 text-sm leading-6 text-muted">{getProductDisplaySubtitle(product)}</p>
+                                                <div className="mt-3 flex items-center justify-between gap-3">
+                                                    <div>
+                                                        <p className="text-lg font-semibold text-[#f3e8ba]">{formatCurrency(product.price)}</p>
+                                                        <p className="mt-1 text-xs text-muted">{product.track_stock ? `คงเหลือ ${product.stock_on_hand ?? 0}` : "บริการ"}</p>
+                                                    </div>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleAddProduct(product)}
+                                                        disabled={isOutOfStock}
+                                                        className="rounded-full bg-accent px-4 py-2 text-xs font-semibold text-black transition hover:bg-accent-strong disabled:cursor-not-allowed disabled:opacity-50"
+                                                    >
+                                                        เพิ่มลงบิล
+                                                    </button>
+                                                </div>
+                                            </>
+                                        ) : (
+                                            <div className="mt-4 rounded-[20px] border border-dashed border-line bg-background px-4 py-6 text-sm leading-6 text-muted">
+                                                ยังไม่มีสินค้าปักหมุดในช่องนี้
+                                            </div>
+                                        )}
+                                    </article>
+                                );
+                            })}
+                        </div>
+                    </section>
+
                     {productsLoading ? (
                         <div className="mt-6 rounded-3xl border border-dashed border-line bg-background p-6 text-sm text-muted">
                             กำลังโหลดสินค้า...
@@ -809,6 +933,9 @@ export default function PosPage() {
                                             <div className="mt-4 flex flex-wrap gap-2 text-xs font-semibold">
                                                 <span className="rounded-full bg-accent-soft px-3 py-1 text-foreground">{sellCategoryLabel[getSellCategory(selectedSellProduct)]}</span>
                                                 <span className="rounded-full border border-line px-3 py-1 text-foreground">{selectedSellProduct.sku}</span>
+                                                {selectedSellProduct.featured_slot ? (
+                                                    <span className="rounded-full border border-accent px-3 py-1 text-foreground">ปักหมุดช่อง {selectedSellProduct.featured_slot}</span>
+                                                ) : null}
                                                 <span className="rounded-full border border-line px-3 py-1 text-foreground">
                                                     {selectedSellProduct.track_stock ? `คงเหลือ ${selectedSellProduct.stock_on_hand ?? 0}` : "บริการ"}
                                                 </span>
@@ -859,6 +986,7 @@ export default function PosPage() {
                                                             <div className="flex flex-wrap gap-2 text-xs font-semibold">
                                                                 <span className="rounded-full bg-accent-soft px-3 py-1 text-foreground">{sellCategoryLabel[getSellCategory(product)]}</span>
                                                                 <span className="rounded-full border border-line px-3 py-1 text-foreground">{product.sku}</span>
+                                                                {product.featured_slot ? <span className="rounded-full border border-accent px-3 py-1 text-foreground">ช่อง {product.featured_slot}</span> : null}
                                                             </div>
                                                             <button
                                                                 type="button"
@@ -900,7 +1028,7 @@ export default function PosPage() {
                                 <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
                                     <div>
                                         <p className="text-xs font-semibold text-muted">จัดการสินค้าใน POS</p>
-                                        <h2 className="mt-2 text-2xl font-semibold text-foreground">เพิ่มสินค้าใหม่ หรือแก้ไขชื่อ ราคา SKU และสต็อก</h2>
+                                        <h2 className="mt-2 text-2xl font-semibold text-foreground">เพิ่มสินค้าใหม่ หรือแก้ไขชื่อ ราคา หมวด คำโปรย SKU สต็อก และปักหมุด</h2>
                                     </div>
                                     <p className="text-sm text-muted">สินค้าที่ติดตามสต็อกจะอัปเดตยอดคงเหลือและสรุปในกะทันทีหลังบันทึก</p>
                                 </div>
@@ -913,8 +1041,11 @@ export default function PosPage() {
                                             setNewProductType("GOODS");
                                             setEditSku("");
                                             setEditName("");
+                                            setEditTagline("");
                                             setEditPrice("");
                                             setEditStockOnHand("0");
+                                            setEditPosCategory(getDefaultPosCategory("GOODS", ""));
+                                            setEditFeaturedSlot("");
                                             setSelectedRevenueAccountId("");
                                             setEditorMessage(null);
                                             setEditorError(null);
@@ -930,8 +1061,11 @@ export default function PosPage() {
                                             if (selectedProduct) {
                                                 setEditSku(selectedProduct.sku);
                                                 setEditName(selectedProduct.name);
+                                                setEditTagline(selectedProduct.tagline ?? "");
                                                 setEditPrice(String(selectedProduct.price));
                                                 setEditStockOnHand(selectedProduct.track_stock ? String(selectedProduct.stock_on_hand ?? 0) : "");
+                                                setEditPosCategory(getSellCategory(selectedProduct));
+                                                setEditFeaturedSlot(selectedProduct.featured_slot ? String(selectedProduct.featured_slot) as `${FeaturedSlot}` : "");
                                                 setSelectedRevenueAccountId(
                                                     selectedProduct.revenue_account_id === undefined
                                                         ? ""
@@ -954,7 +1088,11 @@ export default function PosPage() {
                                             <select
                                                 aria-label="ประเภทสินค้าใหม่"
                                                 value={newProductType}
-                                                onChange={(event) => setNewProductType(event.target.value as "GOODS" | "SERVICE")}
+                                                onChange={(event) => {
+                                                    const nextProductType = event.target.value as "GOODS" | "SERVICE";
+                                                    setNewProductType(nextProductType);
+                                                    setEditPosCategory(getDefaultPosCategory(nextProductType, editSku));
+                                                }}
                                                 className="mt-2 w-full rounded-[18px] border border-line bg-[#fff8de] px-4 py-3 text-[#17130a] outline-none transition focus:border-accent"
                                             >
                                                 <option value="GOODS">สินค้า</option>
@@ -1021,6 +1159,51 @@ export default function PosPage() {
                                             disabled={isCreateMode ? newProductType !== "GOODS" : !selectedProduct?.track_stock}
                                             className="mt-2 w-full rounded-[18px] border border-line bg-[#fff8de] px-4 py-3 text-[#17130a] outline-none transition focus:border-accent disabled:opacity-50"
                                         />
+                                    </label>
+                                </div>
+
+                                <div className="mt-4 grid gap-4 lg:grid-cols-[1.1fr_0.9fr_0.8fr]">
+                                    <label className="block">
+                                        <span className="text-sm font-medium text-foreground">คำโปรยสินค้า</span>
+                                        <input
+                                            aria-label="คำโปรยสินค้า"
+                                            value={editTagline}
+                                            onChange={(event) => setEditTagline(event.target.value)}
+                                            placeholder="เช่น เครื่องดื่มโปรตีนพร้อมขาย หรือ แพ็กเกจยอดนิยม"
+                                            className="mt-2 w-full rounded-[18px] border border-line bg-[#fff8de] px-4 py-3 text-[#17130a] outline-none transition focus:border-accent"
+                                        />
+                                    </label>
+
+                                    <label className="block">
+                                        <span className="text-sm font-medium text-foreground">หมวดขาย POS</span>
+                                        <select
+                                            aria-label="หมวดขาย POS"
+                                            value={editPosCategory}
+                                            onChange={(event) => setEditPosCategory(event.target.value as PosEditorCategory)}
+                                            className="mt-2 w-full rounded-[18px] border border-line bg-[#fff8de] px-4 py-3 text-[#17130a] outline-none transition focus:border-accent"
+                                        >
+                                            {(Object.keys(POS_CATEGORY_LABEL) as PosEditorCategory[]).map((category) => (
+                                                <option key={category} value={category}>
+                                                    {POS_CATEGORY_LABEL[category]}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </label>
+
+                                    <label className="block">
+                                        <span className="text-sm font-medium text-foreground">ปักหมุดขายดี</span>
+                                        <select
+                                            aria-label="ปักหมุดขายดี"
+                                            value={editFeaturedSlot}
+                                            onChange={(event) => setEditFeaturedSlot(event.target.value as "" | `${FeaturedSlot}`)}
+                                            className="mt-2 w-full rounded-[18px] border border-line bg-[#fff8de] px-4 py-3 text-[#17130a] outline-none transition focus:border-accent"
+                                        >
+                                            {featuredSlotChoices.map((choice) => (
+                                                <option key={choice.label} value={choice.value}>
+                                                    {choice.label}
+                                                </option>
+                                            ))}
+                                        </select>
                                     </label>
                                 </div>
 
@@ -1117,14 +1300,20 @@ export default function PosPage() {
                                             if (isCreateMode) {
                                                 setEditSku("");
                                                 setEditName("");
+                                                setEditTagline("");
                                                 setEditPrice("");
                                                 setEditStockOnHand(newProductType === "GOODS" ? "0" : "");
+                                                setEditPosCategory(getDefaultPosCategory(newProductType, ""));
+                                                setEditFeaturedSlot("");
                                                 setSelectedRevenueAccountId("");
                                             } else if (selectedProduct) {
                                                 setEditSku(selectedProduct.sku);
                                                 setEditName(selectedProduct.name);
+                                                setEditTagline(selectedProduct.tagline ?? "");
                                                 setEditPrice(String(selectedProduct.price));
                                                 setEditStockOnHand(selectedProduct.track_stock ? String(selectedProduct.stock_on_hand ?? 0) : "");
+                                                setEditPosCategory(getSellCategory(selectedProduct));
+                                                setEditFeaturedSlot(selectedProduct.featured_slot ? String(selectedProduct.featured_slot) as `${FeaturedSlot}` : "");
                                                 setSelectedRevenueAccountId(
                                                     selectedProduct.revenue_account_id === undefined
                                                         ? ""

@@ -16,8 +16,7 @@ export default function DashboardPage() {
         { href: "/pos", label: "POS", description: "จัดการการขาย, ตะกร้า และการชำระเงินหน้าเคาน์เตอร์" },
         { href: "/members", label: "สมาชิก", description: "ดูข้อมูลสมาชิก แพ็กเกจ วันเริ่มใช้ และวันหมดอายุ" },
         { href: "/expenses", label: "รายจ่าย", description: "บันทึกรายจ่ายและตรวจสอบบัญชีรายจ่ายที่ใช้งานอยู่" },
-        { href: "/coa", label: "ผังบัญชี", description: "ดูผังบัญชีและตรวจสถานะการเชื่อมข้อมูลบัญชี" },
-        { href: "/admin/users", label: "จัดการผู้ใช้", description: "สร้างผู้ใช้ใหม่และติดตามข้อมูลผู้ใช้ที่เพิ่งบันทึก" },
+        { href: "/admin/users", label: "สร้างผู้ใช้", description: "สร้าง user ใหม่พร้อม username และ password เพื่อใช้งานจริง" },
         { href: "/reports/daily-summary", label: "สรุปยอด", description: "ดูยอดรวมรายวัน รายสัปดาห์ รายเดือน หรือช่วงเวลาที่กำหนด" },
         { href: "/reports/shift-summary", label: "สรุปกะ", description: "ดูโครงรายงานกระทบยอดกะและสถานะข้อมูลที่เชื่อมแล้ว" },
     ];
@@ -86,8 +85,7 @@ export default function DashboardPage() {
             <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                 {quickLinks
                     .filter((item) => item.href !== "/reports/daily-summary" || session.role !== "CASHIER")
-                    .filter((item) => item.href !== "/coa" || session.role === "OWNER")
-                    .filter((item) => item.href !== "/admin/users" || session.role !== "CASHIER")
+                    .filter((item) => item.href !== "/admin/users" || session.role === "OWNER")
                     .map((item) => (
                         <Link
                             key={item.href}

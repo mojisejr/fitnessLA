@@ -20,7 +20,6 @@ async function toUserSession(user: User): Promise<UserSession | null> {
 
   const activeShift = await prisma.shift.findFirst({
     where: {
-      staffId: user.id,
       status: "OPEN",
       endTime: null,
     },

@@ -1,9 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { PATCH as enrollmentPATCH } from "../../src/app/api/v1/trainers/enrollments/[enrollmentId]/route";
+import {
+  DELETE as enrollmentDELETE,
+  PATCH as enrollmentPATCH,
+} from "../../src/app/api/v1/trainers/enrollments/[enrollmentId]/route";
+import { POST as enrollmentBulkDeletePOST } from "../../src/app/api/v1/trainers/enrollments/bulk-delete/route";
 
 const mockResolveSessionFromRequest = vi.fn();
 const mockUpdateTrainingEnrollment = vi.fn();
+const mockDeleteTrainingEnrollment = vi.fn();
+const mockDeleteTrainingEnrollments = vi.fn();
 
 vi.mock("../../src/lib/session", () => ({
   resolveSessionFromRequest: (...args: unknown[]) => mockResolveSessionFromRequest(...args),
@@ -11,6 +17,8 @@ vi.mock("../../src/lib/session", () => ({
 
 vi.mock("../../src/features/operations/services", () => ({
   updateTrainingEnrollment: (...args: unknown[]) => mockUpdateTrainingEnrollment(...args),
+  deleteTrainingEnrollment: (...args: unknown[]) => mockDeleteTrainingEnrollment(...args),
+  deleteTrainingEnrollments: (...args: unknown[]) => mockDeleteTrainingEnrollments(...args),
 }));
 
 describe("trainer enrollment route", () => {
@@ -103,5 +111,85 @@ describe("trainer enrollment route", () => {
 
     expect(response.status).toBe(401);
     expect(body.code).toBe("UNAUTHENTICATED");
+  });
+
+  it("DELETE removes enrollment with 200", async () => {
+    mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "OWNER" });
+    mockDeleteTrainingEnrollment.mockResolvedValue({
+      enrollment_id: "e1",
+      customer_name: "ลูกค้าทดสอบ",
+      package_name: "เทรน 10 ครั้ง",
+    });
+
+    const response = await enrollmentDELETE(
+      new Request("http://localhost/api/v1/trainers/enrollments/e1", {
+        method: "DELETE",
+      }),
+      { params: Promise.resolve({ enrollmentId: "e1" }) },
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(mockDeleteTrainingEnrollment).toHaveBeenCalledWith("e1");
+    expect(body).toEqual({
+      enrollment_id: "e1",
+      customer_name: "ลูกค้าทดสอบ",
+      package_name: "เทรน 10 ครั้ง",
+    });
+  });
+
+  it("DELETE returns 403 for admin", async () => {
+    mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "ADMIN" });
+
+    const response = await enrollmentDELETE(
+      new Request("http://localhost/api/v1/trainers/enrollments/e1", {
+        method: "DELETE",
+      }),
+      { params: Promise.resolve({ enrollmentId: "e1" }) },
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(body.code).toBe("FORBIDDEN");
+    expect(mockDeleteTrainingEnrollment).not.toHaveBeenCalled();
+  });
+
+  it("POST bulk-delete removes selected enrollments with 200", async () => {
+    mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "OWNER" });
+    mockDeleteTrainingEnrollments.mockResolvedValue({
+      deleted_count: 2,
+      deleted_enrollments: [
+        { enrollment_id: "e1", customer_name: "ลูกค้าทดสอบ", package_name: "เทรน 10 ครั้ง" },
+        { enrollment_id: "e2", customer_name: "ลูกค้าอีกคน", package_name: "เทรน 20 ครั้ง" },
+      ],
+    });
+
+    const response = await enrollmentBulkDeletePOST(
+      new Request("http://localhost/api/v1/trainers/enrollments/bulk-delete", {
+        method: "POST",
+        body: JSON.stringify({ enrollment_ids: ["e1", "e2"] }),
+      }),
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(mockDeleteTrainingEnrollments).toHaveBeenCalledWith(["e1", "e2"]);
+    expect(body.deleted_count).toBe(2);
+  });
+
+  it("POST bulk-delete returns 400 when no enrollment ids are provided", async () => {
+    mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "OWNER" });
+
+    const response = await enrollmentBulkDeletePOST(
+      new Request("http://localhost/api/v1/trainers/enrollments/bulk-delete", {
+        method: "POST",
+        body: JSON.stringify({ enrollment_ids: [] }),
+      }),
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(body.code).toBe("VALIDATION_ERROR");
+    expect(mockDeleteTrainingEnrollments).not.toHaveBeenCalled();
   });
 });

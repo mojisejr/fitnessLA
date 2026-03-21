@@ -15,7 +15,9 @@
     "db:migrate": "prisma migrate dev --name init_accounting_auth",
     "db:seed": "prisma db seed",
     "db:seed:users": "node prisma/seed-users.mjs",
-    "db:seed:real-mode": "node --env-file=.env scripts/seed-real-mode.mjs"
+    "db:seed:real-mode": "node --env-file=.env scripts/seed-real-mode.mjs",
+    "db:sync:pos-catalog": "node --env-file=.env scripts/sync-pos-catalog.mjs",
+    "db:verify:pos-products": "node --env-file=.env scripts/verify-pos-products.mjs"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.4.2",

@@ -66,8 +66,11 @@ describe("phase2 product routes", () => {
       product_id: "p2",
       sku: "PT-001",
       name: "PT Session",
+      tagline: "ขายดีช่วงเย็น",
       price: 1200,
       product_type: "SERVICE",
+      pos_category: "TRAINING",
+      featured_slot: 2,
       revenue_account_id: "coa-4102",
     });
 
@@ -78,8 +81,11 @@ describe("phase2 product routes", () => {
         body: JSON.stringify({
           sku: "PT-001",
           name: "PT Session",
+          tagline: "ขายดีช่วงเย็น",
           price: 1200,
           product_type: "SERVICE",
+          pos_category: "TRAINING",
+          featured_slot: 2,
           revenue_account_id: "coa-4102",
         }),
       }),
@@ -89,8 +95,16 @@ describe("phase2 product routes", () => {
     expect(response.status).toBe(201);
     expect(body).toMatchObject({
       product_id: "p2",
+      tagline: "ขายดีช่วงเย็น",
+      pos_category: "TRAINING",
+      featured_slot: 2,
       revenue_account_id: "coa-4102",
     });
+    expect(mockCreateProduct).toHaveBeenCalledWith(expect.objectContaining({
+      tagline: "ขายดีช่วงเย็น",
+      pos_category: "TRAINING",
+      featured_slot: 2,
+    }));
   });
 
   it("returns 403 for cashier product create", async () => {
@@ -120,8 +134,11 @@ describe("phase2 product routes", () => {
       product_id: "p2",
       sku: "PT-001",
       name: "PT Session Plus",
+      tagline: "แนะนำโดยพนักงานหน้าเคาน์เตอร์",
       price: 1500,
       product_type: "SERVICE",
+      pos_category: "TRAINING",
+      featured_slot: 1,
       revenue_account_id: "coa-4103",
     });
 
@@ -132,7 +149,10 @@ describe("phase2 product routes", () => {
         body: JSON.stringify({
           sku: "PT-001",
           name: "PT Session Plus",
+          tagline: "แนะนำโดยพนักงานหน้าเคาน์เตอร์",
           price: 1500,
+          pos_category: "TRAINING",
+          featured_slot: 1,
           revenue_account_id: "coa-4103",
         }),
       }),
@@ -147,8 +167,17 @@ describe("phase2 product routes", () => {
     expect(body).toMatchObject({
       product_id: "p2",
       name: "PT Session Plus",
+      tagline: "แนะนำโดยพนักงานหน้าเคาน์เตอร์",
+      pos_category: "TRAINING",
+      featured_slot: 1,
       revenue_account_id: "coa-4103",
     });
+    expect(mockUpdateProduct).toHaveBeenCalledWith(expect.objectContaining({
+      product_id: "p2",
+      tagline: "แนะนำโดยพนักงานหน้าเคาน์เตอร์",
+      pos_category: "TRAINING",
+      featured_slot: 1,
+    }));
   });
 
   it("returns 409 when product update hits duplicate sku", async () => {

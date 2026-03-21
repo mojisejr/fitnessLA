@@ -66,7 +66,7 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           code: "SHIFT_ALREADY_OPEN",
-          message: "พนักงานมีกะเปิดอยู่แล้ว",
+          message: "มีกะเปิดอยู่แล้วในระบบ",
         },
         { status: 409 },
       );

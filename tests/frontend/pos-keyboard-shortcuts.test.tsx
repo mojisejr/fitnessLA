@@ -54,9 +54,9 @@ describe("POS keyboard shortcuts", () => {
 
     await waitForPosReady();
 
-    fireEvent.click(screen.getByRole("button", { name: "โปรตีนเชค" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "Protein Shake" })[0]);
 
-    const selectedProductPanel = screen.getByRole("heading", { name: "โปรตีนเชค", level: 2 }).closest("section");
+    const selectedProductPanel = screen.getByRole("heading", { name: "Protein Shake", level: 2 }).closest("section");
 
     expect(selectedProductPanel).not.toBeNull();
 
@@ -73,20 +73,20 @@ describe("POS keyboard shortcuts", () => {
     expect(screen.getByText("สต็อก Protein Shake คงเหลือ 6 ชิ้น")).toBeInTheDocument();
   }, 30000);
 
-  it("filters products using the Thai labels shown in the POS UI", async () => {
+  it("filters products using the DB-backed names shown in the POS UI", async () => {
     renderWithProviders(<PosPage />);
 
     await waitForPosReady();
 
     fireEvent.change(screen.getByRole("textbox", { name: "Product search" }), {
-      target: { value: "น้ำดื่ม" },
+      target: { value: "Mineral Water" },
     });
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "น้ำดื่ม" })).toBeInTheDocument();
+      expect(screen.getAllByRole("button", { name: "Mineral Water" }).length).toBeGreaterThan(0);
     }, { timeout: 20000 });
 
-    expect(screen.queryByRole("button", { name: "อเมริกาโน่เย็น" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Iced Americano" })).not.toBeInTheDocument();
     expect(screen.queryByText("ไม่พบรายการที่ตรงกับคำค้นหรือหมวดที่เลือก")).not.toBeInTheDocument();
   }, 30000);
 });

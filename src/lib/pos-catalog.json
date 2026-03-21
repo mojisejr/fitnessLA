@@ -84,28 +84,32 @@
     "name": "เทรน 10 ครั้ง",
     "price": 4500,
     "productType": "SERVICE",
-    "revenueCode": "4010"
+    "revenueCode": "4010",
+    "membershipDurationDays": 30
   },
   {
     "sku": "PT-20",
     "name": "เทรน 20 ครั้ง",
     "price": 8000,
     "productType": "SERVICE",
-    "revenueCode": "4010"
+    "revenueCode": "4010",
+    "membershipDurationDays": 60
   },
   {
     "sku": "PT-MONTH",
     "name": "เทรนรายเดือน ไม่จำกัดครั้ง",
     "price": 7000,
     "productType": "SERVICE",
-    "revenueCode": "4010"
+    "revenueCode": "4010",
+    "membershipDurationDays": 30
   },
   {
     "sku": "PT-COUPLE",
     "name": "เทรนคู่รายเดือน ไม่จำกัดครั้ง",
     "price": 12900,
     "productType": "SERVICE",
-    "revenueCode": "4010"
+    "revenueCode": "4010",
+    "membershipDurationDays": 30
   },
   {
     "sku": "COFFEE-01",

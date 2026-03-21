@@ -26,7 +26,10 @@ const mockAdapter = {
     createAdminUser: vi.fn(),
     listTrainers: vi.fn(),
     createTrainer: vi.fn(),
+    deleteTrainer: vi.fn(),
     toggleTrainerActive: vi.fn(),
+    deleteTrainingEnrollment: vi.fn(),
+    deleteTrainingEnrollments: vi.fn(),
     updateTrainingEnrollment: vi.fn(),
     toggleMemberActive: vi.fn(),
     renewMember: vi.fn(),
@@ -117,6 +120,30 @@ describe("Trainers page", () => {
             active_customer_count: 0,
         });
         mockAdapter.updateTrainingEnrollment.mockResolvedValue({});
+        mockAdapter.deleteTrainer.mockResolvedValue({
+            trainer_id: "t1",
+            full_name: "สมชาย ยิมเนส",
+        });
+        mockAdapter.deleteTrainingEnrollment.mockResolvedValue({
+            enrollment_id: "e1",
+            customer_name: "Training Sample Member",
+            package_name: "เทรน 10 ครั้ง",
+        });
+        mockAdapter.deleteTrainingEnrollments.mockResolvedValue({
+            deleted_count: 2,
+            deleted_enrollments: [
+                {
+                    enrollment_id: "e1",
+                    customer_name: "Training Sample Member",
+                    package_name: "เทรน 10 ครั้ง",
+                },
+                {
+                    enrollment_id: "e3",
+                    customer_name: "Bulk Delete Member",
+                    package_name: "เทรน 20 ครั้ง",
+                },
+            ],
+        });
     });
 
     it("creates trainer and updates training enrollment", async () => {
@@ -171,6 +198,152 @@ describe("Trainers page", () => {
 
         await waitFor(() => {
             expect(mockAdapter.toggleTrainerActive).toHaveBeenCalledWith("t1");
+        });
+
+        expect(confirmSpy).toHaveBeenCalled();
+        confirmSpy.mockRestore();
+    });
+
+    it("lets owner delete trainer", async () => {
+        const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+
+        render(<TrainersPage />);
+
+        await waitFor(() => {
+            expect(screen.getByText("สมชาย ยิมเนส")).toBeInTheDocument();
+        });
+
+        fireEvent.click(screen.getByRole("button", { name: "ลบเทรนเนอร์" }));
+
+        await waitFor(() => {
+            expect(mockAdapter.deleteTrainer).toHaveBeenCalledWith("t1");
+            expect(screen.getByText("ลบเทรนเนอร์ สมชาย ยิมเนส เรียบร้อยแล้ว")).toBeInTheDocument();
+        });
+
+        expect(confirmSpy).toHaveBeenCalled();
+        confirmSpy.mockRestore();
+    });
+
+    it("lets owner delete a current trainee", async () => {
+        const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+
+        mockAdapter.listTrainers.mockResolvedValue([
+            {
+                trainer_id: "t1",
+                trainer_code: "TR001",
+                full_name: "สมชาย ยิมเนส",
+                nickname: "ชาย",
+                phone: "0811111111",
+                is_active: true,
+                active_customer_count: 2,
+                assignments: [
+                    {
+                        enrollment_id: "e1",
+                        trainer_id: "t1",
+                        trainer_name: "สมชาย ยิมเนส",
+                        customer_name: "Training Sample Member",
+                        member_id: "m1",
+                        package_name: "เทรน 10 ครั้ง",
+                        package_sku: "PT-10",
+                        started_at: "2026-03-21T00:00:00.000Z",
+                        expires_at: "2026-04-20T00:00:00.000Z",
+                        session_limit: 10,
+                        sessions_remaining: 8,
+                        price: 4500,
+                        status: "ACTIVE",
+                        closed_at: null,
+                        close_reason: null,
+                        updated_at: "2026-03-21T02:00:00.000Z",
+                    },
+                ],
+            },
+        ]);
+
+        render(<TrainersPage />);
+
+        await waitFor(() => {
+            expect(screen.getByText("สมชาย ยิมเนส")).toBeInTheDocument();
+        });
+
+        fireEvent.click(screen.getByRole("button", { name: "จัดการลูกเทรน (1)" }));
+        fireEvent.click(await screen.findByRole("button", { name: "ลบ" }));
+
+        await waitFor(() => {
+            expect(mockAdapter.deleteTrainingEnrollment).toHaveBeenCalledWith("e1");
+            expect(screen.getByText("ลบลูกเทรน Training Sample Member เรียบร้อยแล้ว")).toBeInTheDocument();
+        });
+
+        expect(confirmSpy).toHaveBeenCalled();
+        confirmSpy.mockRestore();
+    });
+
+    it("lets owner bulk delete current trainees", async () => {
+        const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+
+        mockAdapter.listTrainers.mockResolvedValue([
+            {
+                trainer_id: "t1",
+                trainer_code: "TR001",
+                full_name: "สมชาย ยิมเนส",
+                nickname: "ชาย",
+                phone: "0811111111",
+                is_active: true,
+                active_customer_count: 2,
+                assignments: [
+                    {
+                        enrollment_id: "e1",
+                        trainer_id: "t1",
+                        trainer_name: "สมชาย ยิมเนส",
+                        customer_name: "Training Sample Member",
+                        member_id: "m1",
+                        package_name: "เทรน 10 ครั้ง",
+                        package_sku: "PT-10",
+                        started_at: "2026-03-21T00:00:00.000Z",
+                        expires_at: "2026-04-20T00:00:00.000Z",
+                        session_limit: 10,
+                        sessions_remaining: 8,
+                        price: 4500,
+                        status: "ACTIVE",
+                        closed_at: null,
+                        close_reason: null,
+                        updated_at: "2026-03-21T02:00:00.000Z",
+                    },
+                    {
+                        enrollment_id: "e3",
+                        trainer_id: "t1",
+                        trainer_name: "สมชาย ยิมเนส",
+                        customer_name: "Bulk Delete Member",
+                        member_id: "m3",
+                        package_name: "เทรน 20 ครั้ง",
+                        package_sku: "PT-20",
+                        started_at: "2026-03-21T00:00:00.000Z",
+                        expires_at: "2026-05-20T00:00:00.000Z",
+                        session_limit: 20,
+                        sessions_remaining: 19,
+                        price: 6500,
+                        status: "ACTIVE",
+                        closed_at: null,
+                        close_reason: null,
+                        updated_at: "2026-03-21T03:00:00.000Z",
+                    },
+                ],
+            },
+        ]);
+
+        render(<TrainersPage />);
+
+        await waitFor(() => {
+            expect(screen.getByText("สมชาย ยิมเนส")).toBeInTheDocument();
+        });
+
+        fireEvent.click(screen.getByRole("button", { name: "จัดการลูกเทรน (2)" }));
+        fireEvent.click(await screen.findByLabelText("เลือก Training Sample Member"));
+        fireEvent.click(screen.getByLabelText("เลือก Bulk Delete Member"));
+        fireEvent.click(screen.getByRole("button", { name: "ลบที่เลือก" }));
+
+        await waitFor(() => {
+            expect(mockAdapter.deleteTrainingEnrollments).toHaveBeenCalledWith(["e1", "e3"]);
+            expect(screen.getByText("ลบลูกเทรน 2 รายการเรียบร้อยแล้ว")).toBeInTheDocument();
         });
 
         expect(confirmSpy).toHaveBeenCalled();

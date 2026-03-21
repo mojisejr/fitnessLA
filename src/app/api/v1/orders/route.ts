@@ -68,7 +68,7 @@ export async function POST(request: Request) {
         return NextResponse.json(
           {
             code: "SHIFT_OWNER_MISMATCH",
-            message: "กะนี้เป็นของผู้ใช้อื่นหรือ session ปัจจุบันไม่ตรงกับกะที่เลือก",
+            message: "กะที่เลือกไม่ใช่กะเปิดปัจจุบันของระบบ",
           },
           { status: 409 },
         );

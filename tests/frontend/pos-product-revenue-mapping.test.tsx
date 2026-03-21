@@ -49,8 +49,17 @@ describe("POS product revenue mapping", () => {
     fireEvent.change(screen.getByLabelText("ชื่อสินค้า"), {
       target: { value: "Berry Smoothie" },
     });
+    fireEvent.change(screen.getByLabelText("คำโปรยสินค้า"), {
+      target: { value: "สมูทตี้ผลไม้ขายดี" },
+    });
     fireEvent.change(screen.getByLabelText("ราคา"), {
       target: { value: "120" },
+    });
+    fireEvent.change(screen.getByLabelText("หมวดขาย POS"), {
+      target: { value: "COFFEE" },
+    });
+    fireEvent.change(screen.getByLabelText("ปักหมุดขายดี"), {
+      target: { value: "1" },
     });
     fireEvent.change(screen.getByLabelText("สต็อกคงเหลือ"), {
       target: { value: "8" },
@@ -65,6 +74,9 @@ describe("POS product revenue mapping", () => {
         expect.objectContaining({
           sku: "SMOOTHIE-01",
           name: "Berry Smoothie",
+            tagline: "สมูทตี้ผลไม้ขายดี",
+            posCategory: "COFFEE",
+            featuredSlot: 1,
           revenueAccountId: "6",
         }),
       );
@@ -87,6 +99,15 @@ describe("POS product revenue mapping", () => {
       expect(screen.getByLabelText("เลือกบัญชีรายได้")).toHaveValue("7");
     }, { timeout: 20000 });
 
+    fireEvent.change(screen.getByLabelText("คำโปรยสินค้า"), {
+      target: { value: "เทรนเดี่ยวจองง่าย" },
+    });
+    fireEvent.change(screen.getByLabelText("หมวดขาย POS"), {
+      target: { value: "TRAINING" },
+    });
+    fireEvent.change(screen.getByLabelText("ปักหมุดขายดี"), {
+      target: { value: "4" },
+    });
     fireEvent.change(screen.getByLabelText("เลือกบัญชีรายได้"), {
       target: { value: "4" },
     });
@@ -96,9 +117,24 @@ describe("POS product revenue mapping", () => {
       expect(updateProductSpy).toHaveBeenCalledWith(
         expect.objectContaining({
           productId: 108,
+            tagline: "เทรนเดี่ยวจองง่าย",
+            posCategory: "TRAINING",
+            featuredSlot: 4,
           revenueAccountId: "4",
         }),
       );
     }, { timeout: 20000 });
   }, 30000);
+
+  it("shows pinned products for quick selection", async () => {
+    renderWithProviders(<PosPage />);
+
+    await waitForPosReady();
+
+    expect(screen.getByText("สินค้าปักหมุดขายดี")).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "Mineral Water" }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("button", { name: "Protein Shake" }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("button", { name: "Monthly Membership" }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("button", { name: "Personal Training Session" }).length).toBeGreaterThan(0);
+  });
 });

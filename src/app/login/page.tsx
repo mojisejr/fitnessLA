@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useId, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/features/auth/auth-provider";
 import { getErrorMessage } from "@/lib/utils";
@@ -9,6 +9,7 @@ import { getErrorMessage } from "@/lib/utils";
 export default function LoginPage() {
     const router = useRouter();
     const { login, mode, status, demoPassword } = useAuth();
+    const autofillScopeId = useId().replace(/:/g, "");
     const [username, setUsername] = useState(mode === "mock" ? "cashier" : "");
     const [password, setPassword] = useState(mode === "mock" ? demoPassword : "");
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -52,14 +53,34 @@ export default function LoginPage() {
                         <h1 className="mt-3 text-4xl font-semibold text-foreground">เข้าสู่ระบบ</h1>
                     </div>
 
-                    <form className="mt-8 space-y-5" onSubmit={handleSubmit}>
+                    <form className="mt-8 space-y-5" autoComplete="off" onSubmit={handleSubmit}>
+                        <input
+                            type="text"
+                            name={`username-${autofillScopeId}`}
+                            autoComplete="username"
+                            tabIndex={-1}
+                            aria-hidden="true"
+                            className="hidden"
+                        />
+                        <input
+                            type="password"
+                            name={`password-${autofillScopeId}`}
+                            autoComplete="current-password"
+                            tabIndex={-1}
+                            aria-hidden="true"
+                            className="hidden"
+                        />
                         <label className="block">
                             <span className="text-sm font-medium text-foreground">ชื่อผู้ใช้</span>
                             <input
                                 value={username}
                                 onChange={(event) => setUsername(event.target.value)}
+                                name={`login-user-${autofillScopeId}`}
+                                autoComplete="off"
+                                autoCapitalize="none"
+                                spellCheck={false}
                                 className="mt-2 w-full rounded-[20px] border border-line bg-surface-strong px-4 py-3 text-foreground outline-none transition focus:border-accent"
-                                placeholder={mode === "mock" ? "cashier" : "owner"}
+                                placeholder={mode === "mock" ? "cashier" : "กรอกชื่อผู้ใช้"}
                             />
                         </label>
 
@@ -69,8 +90,11 @@ export default function LoginPage() {
                                 type="password"
                                 value={password}
                                 onChange={(event) => setPassword(event.target.value)}
+                                name={`login-password-${autofillScopeId}`}
+                                autoComplete={mode === "mock" ? "current-password" : "new-password"}
+                                spellCheck={false}
                                 className="mt-2 w-full rounded-[20px] border border-line bg-surface-strong px-4 py-3 text-foreground outline-none transition focus:border-accent"
-                                placeholder={mode === "mock" ? demoPassword : "ChangeMe123!"}
+                                placeholder={mode === "mock" ? demoPassword : "กรอกรหัสผ่าน"}
                             />
                         </label>
 

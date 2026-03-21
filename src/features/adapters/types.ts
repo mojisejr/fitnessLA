@@ -6,6 +6,7 @@ import type {
   CreateOrderRequest,
   DailySummary,
   MemberSubscriptionRecord,
+  SalesEntryUpdateResult,
   ShiftSummary,
   ExpenseResult,
   MockShiftRecord,
@@ -19,6 +20,7 @@ import type {
   ReportPeriod,
   TrainerRecord,
   TrainingEnrollmentRecord,
+  UpdateSalesEntryInput,
   UpdateTrainingEnrollmentInput,
 } from "@/lib/contracts";
 
@@ -31,16 +33,20 @@ export type CreateChartOfAccountInput = {
 
 export type CreateAdminUserInput = {
   full_name: string;
+  phone: string;
   username: string;
-  email: string;
-  role: "ADMIN" | "CASHIER";
+  password: string;
+  role: "OWNER" | "ADMIN" | "CASHIER";
 };
 
 export type UpdateProductInput = {
   productId: EntityId;
   sku: string;
   name: string;
+  tagline?: string | null;
   price: number;
+  posCategory?: "COFFEE" | "MEMBERSHIP" | "FOOD" | "TRAINING" | "COUNTER";
+  featuredSlot?: 1 | 2 | 3 | 4 | null;
   revenueAccountId?: EntityId;
   stockOnHand?: number | null;
   membershipPeriod?: "DAILY" | "MONTHLY" | "QUARTERLY" | "SEMIANNUAL" | "YEARLY" | null;
@@ -50,8 +56,11 @@ export type UpdateProductInput = {
 export type CreateProductInput = {
   sku: string;
   name: string;
+  tagline?: string | null;
   price: number;
   productType: "GOODS" | "SERVICE" | "MEMBERSHIP";
+  posCategory?: "COFFEE" | "MEMBERSHIP" | "FOOD" | "TRAINING" | "COUNTER";
+  featuredSlot?: 1 | 2 | 3 | 4 | null;
   revenueAccountId?: EntityId;
   stockOnHand?: number | null;
   membershipPeriod?: "DAILY" | "MONTHLY" | "QUARTERLY" | "SEMIANNUAL" | "YEARLY" | null;
@@ -84,6 +93,37 @@ export type UpdateMemberInput = {
   expires_at: string;
 };
 
+export type DeleteMemberResult = {
+  member_id: EntityId;
+  full_name: string;
+};
+
+export type DeleteTrainerResult = {
+  trainer_id: EntityId;
+  full_name: string;
+};
+
+export type DeleteTrainingEnrollmentResult = {
+  enrollment_id: EntityId;
+  customer_name: string;
+  package_name: string;
+};
+
+export type DeleteSalesEntryResult = {
+  order_id: EntityId;
+  order_number: string;
+};
+
+export type BulkDeleteSalesEntriesResult = {
+  deleted_count: number;
+  deleted_orders: DeleteSalesEntryResult[];
+};
+
+export type BulkDeleteTrainingEnrollmentsResult = {
+  deleted_count: number;
+  deleted_enrollments: DeleteTrainingEnrollmentResult[];
+};
+
 export interface AppAdapter {
   mode: "mock" | "real";
   authenticateUser: (username: string, password: string) => Promise<UserSession>;
@@ -109,6 +149,9 @@ export interface AppAdapter {
     receiptName: string;
     receiptFile?: File | null;
   }) => Promise<ExpenseResult>;
+  updateSalesEntry: (orderId: EntityId, input: UpdateSalesEntryInput) => Promise<SalesEntryUpdateResult>;
+  deleteSalesEntry: (orderId: EntityId) => Promise<DeleteSalesEntryResult>;
+  deleteSalesEntries: (orderIds: EntityId[]) => Promise<BulkDeleteSalesEntriesResult>;
   getDailySummary: (query: DailySummaryQuery) => Promise<DailySummary>;
   getShiftSummary: (date: string, responsibleName?: string) => Promise<ShiftSummary>;
   listChartOfAccounts: () => Promise<ChartOfAccountRecord[]>;
@@ -117,13 +160,17 @@ export interface AppAdapter {
   createAdminUser: (input: CreateAdminUserInput) => Promise<AdminUserRecord>;
   listTrainers: () => Promise<Array<TrainerRecord & { assignments: TrainingEnrollmentRecord[] }>>;
   createTrainer: (input: CreateTrainerInput) => Promise<TrainerRecord>;
+  deleteTrainer: (trainerId: EntityId) => Promise<DeleteTrainerResult>;
   toggleTrainerActive: (trainerId: EntityId) => Promise<TrainerRecord>;
+  deleteTrainingEnrollment: (enrollmentId: EntityId) => Promise<DeleteTrainingEnrollmentResult>;
+  deleteTrainingEnrollments: (enrollmentIds: EntityId[]) => Promise<BulkDeleteTrainingEnrollmentsResult>;
   updateTrainingEnrollment: (
     enrollmentId: EntityId,
     input: UpdateTrainingEnrollmentInput,
   ) => Promise<TrainingEnrollmentRecord>;
   createMember: (input: CreateMemberInput) => Promise<MemberSubscriptionRecord>;
   updateMember: (memberId: EntityId, input: UpdateMemberInput) => Promise<MemberSubscriptionRecord>;
+  deleteMember: (memberId: EntityId) => Promise<DeleteMemberResult>;
   toggleMemberActive: (memberId: EntityId) => Promise<MemberSubscriptionRecord>;
   renewMember: (memberId: EntityId) => Promise<MemberSubscriptionRecord>;
   restartMember: (memberId: EntityId) => Promise<MemberSubscriptionRecord>;

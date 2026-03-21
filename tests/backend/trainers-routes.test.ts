@@ -1,12 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { GET as trainersGET, POST as trainersPOST } from "../../src/app/api/v1/trainers/route";
+import { DELETE as trainerDELETE } from "../../src/app/api/v1/trainers/[trainerId]/route";
 import { PATCH as trainerToggleActivePATCH } from "../../src/app/api/v1/trainers/[trainerId]/toggle-active/route";
 
 const mockResolveSessionFromRequest = vi.fn();
 const mockListTrainers = vi.fn();
 const mockCreateTrainer = vi.fn();
 const mockToggleTrainerActive = vi.fn();
+const mockDeleteTrainer = vi.fn();
 
 vi.mock("../../src/lib/session", () => ({
   resolveSessionFromRequest: (...args: unknown[]) => mockResolveSessionFromRequest(...args),
@@ -16,6 +18,7 @@ vi.mock("../../src/features/operations/services", () => ({
   listTrainers: (...args: unknown[]) => mockListTrainers(...args),
   createTrainer: (...args: unknown[]) => mockCreateTrainer(...args),
   toggleTrainerActive: (...args: unknown[]) => mockToggleTrainerActive(...args),
+  deleteTrainer: (...args: unknown[]) => mockDeleteTrainer(...args),
 }));
 
 describe("trainers routes", () => {
@@ -212,5 +215,37 @@ describe("trainers routes", () => {
       code: "TRAINER_HAS_ACTIVE_ASSIGNMENTS",
       message: "ยังมีลูกเทรนที่ใช้งานอยู่ จึงยังปิดใช้งานเทรนเนอร์ไม่ได้",
     });
+  });
+
+  it("DELETE /trainers/:trainerId deletes trainer for owner", async () => {
+    mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "OWNER" });
+    mockDeleteTrainer.mockResolvedValue({ trainer_id: "t1", full_name: "สมชาย ยิมเนส" });
+
+    const response = await trainerDELETE(
+      new Request("http://localhost/api/v1/trainers/t1", { method: "DELETE" }),
+      { params: Promise.resolve({ trainerId: "t1" }) },
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toEqual({ trainer_id: "t1", full_name: "สมชาย ยิมเนส" });
+    expect(mockDeleteTrainer).toHaveBeenCalledWith("t1");
+  });
+
+  it("DELETE /trainers/:trainerId returns 403 for admin", async () => {
+    mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "ADMIN" });
+
+    const response = await trainerDELETE(
+      new Request("http://localhost/api/v1/trainers/t1", { method: "DELETE" }),
+      { params: Promise.resolve({ trainerId: "t1" }) },
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(body).toEqual({
+      code: "FORBIDDEN",
+      message: "สิทธิ์ไม่เพียงพอสำหรับลบเทรนเนอร์",
+    });
+    expect(mockDeleteTrainer).not.toHaveBeenCalled();
   });
 });
