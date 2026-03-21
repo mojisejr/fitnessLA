@@ -23,8 +23,11 @@ const navItems: NavItem[] = [
     { href: "/shift/close", label: "ปิดกะ", roles: ["OWNER", "ADMIN", "CASHIER"] },
     { href: "/members", label: "สมาชิก", roles: ["OWNER", "ADMIN"] },
     { href: "/trainers", label: "เทรนเนอร์", roles: ["OWNER", "ADMIN"] },
+    { href: "/coa", label: "ผังบัญชี", roles: ["OWNER", "ADMIN"] },
     { href: "/reports/daily-summary", label: "สรุปยอด", roles: ["OWNER", "ADMIN"] },
     { href: "/reports/shift-summary", label: "สรุปกะ", roles: ["OWNER", "ADMIN"] },
+    { href: "/reports/profit-loss", label: "กำไรขาดทุน", roles: ["OWNER"] },
+    { href: "/reports/general-ledger", label: "General Ledger", roles: ["OWNER", "ADMIN"] },
     { href: "/admin/users", label: "สร้างผู้ใช้", roles: ["OWNER"] },
 ];
 

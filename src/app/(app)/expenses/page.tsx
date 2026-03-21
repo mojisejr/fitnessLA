@@ -28,6 +28,7 @@ export default function ExpensesPage() {
 
     async function loadAccounts() {
       setAvailabilityMessage(null);
+      setErrorMessage(null);
 
       try {
         const accounts = await adapter.listChartOfAccounts();
@@ -38,13 +39,9 @@ export default function ExpensesPage() {
         }
       } catch (error) {
         if (isActive) {
-          if (getErrorCode(error) === "NOT_IMPLEMENTED") {
-            setExpenseAccounts([]);
-            setAccountId("");
-            setAvailabilityMessage("backend ปัจจุบันยังไม่มี COA API จริง จึงยังโหลดบัญชีรายจ่ายเพื่อยิง expense API ในโหมด real ไม่ได้");
-          } else {
-            setErrorMessage(getErrorMessage(error, "ไม่สามารถโหลดบัญชีรายจ่ายได้"));
-          }
+          setExpenseAccounts([]);
+          setAccountId("");
+          setErrorMessage(getErrorMessage(error, "ไม่สามารถโหลดบัญชีรายจ่ายได้"));
         }
       }
     }
@@ -75,7 +72,7 @@ export default function ExpensesPage() {
     [accountId, expenseAccounts],
   );
 
-  const isSubmissionBlocked = Boolean(availabilityMessage) || expenseAccounts.length === 0;
+  const isSubmissionBlocked = expenseAccounts.length === 0;
 
   function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0] ?? null;
@@ -105,11 +102,6 @@ export default function ExpensesPage() {
 
     if (Number.isNaN(parsedAmount) || parsedAmount <= 0) {
       setErrorMessage("จำนวนเงินต้องมากกว่า 0");
-      return;
-    }
-
-    if (availabilityMessage) {
-      setErrorMessage("ยังไม่สามารถบันทึกรายจ่ายในโหมด real ได้ เพราะ backend ยังไม่มี COA API สำหรับโหลดบัญชีรายจ่าย");
       return;
     }
 

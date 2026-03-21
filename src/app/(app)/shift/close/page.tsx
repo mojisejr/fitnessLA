@@ -18,15 +18,34 @@ export default function CloseShiftPage() {
     const { closeShift, clearLastClosedShift, lastClosedShift, activeShift, session } = useAuth();
     const [actualCash, setActualCash] = useState("");
     const [closingNote, setClosingNote] = useState("");
+    const [forceCloseByOwner, setForceCloseByOwner] = useState(false);
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [shiftSalesRows, setShiftSalesRows] = useState<DailySalesRow[]>([]);
     const [salesLoading, setSalesLoading] = useState(true);
     const [salesError, setSalesError] = useState<string | null>(null);
 
-    const responsibleName = activeShift?.responsible_name ?? lastClosedShift?.responsible_name ?? session?.full_name ?? "";
+    const activeResponsibleName = activeShift?.responsible_name ?? "";
+    const canForceCloseByOwner = Boolean(
+        session?.role === "OWNER" &&
+        activeShift &&
+        activeResponsibleName &&
+        activeResponsibleName !== session.full_name,
+    );
+    const responsibleName = canForceCloseByOwner && forceCloseByOwner
+        ? session?.full_name ?? ""
+        : activeShift?.responsible_name ?? lastClosedShift?.responsible_name ?? session?.full_name ?? "";
     const currentShiftId = activeShift?.shift_id ?? lastClosedShift?.shift_id ?? null;
     const businessDate = activeShift?.opened_at.slice(0, 10) ?? new Date().toISOString().slice(0, 10);
+
+    useEffect(() => {
+        if (canForceCloseByOwner) {
+            setForceCloseByOwner(true);
+            return;
+        }
+
+        setForceCloseByOwner(false);
+    }, [canForceCloseByOwner]);
 
     const shiftSalesSummary = useMemo(
         () =>
@@ -146,7 +165,30 @@ export default function CloseShiftPage() {
                     หน้านี้จะไม่แสดงยอดคาดหวังก่อนกดยืนยัน โดยยอดนั้นจะแสดงหลังผลปิดกะตอบกลับเท่านั้น
                 </p>
 
+                {canForceCloseByOwner ? (
+                    <div className="mt-5 rounded-[20px] border border-warning bg-warning-soft px-4 py-3 text-sm text-foreground">
+                        มีกะที่เปิดโดย {activeResponsibleName} อยู่ในระบบ ตอนนี้บัญชี owner สามารถบังคับปิดกะแทนได้โดยใช้ชื่อผู้ปิดกะเป็น {session?.full_name}
+                    </div>
+                ) : null}
+
                 <form className="mt-6 space-y-5" onSubmit={handleSubmit}>
+                    {canForceCloseByOwner ? (
+                        <label className="flex items-start gap-3 rounded-[20px] border border-line bg-background px-4 py-3 text-sm text-foreground">
+                            <input
+                                type="checkbox"
+                                checked={forceCloseByOwner}
+                                onChange={(event) => setForceCloseByOwner(event.target.checked)}
+                                className="mt-1 h-4 w-4 rounded border-line text-accent focus:ring-accent"
+                            />
+                            <span>
+                                บังคับปิดกะแทนผู้เปิดกะเดิม
+                                <span className="mt-1 block text-muted">
+                                    ถ้าปิดไว้ ระบบจะบันทึกผู้รับผิดชอบการปิดกะเป็น {session?.full_name}
+                                </span>
+                            </span>
+                        </label>
+                    ) : null}
+
                     <label className="block">
                         <span className="text-sm font-medium text-foreground">ชื่อผู้รับผิดชอบ</span>
                         <input

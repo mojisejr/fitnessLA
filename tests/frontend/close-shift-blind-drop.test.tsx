@@ -89,4 +89,41 @@ describe("close shift blind drop", () => {
     expect(screen.getByText("ยอดขายรวมทั้งกะ")).toBeInTheDocument();
     expect(screen.getByText("เงินสด")).toBeInTheDocument();
   }, 30000);
+
+  it("lets owner force close a shift opened by another user", async () => {
+    clearMockSession();
+    seedMockSession({
+      session: {
+        user_id: 1,
+        username: "owner",
+        full_name: "Lalin Charoen",
+        role: "OWNER",
+        active_shift_id: 701,
+      },
+      activeShift: {
+        shift_id: 701,
+        opened_at: new Date().toISOString(),
+        starting_cash: 500,
+        responsible_name: "Pim Counter",
+      },
+      lastClosedShift: null,
+    });
+
+    renderWithProviders(<CloseShiftPage />);
+
+    await waitForCloseShiftReady();
+
+    expect(screen.getByText(/owner สามารถบังคับปิดกะแทนได้/i)).toBeInTheDocument();
+    expect(screen.getByLabelText("ชื่อผู้รับผิดชอบ")).toHaveValue("Lalin Charoen");
+
+    fireEvent.change(screen.getByLabelText("เงินสดที่นับได้จริง"), {
+      target: { value: "500" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "ส่งผลการนับเงิน" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("ผู้รับผิดชอบ")).toBeInTheDocument();
+      expect(screen.getByText("Lalin Charoen")).toBeInTheDocument();
+    }, { timeout: 20000 });
+  }, 30000);
 });
