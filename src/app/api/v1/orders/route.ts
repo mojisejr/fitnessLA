@@ -56,17 +56,27 @@ export async function POST(request: Request) {
         return NextResponse.json(
           {
             code: "SHIFT_NOT_FOUND",
-            message: "ไม่พบกะที่ระบุ",
+            message: "ไม่พบกะที่ระบุหรือกะนี้ไม่อยู่ในระบบแล้ว",
           },
           { status: 404 },
         );
       }
 
-      if (error.message === "SHIFT_OWNER_MISMATCH" || error.message === "SHIFT_NOT_OPEN") {
+      if (error.message === "SHIFT_OWNER_MISMATCH") {
         return NextResponse.json(
           {
-            code: error.message,
-            message: "ไม่สามารถสร้างรายการขายในกะนี้ได้",
+            code: "SHIFT_OWNER_MISMATCH",
+            message: "กะนี้เป็นของผู้ใช้อื่นหรือ session ปัจจุบันไม่ตรงกับกะที่เลือก",
+          },
+          { status: 409 },
+        );
+      }
+
+      if (error.message === "SHIFT_NOT_OPEN") {
+        return NextResponse.json(
+          {
+            code: "SHIFT_NOT_OPEN",
+            message: "กะนี้ถูกปิดไปแล้วหรือยังไม่ได้เปิดกะก่อนคิดเงิน",
           },
           { status: 409 },
         );
@@ -79,6 +89,29 @@ export async function POST(request: Request) {
             message: "มีสินค้าที่ไม่พบหรือถูกปิดใช้งาน",
           },
           { status: 404 },
+        );
+      }
+
+      if (error.message === "INSUFFICIENT_STOCK") {
+        return NextResponse.json(
+          {
+            code: "INSUFFICIENT_STOCK",
+            message: "สต็อกสินค้าไม่พอสำหรับรายการที่เลือก",
+          },
+          { status: 409 },
+        );
+      }
+
+      if (error.message === "MEMBERSHIP_CUSTOMER_REQUIRED" || error.message === "MEMBERSHIP_SINGLE_QUANTITY") {
+        return NextResponse.json(
+          {
+            code: error.message,
+            message:
+              error.message === "MEMBERSHIP_CUSTOMER_REQUIRED"
+                ? "บิลสมาชิกต้องระบุชื่อลูกค้าเพื่อสร้างข้อมูลสมาชิก"
+                : "แพ็กเกจสมาชิกซื้อได้ครั้งละ 1 รายการเท่านั้น",
+          },
+          { status: 400 },
         );
       }
 

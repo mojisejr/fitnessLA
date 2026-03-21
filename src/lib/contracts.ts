@@ -157,6 +157,8 @@ export interface MemberSubscriptionRecord {
   renewal_status: "ACTIVE" | "EXPIRES_TODAY" | "EXPIRED_NOT_RENEWED" | "RENEWED";
 }
 
+export type MemberMutationResult = MemberSubscriptionRecord;
+
 export interface ShiftInventorySummaryRow {
   product_id: EntityId;
   sku: string;

@@ -6,12 +6,27 @@ import { createProduct, listProducts } from "@/features/operations/services";
 import { canManageUsers, toAppRole } from "@/lib/roles";
 import { resolveSessionFromRequest } from "@/lib/session";
 
+function isUniqueConstraintError(error: unknown) {
+  return (
+    error instanceof Prisma.PrismaClientKnownRequestError ||
+    (
+      typeof error === "object" &&
+      error !== null &&
+      "code" in error &&
+      error.code === "P2002"
+    )
+  );
+}
+
 const createProductSchema = z.object({
   sku: z.string().trim().min(1).max(64),
   name: z.string().trim().min(1).max(200),
   price: z.number().nonnegative(),
   product_type: z.enum(["GOODS", "SERVICE", "MEMBERSHIP"]),
   revenue_account_id: z.string().trim().min(1).optional(),
+  stock_on_hand: z.number().int().nonnegative().nullable().optional(),
+  membership_period: z.enum(["DAILY", "MONTHLY", "QUARTERLY", "SEMIANNUAL", "YEARLY"]).nullable().optional(),
+  membership_duration_days: z.number().int().positive().nullable().optional(),
 });
 
 export async function GET(request: Request) {
@@ -26,8 +41,18 @@ export async function GET(request: Request) {
     );
   }
 
-  const products = await listProducts();
-  return NextResponse.json(products, { status: 200 });
+  try {
+    const products = await listProducts();
+    return NextResponse.json(products, { status: 200 });
+  } catch {
+    return NextResponse.json(
+      {
+        code: "INTERNAL_SERVER_ERROR",
+        message: "ไม่สามารถโหลดรายการสินค้าได้",
+      },
+      { status: 500 },
+    );
+  }
 }
 
 export async function POST(request: Request) {
@@ -71,10 +96,7 @@ export async function POST(request: Request) {
     const created = await createProduct(parseResult.data);
     return NextResponse.json(created, { status: 201 });
   } catch (error) {
-    if (
-      error instanceof Prisma.PrismaClientKnownRequestError &&
-      error.code === "P2002"
-    ) {
+    if (isUniqueConstraintError(error)) {
       return NextResponse.json(
         {
           code: "DUPLICATE_PRODUCT_SKU",
@@ -114,6 +136,12 @@ export async function POST(request: Request) {
       );
     }
 
-    throw error;
+    return NextResponse.json(
+      {
+        code: "INTERNAL_SERVER_ERROR",
+        message: "ไม่สามารถสร้างสินค้าได้",
+      },
+      { status: 500 },
+    );
   }
 }

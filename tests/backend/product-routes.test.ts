@@ -46,6 +46,20 @@ describe("phase2 product routes", () => {
     });
   });
 
+  it("returns JSON 500 when product list loading fails", async () => {
+    mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "ADMIN" });
+    mockListProducts.mockRejectedValue(new Error("db offline"));
+
+    const response = await productsGET(new Request("http://localhost/api/v1/products"));
+    const body = await response.json();
+
+    expect(response.status).toBe(500);
+    expect(body).toEqual({
+      code: "INTERNAL_SERVER_ERROR",
+      message: "ไม่สามารถโหลดรายการสินค้าได้",
+    });
+  });
+
   it("returns 201 for admin product create", async () => {
     mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "ADMIN" });
     mockCreateProduct.mockResolvedValue({
@@ -135,5 +149,34 @@ describe("phase2 product routes", () => {
       name: "PT Session Plus",
       revenue_account_id: "coa-4103",
     });
+  });
+
+  it("returns 409 when product update hits duplicate sku", async () => {
+    mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "OWNER" });
+    mockUpdateProduct.mockRejectedValue({
+      code: "P2002",
+      clientVersion: "test",
+      name: "PrismaClientKnownRequestError",
+    });
+
+    const response = await productsPATCH(
+      new Request("http://localhost/api/v1/products/p2", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sku: "PT-001",
+          name: "PT Session Plus",
+          price: 1500,
+        }),
+      }),
+      {
+        params: Promise.resolve({ productId: "p2" }),
+      },
+    );
+
+    const body = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(body.code).toBe("DUPLICATE_PRODUCT_SKU");
   });
 });

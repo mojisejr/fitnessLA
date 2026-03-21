@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -5,11 +6,26 @@ import { updateProduct } from "@/features/operations/services";
 import { canManageUsers, toAppRole } from "@/lib/roles";
 import { resolveSessionFromRequest } from "@/lib/session";
 
+function isUniqueConstraintError(error: unknown) {
+  return (
+    error instanceof Prisma.PrismaClientKnownRequestError ||
+    (
+      typeof error === "object" &&
+      error !== null &&
+      "code" in error &&
+      error.code === "P2002"
+    )
+  );
+}
+
 const updateProductSchema = z.object({
   sku: z.string().trim().min(1).max(64),
   name: z.string().trim().min(1).max(200),
   price: z.number().nonnegative(),
   revenue_account_id: z.string().trim().min(1).optional(),
+  stock_on_hand: z.number().int().nonnegative().nullable().optional(),
+  membership_period: z.enum(["DAILY", "MONTHLY", "QUARTERLY", "SEMIANNUAL", "YEARLY"]).nullable().optional(),
+  membership_duration_days: z.number().int().positive().nullable().optional(),
 });
 
 type Params = {
@@ -105,6 +121,22 @@ export async function PATCH(request: Request, { params }: Params) {
       );
     }
 
-    throw error;
+    if (isUniqueConstraintError(error)) {
+      return NextResponse.json(
+        {
+          code: "DUPLICATE_PRODUCT_SKU",
+          message: "SKU นี้ถูกใช้งานแล้ว",
+        },
+        { status: 409 },
+      );
+    }
+
+    return NextResponse.json(
+      {
+        code: "INTERNAL_SERVER_ERROR",
+        message: "ไม่สามารถแก้ไขสินค้าได้",
+      },
+      { status: 500 },
+    );
   }
 }

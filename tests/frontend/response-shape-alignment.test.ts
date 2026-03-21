@@ -337,6 +337,10 @@ describe("real-app-adapter — response shape alignment", () => {
       price: 1500,
       product_type: "MEMBERSHIP",
       revenue_account_id: "coa-4101",
+      track_stock: false,
+      stock_on_hand: null,
+      membership_period: "MONTHLY",
+      membership_duration_days: 30,
     };
     mockFetchOk(mockResponse);
 
@@ -353,6 +357,8 @@ describe("real-app-adapter — response shape alignment", () => {
       sku: "MEM-001",
       name: "Monthly Membership",
       revenue_account_id: "coa-4101",
+      membership_period: "MONTHLY",
+      membership_duration_days: 30,
     });
   });
 
@@ -364,6 +370,10 @@ describe("real-app-adapter — response shape alignment", () => {
       price: 1800,
       product_type: "MEMBERSHIP",
       revenue_account_id: "coa-4102",
+      track_stock: false,
+      stock_on_hand: null,
+      membership_period: "MONTHLY",
+      membership_duration_days: 30,
     };
     mockFetchOk(mockResponse);
 

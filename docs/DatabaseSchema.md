@@ -3,6 +3,27 @@
 **Version:** 1.0  
 **Date:** 2026-03-07
 
+## Current Prisma Reality Delta (2026-03-21)
+
+เอกสารนี้ยังเก็บภาพ conceptual schema ชุดแรกของ Phase 1 อยู่ แต่ source of truth ฝั่ง runtime ปัจจุบันคือ `prisma/schema.prisma`
+
+ความจริงสำคัญที่เพิ่มเข้ามาแล้วใน Prisma schema ปัจจุบัน:
+
+- primary keys ใน runtime implementation ปัจจุบันเป็น `string`/`cuid()` ไม่ใช่ `INT` auto increment
+- `products` มี metadata เพิ่ม:
+	- `trackStock`
+	- `stockOnHand`
+	- `membershipPeriod`
+	- `membershipDurationDays`
+	- `revenueAccountId`
+- มีตาราง `member_subscriptions` สำหรับสมาชิกที่เกิดจาก membership checkout จริงแล้ว
+- `orders` และ `order_items` ใช้ชื่อฟิลด์และ relation ตาม Prisma models ปัจจุบัน ไม่ได้ตรงกับ naming ชุดแรกทุกจุด
+
+ดังนั้น:
+
+- ใช้เอกสารนี้เป็น conceptual design/reference ได้
+- ถ้าต้องการ field-level truth สำหรับ implementation ปัจจุบัน ให้ยึด `prisma/schema.prisma` ก่อนเสมอ
+
 ---
 
 ## 1. Design Principles (หลักการออกแบบฐานข้อมูล)

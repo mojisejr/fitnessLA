@@ -668,7 +668,20 @@ export default function PosPage() {
       setCustomerTaxId("");
       await Promise.all([refreshProducts(), refreshShiftInventory()]);
     } catch (error) {
-      setErrorMessage(getErrorMessage(error, "ไม่สามารถสร้างรายการขายได้"));
+      const errorCode = getErrorCode(error);
+      if (errorCode === "SHIFT_OWNER_MISMATCH") {
+        setErrorMessage("session กับกะปัจจุบันไม่ตรงกัน กรุณาเข้าสู่ระบบใหม่หรือเปิดกะใหม่ก่อนคิดเงิน");
+      } else if (errorCode === "SHIFT_NOT_OPEN" || errorCode === "SHIFT_NOT_FOUND") {
+        setErrorMessage("ไม่พบกะเปิดที่ใช้งานได้ กรุณาตรวจสอบหน้าเปิดกะแล้วลองใหม่");
+      } else if (errorCode === "PRODUCT_NOT_FOUND") {
+        setErrorMessage("มีสินค้าบางรายการไม่พร้อมขายแล้ว กรุณารีเฟรชรายการสินค้าและเลือกใหม่");
+      } else if (errorCode === "INSUFFICIENT_STOCK") {
+        setErrorMessage("สต็อกสินค้าไม่พอสำหรับบิลนี้ กรุณาปรับจำนวนก่อนคิดเงิน");
+      } else if (errorCode === "UNAUTHENTICATED") {
+        setErrorMessage("session หมดอายุ กรุณาเข้าสู่ระบบใหม่ก่อนคิดเงิน");
+      } else {
+        setErrorMessage(getErrorMessage(error, "ไม่สามารถสร้างรายการขายได้"));
+      }
     } finally {
       setIsSubmitting(false);
     }
