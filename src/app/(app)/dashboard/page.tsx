@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useAuth } from "@/features/auth/auth-provider";
+import { generalLedgerEnabled } from "@/lib/feature-flags";
 import { formatCurrency, formatDateTime } from "@/lib/utils";
 
 export default function DashboardPage() {
@@ -21,7 +22,6 @@ export default function DashboardPage() {
         { href: "/reports/daily-summary", label: "สรุปยอด", description: "ดูยอดรวมรายวัน รายสัปดาห์ รายเดือน หรือช่วงเวลาที่กำหนด" },
         { href: "/reports/shift-summary", label: "สรุปกะ", description: "ดูโครงรายงานกระทบยอดกะและสถานะข้อมูลที่เชื่อมแล้ว" },
         { href: "/reports/profit-loss", label: "กำไรขาดทุน", description: "ดูรายได้ รายจ่าย และผลการดำเนินงานแบบ real-time จากฐานข้อมูลจริง" },
-        { href: "/reports/general-ledger", label: "General Ledger", description: "ดาวน์โหลด CSV รายการ journal จากฐานข้อมูลจริงตามช่วงวันที่ที่เลือก" },
     ];
 
     return (
@@ -90,7 +90,7 @@ export default function DashboardPage() {
                     .filter((item) => item.href !== "/reports/daily-summary" || session.role !== "CASHIER")
                     .filter((item) => item.href !== "/coa" || session.role !== "CASHIER")
                     .filter((item) => item.href !== "/reports/profit-loss" || session.role === "OWNER")
-                    .filter((item) => item.href !== "/reports/general-ledger" || session.role !== "CASHIER")
+                    .filter((item) => generalLedgerEnabled || item.href !== "/reports/general-ledger")
                     .filter((item) => item.href !== "/admin/users" || session.role === "OWNER")
                     .map((item) => (
                         <Link

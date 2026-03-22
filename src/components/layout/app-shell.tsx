@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { LogoSlot } from "@/components/branding/logo-slot";
 import { useAppAdapter } from "@/features/adapters/adapter-provider";
 import { useAuth } from "@/features/auth/auth-provider";
+import { generalLedgerEnabled } from "@/lib/feature-flags";
 import type { Role } from "@/lib/contracts";
 import { cn, formatCurrency, formatDateTime } from "@/lib/utils";
 
@@ -27,7 +28,6 @@ const navItems: NavItem[] = [
     { href: "/reports/daily-summary", label: "สรุปยอด", roles: ["OWNER", "ADMIN"] },
     { href: "/reports/shift-summary", label: "สรุปกะ", roles: ["OWNER", "ADMIN"] },
     { href: "/reports/profit-loss", label: "กำไรขาดทุน", roles: ["OWNER"] },
-    { href: "/reports/general-ledger", label: "General Ledger", roles: ["OWNER", "ADMIN"] },
     { href: "/admin/users", label: "สร้างผู้ใช้", roles: ["OWNER"] },
 ];
 
@@ -48,10 +48,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     const adapter = useAppAdapter();
     const { session, activeShift, logout, switchRole, mode } = useAuth();
     const [activeShiftSales, setActiveShiftSales] = useState<number | null>(null);
-
-    if (!session) {
-        return null;
-    }
 
     useEffect(() => {
         let isActive = true;
@@ -88,7 +84,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         };
     }, [adapter, activeShift]);
 
-    const visibleNav = navItems.filter((item) => item.roles.includes(session.role));
+    if (!session) {
+        return null;
+    }
+
+    const visibleNav = navItems.filter(
+        (item) => item.roles.includes(session.role) && (generalLedgerEnabled || item.href !== "/reports/general-ledger"),
+    );
 
     return (
         <div className="min-h-screen px-4 py-4 md:px-6 md:py-6">

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { RoleGuard } from "@/components/guards/role-guard";
+import { generalLedgerEnabled } from "@/lib/feature-flags";
 import { getErrorMessage } from "@/lib/utils";
 
 function todayAsInput() {
@@ -23,6 +24,22 @@ export default function GeneralLedgerPage() {
   const [isDownloading, setIsDownloading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  if (!generalLedgerEnabled) {
+    return (
+      <RoleGuard allowedRoles={["OWNER", "ADMIN"]}>
+        <div className="space-y-6">
+          <section className="rounded-[28px] border border-line bg-surface-strong p-6 md:p-8">
+            <p className="text-xs uppercase tracking-[0.28em] text-muted">Report disabled</p>
+            <h1 className="mt-3 text-3xl font-semibold text-foreground">General Ledger</h1>
+            <p className="mt-3 max-w-3xl text-sm leading-7 text-muted">
+              หน้ารายงานนี้ถูกปิดใช้งานชั่วคราว และซ่อนออกจากเมนูหลักก่อนจนกว่าจะเปิดกลับมาอีกครั้ง
+            </p>
+          </section>
+        </div>
+      </RoleGuard>
+    );
+  }
 
   async function handleDownload() {
     setErrorMessage(null);
