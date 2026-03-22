@@ -22,6 +22,70 @@ export interface UserSession {
   full_name: string;
   role: Role;
   active_shift_id: EntityId | null;
+  scheduled_start_time?: string | null;
+  scheduled_end_time?: string | null;
+  allowed_machine_ip?: string | null;
+}
+
+export type AttendanceArrivalStatus = "EARLY" | "ON_TIME" | "LATE" | "UNSCHEDULED";
+
+export type AttendanceDepartureStatus = "PENDING" | "ON_TIME" | "EARLY_LEAVE" | "OVERTIME";
+
+export interface StaffAttendanceRecord {
+  attendance_id: EntityId;
+  user_id: EntityId;
+  full_name: string;
+  username: string;
+  role: Role;
+  work_date: string;
+  scheduled_start_time: string | null;
+  scheduled_end_time: string | null;
+  checked_in_at: string | null;
+  checked_out_at: string | null;
+  arrival_status: AttendanceArrivalStatus;
+  departure_status: AttendanceDepartureStatus;
+  late_minutes: number;
+  early_arrival_minutes: number;
+  overtime_minutes: number;
+  early_leave_minutes: number;
+  machine_ip: string | null;
+  note?: string | null;
+}
+
+export interface ManagedStaffUserRecord extends AdminUserRecord {
+  scheduled_start_time: string | null;
+  scheduled_end_time: string | null;
+  allowed_machine_ip: string | null;
+  latest_attendance: StaffAttendanceRecord | null;
+}
+
+export interface AttendanceDeviceRecord {
+  device_id: EntityId;
+  label: string;
+  registered_ip: string | null;
+  user_agent: string | null;
+  approved_by_user_id: EntityId;
+  approved_by_name: string;
+  is_active: boolean;
+  last_seen_at: string | null;
+  created_at: string;
+}
+
+export interface AttendanceDeviceStatusRecord {
+  current_ip: string | null;
+  current_user_agent: string | null;
+  current_device_authorized: boolean;
+  active_device: AttendanceDeviceRecord | null;
+}
+
+export interface AttendanceStatusRecord {
+  today: StaffAttendanceRecord | null;
+  current_ip: string | null;
+  device_allowed: boolean;
+  can_check_in: boolean;
+  can_check_out: boolean;
+  has_active_shift: boolean;
+  active_device: AttendanceDeviceRecord | null;
 }
 
 export interface ShiftOpenResult {
@@ -204,6 +268,20 @@ export interface ShiftInventorySummaryRow {
   remaining_stock: number;
 }
 
+export interface ProductStockAdjustmentRecord {
+  adjustment_id: EntityId;
+  product_id: EntityId;
+  product_name: string;
+  product_sku: string;
+  previous_stock: number;
+  added_quantity: number;
+  new_stock: number;
+  note?: string | null;
+  created_by_user_id: EntityId;
+  created_by_name: string;
+  created_at: string;
+}
+
 export interface MockExpenseAccount {
   account_id: EntityId;
   account_code: string;
@@ -229,6 +307,9 @@ export interface AdminUserRecord {
   phone?: string | null;
   email?: string;
   role: Role;
+  scheduled_start_time?: string | null;
+  scheduled_end_time?: string | null;
+  allowed_machine_ip?: string | null;
 }
 
 export interface MockPendingUser {

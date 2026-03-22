@@ -31,6 +31,8 @@ const seedUsers = [
     email: "admin@fitnessla.local",
     username: "admin",
     role: "ADMIN",
+    scheduledStartTime: "08:00",
+    scheduledEndTime: "17:00",
   },
   {
     name: "Staff FitnessLA",
@@ -38,6 +40,8 @@ const seedUsers = [
     username: "staff",
     // Current app guard accepts CASHIER for frontline staff.
     role: "CASHIER",
+    scheduledStartTime: "08:00",
+    scheduledEndTime: "17:00",
   },
 ];
 
@@ -121,6 +125,8 @@ async function seedRealMode() {
         role: user.role,
         isActive: true,
         emailVerified: true,
+        scheduledStartTime: user.scheduledStartTime ?? null,
+        scheduledEndTime: user.scheduledEndTime ?? null,
         updatedAt: new Date(),
       },
       create: {
@@ -132,6 +138,8 @@ async function seedRealMode() {
         image: null,
         isActive: true,
         emailVerified: true,
+        scheduledStartTime: user.scheduledStartTime ?? null,
+        scheduledEndTime: user.scheduledEndTime ?? null,
         createdAt: new Date(),
         updatedAt: new Date(),
       },

@@ -20,6 +20,7 @@ const navItems: NavItem[] = [
     { href: "/dashboard", label: "ภาพรวม", roles: ["OWNER", "ADMIN", "CASHIER"] },
     { href: "/shift/open", label: "เปิดกะ", roles: ["OWNER", "ADMIN", "CASHIER"] },
     { href: "/pos", label: "POS", roles: ["OWNER", "ADMIN", "CASHIER"] },
+    { href: "/pos/products", label: "สินค้า POS", roles: ["OWNER", "ADMIN"] },
     { href: "/expenses", label: "รายจ่าย", roles: ["OWNER", "ADMIN", "CASHIER"] },
     { href: "/shift/close", label: "ปิดกะ", roles: ["OWNER", "ADMIN", "CASHIER"] },
     { href: "/members", label: "สมาชิก", roles: ["OWNER", "ADMIN"] },

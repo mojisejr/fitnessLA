@@ -48,6 +48,26 @@ export type UpdateProductInputDto = {
   membership_duration_days?: number | null;
 };
 
+export type ProductStockAdjustmentDto = {
+  adjustment_id: string;
+  product_id: string;
+  product_name: string;
+  product_sku: string;
+  previous_stock: number;
+  added_quantity: number;
+  new_stock: number;
+  note?: string | null;
+  created_by_user_id: string;
+  created_by_name: string;
+  created_at: string;
+};
+
+export type CreateProductStockAdjustmentInputDto = {
+  product_id: string;
+  added_quantity: number;
+  note?: string | null;
+};
+
 export type ActiveShiftDto = {
   shift_id: string;
   opened_at: string;
@@ -572,6 +592,36 @@ function mapProductRecord(product: {
   };
 }
 
+function mapProductStockAdjustmentRecord(record: {
+  id: string;
+  previousStock: number;
+  addedQuantity: number;
+  newStock: number;
+  note: string | null;
+  createdByUserId: string;
+  createdByUserName: string;
+  createdAt: Date;
+  product: {
+    id: string;
+    name: string;
+    sku: string;
+  };
+}): ProductStockAdjustmentDto {
+  return {
+    adjustment_id: record.id,
+    product_id: record.product.id,
+    product_name: record.product.name,
+    product_sku: record.product.sku,
+    previous_stock: record.previousStock,
+    added_quantity: record.addedQuantity,
+    new_stock: record.newStock,
+    note: record.note,
+    created_by_user_id: record.createdByUserId,
+    created_by_name: record.createdByUserName,
+    created_at: record.createdAt.toISOString(),
+  };
+}
+
 async function resolveRevenueAccountId(
   client: Prisma.TransactionClient | typeof prisma,
   requestedId: string | undefined,
@@ -807,6 +857,112 @@ export async function listProducts(): Promise<ProductDto[]> {
       revenueAccountId: product.revenueAccountId,
     }),
   );
+}
+
+export async function listProductStockAdjustments(productId?: string): Promise<ProductStockAdjustmentDto[]> {
+  const normalizedProductId = productId?.trim();
+
+  const adjustments = await prisma.productStockAdjustment.findMany({
+    where: normalizedProductId ? { productId: normalizedProductId } : undefined,
+    orderBy: [{ createdAt: "desc" }],
+    take: 60,
+    select: {
+      id: true,
+      previousStock: true,
+      addedQuantity: true,
+      newStock: true,
+      note: true,
+      createdByUserId: true,
+      createdByUserName: true,
+      createdAt: true,
+      product: {
+        select: {
+          id: true,
+          name: true,
+          sku: true,
+        },
+      },
+    },
+  });
+
+  return adjustments.map(mapProductStockAdjustmentRecord);
+}
+
+export async function addProductStockAdjustment(
+  requesterId: string,
+  requesterName: string,
+  input: CreateProductStockAdjustmentInputDto,
+): Promise<ProductStockAdjustmentDto> {
+  const productId = input.product_id.trim();
+  const note = input.note?.trim() ? input.note.trim() : null;
+
+  if (!productId) {
+    throw new Error("PRODUCT_NOT_FOUND");
+  }
+
+  if (!Number.isInteger(input.added_quantity) || input.added_quantity <= 0) {
+    throw new Error("INVALID_STOCK_ADDITION");
+  }
+
+  const adjustment = await prisma.$transaction(async (tx) => {
+    const product = await tx.product.findUnique({
+      where: { id: productId },
+      select: {
+        id: true,
+        sku: true,
+        name: true,
+        trackStock: true,
+        stockOnHand: true,
+      },
+    });
+
+    if (!product) {
+      throw new Error("PRODUCT_NOT_FOUND");
+    }
+
+    if (!product.trackStock) {
+      throw new Error("PRODUCT_STOCK_NOT_TRACKED");
+    }
+
+    const previousStock = product.stockOnHand ?? 0;
+    const newStock = previousStock + input.added_quantity;
+
+    await tx.product.update({
+      where: { id: product.id },
+      data: { stockOnHand: newStock },
+    });
+
+    return tx.productStockAdjustment.create({
+      data: {
+        productId: product.id,
+        previousStock,
+        addedQuantity: input.added_quantity,
+        newStock,
+        note,
+        createdByUserId: requesterId,
+        createdByUserName: requesterName.trim() || requesterId,
+      },
+      select: {
+        id: true,
+        previousStock: true,
+        addedQuantity: true,
+        newStock: true,
+        note: true,
+        createdByUserId: true,
+        createdByUserName: true,
+        createdAt: true,
+        product: {
+          select: {
+            id: true,
+            name: true,
+            sku: true,
+          },
+        },
+      },
+    });
+  });
+
+  return mapProductStockAdjustmentRecord(adjustment);
 }
 
 export async function listMembers(): Promise<MemberSubscriptionRecord[]> {

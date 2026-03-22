@@ -83,8 +83,8 @@ function requireEnv(name: string) {
 
 function getSmokeAccount(): SmokeAccount {
   return {
-    username: requireEnv("PLAYWRIGHT_REAL_SMOKE_USERNAME"),
-    password: requireEnv("PLAYWRIGHT_REAL_SMOKE_PASSWORD"),
+    username: process.env.PLAYWRIGHT_REAL_SMOKE_USERNAME?.trim() || process.env.PLAYWRIGHT_REAL_OWNER_USERNAME?.trim() || "owner",
+    password: process.env.PLAYWRIGHT_REAL_SMOKE_PASSWORD?.trim() || process.env.PLAYWRIGHT_REAL_OWNER_PASSWORD?.trim() || process.env.FITNESSLA_SEED_PASSWORD?.trim() || "ChangeMe123!",
   };
 }
 
@@ -211,24 +211,78 @@ async function openShiftFromUi(page: Page, startingCash: number) {
   await expect(page).toHaveURL(/\/shift\/open$/);
   await expect(page.getByRole("heading", { name: "เปิดกะ" })).toBeVisible({ timeout: 20_000 });
 
-  if (!(await page.getByText("ตอนนี้มีกะที่เปิดอยู่แล้ว").count())) {
-    await page.getByLabel("เงินทอนตั้งต้น").fill(String(startingCash));
-    await page.getByRole("button", { name: "ยืนยันเปิดกะ" }).click();
+  const existingShiftNotice = page.getByText("ตอนนี้มีกะที่เปิดอยู่แล้ว");
+  const activeShiftCard = page.locator("section").filter({ hasText: "ตอนนี้มีกะที่เปิดอยู่แล้ว" }).first();
 
-    await expect(page.getByText("ตอนนี้มีกะที่เปิดอยู่แล้ว")).toBeVisible({ timeout: 20_000 });
+  const activeBeforeOpen = await getActiveShift(page);
+
+  if (activeBeforeOpen.status === 404) {
+    const startingCashInput = page.getByLabel("เงินทอนตั้งต้น");
+
+    if (await existingShiftNotice.isVisible().catch(() => false)) {
+      await expect(existingShiftNotice).toBeVisible({ timeout: 20_000 });
+      return parseCurrencyAmount(await activeShiftCard.innerText());
+    } else {
+      await expect(startingCashInput).toBeVisible({ timeout: 20_000 });
+      await startingCashInput.fill(String(startingCash));
+      await page.getByRole("button", { name: "ยืนยันเปิดกะ" }).click();
+    }
+  } else {
+    expect(activeBeforeOpen.status, JSON.stringify(activeBeforeOpen.body)).toBe(200);
+    return Number((activeBeforeOpen.body as ShiftResponse).starting_cash);
   }
 
-  const activeShiftCardText = await page.locator("section").filter({ hasText: "ตอนนี้มีกะที่เปิดอยู่แล้ว" }).first().innerText();
-  return parseCurrencyAmount(activeShiftCardText);
+  await expect(activeShiftCard).toBeVisible({ timeout: 20_000 });
+  return parseCurrencyAmount(await activeShiftCard.innerText());
+}
+
+async function waitForActiveShift(page: Page) {
+  await expect
+    .poll(async () => {
+      const active = await getActiveShift(page);
+
+      if (active.status !== 200) {
+        return null;
+      }
+
+      return Number((active.body as ShiftResponse).starting_cash);
+    }, { timeout: 20_000 })
+    .not.toBeNull();
 }
 
 async function openPosReady(page: Page) {
-  await page.getByRole("link", { name: "POS เปิด" }).click();
-  await expect(page).toHaveURL(/\/pos$/);
-  await expect(page.getByRole("heading", { name: "เคาน์เตอร์ขาย LA GYM" })).toBeVisible({ timeout: 20_000 });
-  await expect(page.getByText("กำลังโหลดสินค้า...")).toHaveCount(0);
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    await page.getByRole("link", { name: "POS เปิด", exact: true }).click();
+    await expect(page).toHaveURL(/\/pos$/);
+
+    try {
+      await expect(page.getByRole("heading", { name: "เคาน์เตอร์ขาย LA GYM" })).toBeVisible({ timeout: 20_000 });
+      await expect(page.getByText("กำลังโหลดสินค้า...")).toHaveCount(0);
+      return;
+    } catch (error) {
+      const shiftGuardHeading = page.getByRole("heading", { name: "หน้านี้จะใช้งานได้เมื่อมีกะที่เปิดอยู่" });
+
+      if (await shiftGuardHeading.isVisible().catch(() => false)) {
+        await page.waitForTimeout(2_000);
+        continue;
+      }
+
+      if (attempt === 3) {
+        throw error;
+      }
+
+      await page.waitForTimeout(2_000);
+    }
+  }
+}
+
+async function openProductManager(page: Page) {
+  await page.getByRole("link", { name: "สินค้า POS เปิด", exact: true }).click();
+  await expect(page).toHaveURL(/\/pos\/products$/);
+  await expect(page.getByRole("heading", { name: "ย้ายการจัดการสินค้าไปหน้าใหม่แบบตารางแยกหมวด" })).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByText("กำลังโหลดรายการสินค้า...")).toHaveCount(0);
   await expect(page.getByText("กำลังโหลดตัวเลือกบัญชีรายได้...")).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "เพิ่มสินค้าใหม่" })).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByRole("button", { name: "เพิ่มสินค้าใหม่" }).first()).toBeVisible({ timeout: 20_000 });
 }
 
 async function createAndEditProduct(page: Page) {
@@ -238,7 +292,9 @@ async function createAndEditProduct(page: Page) {
   const updatedSku = `LIVE-EDIT-${uniqueSuffix}`;
   const updatedName = `Live Smoke Product Updated ${uniqueSuffix}`;
 
-  await page.getByRole("button", { name: "เพิ่มสินค้าใหม่" }).click();
+  await openProductManager(page);
+
+  await page.getByRole("button", { name: "เพิ่มสินค้าใหม่" }).first().click();
   await page.getByLabel("SKU").fill(createdSku);
   await page.getByLabel("ชื่อสินค้า").fill(createdName);
   await page.getByLabel("ราคา").fill("89");
@@ -248,20 +304,30 @@ async function createAndEditProduct(page: Page) {
   await page.getByRole("button", { name: "สร้างสินค้าใหม่" }).click();
 
   await expect(page.getByText("เพิ่มสินค้าใหม่เรียบร้อยแล้ว")).toBeVisible({ timeout: 20_000 });
-  await expect(page.getByLabel("เลือกสินค้าเพื่อแก้ไข")).toContainText(createdName);
+  await page.getByLabel("ค้นหาสินค้า").fill(createdName);
+  const createdRow = page.getByLabel(`Product row ${createdName}`);
+  await expect(createdRow).toBeVisible({ timeout: 20_000 });
 
-  await page.getByRole("button", { name: "แก้ไขสินค้าเดิม" }).click();
-  await page.getByLabel("เลือกสินค้าเพื่อแก้ไข").selectOption({ label: createdName });
+  await createdRow.getByRole("button").first().click();
   await page.getByLabel("SKU").fill(updatedSku);
   await page.getByLabel("ชื่อสินค้า").fill(updatedName);
   await page.getByLabel("ราคา").fill("119");
-  await page.getByLabel("สต็อกคงเหลือ").fill("11");
   await page.getByLabel("คำโปรยสินค้า").fill("Live real-smoke update flow");
   await page.getByLabel("หมวดขาย POS").selectOption("FOOD");
   await page.getByRole("button", { name: "บันทึกสินค้า" }).click();
 
-  await expect(page.getByText("อัปเดตสินค้าและ stock เรียบร้อยแล้ว")).toBeVisible({ timeout: 20_000 });
-  await expect(page.getByLabel("เลือกสินค้าเพื่อแก้ไข")).toContainText(updatedName);
+  await expect(page.getByText("อัปเดตข้อมูลสินค้าเรียบร้อยแล้ว")).toBeVisible({ timeout: 20_000 });
+  await page.getByLabel("ค้นหาสินค้า").fill(updatedName);
+
+  const updatedRow = page.getByLabel(`Product row ${updatedName}`);
+  await updatedRow.getByRole("button", { name: `เติมสินค้า ${updatedName}` }).click();
+
+  const restockRow = page.getByLabel(`Restock row ${updatedName}`);
+  await restockRow.getByLabel(`เติมเพิ่ม ${updatedName}`).fill("2");
+  await restockRow.getByLabel(`หมายเหตุการเติมสินค้า ${updatedName}`).fill("Live real-smoke inline restock flow");
+  await restockRow.getByRole("button", { name: "บันทึกการเติมสินค้า" }).click();
+
+  await expect(updatedRow).toContainText("11", { timeout: 20_000 });
 
   return {
     sku: updatedSku,
@@ -315,6 +381,19 @@ function isSellable(product: Product) {
 
 function isTrainingProduct(product: Product) {
   return product.sku.startsWith("PT-") || product.pos_category === "TRAINING";
+}
+
+function isHistoricalSmokeProduct(product: Product, currentSmokeSku: string) {
+  if (product.sku === currentSmokeSku) {
+    return false;
+  }
+
+  return (
+    product.sku.startsWith("LIVE-SMOKE-") ||
+    product.sku.startsWith("LIVE-EDIT-") ||
+    product.sku.startsWith("SMOKE-") ||
+    /\bsmoke\b/i.test(product.name)
+  );
 }
 
 function chunkProducts(products: Product[], size: number) {
@@ -384,6 +463,13 @@ async function checkoutCurrentCart(
   }
 
   await page.getByPlaceholder("ชื่อลูกค้า (ถ้ามี)").or(page.getByPlaceholder("ชื่อลูกค้าสมาชิก")).fill(customerName);
+  const orderResponsePromise = page
+    .waitForResponse(
+      (response) => response.request().method() === "POST" && response.url().includes("/api/v1/orders"),
+      { timeout: 20_000 },
+    )
+    .catch(() => null);
+
   await page.getByRole("button", { name: "คิดเงิน" }).click();
   await page.getByRole("button", { name: "ยืนยันการคิดเงิน" }).click();
 
@@ -404,7 +490,11 @@ async function checkoutCurrentCart(
 
     const bodyText = await page.locator("body").innerText();
     if (bodyText.includes("ไม่สามารถสร้างรายการขายได้")) {
-      throw new Error(`Checkout failed for ${customerName}: ไม่สามารถสร้างรายการขายได้`);
+      const orderResponse = await orderResponsePromise;
+      const responseDetails = orderResponse
+        ? ` [status=${orderResponse.status()} body=${await orderResponse.text()}]`
+        : "";
+      throw new Error(`Checkout failed for ${customerName}: ไม่สามารถสร้างรายการขายได้${responseDetails}`);
     }
 
     if (bodyText.includes("ไม่พบกะเปิดที่ใช้งานได้")) {
@@ -419,7 +509,11 @@ async function checkoutCurrentCart(
   }
 
   if (!createdOrder) {
-    throw new Error(`Checkout did not complete for ${customerName}`);
+    const orderResponse = await orderResponsePromise;
+    const responseDetails = orderResponse
+      ? ` [status=${orderResponse.status()} body=${await orderResponse.text()}]`
+      : "";
+    throw new Error(`Checkout did not complete for ${customerName}${responseDetails}`);
   }
 
   await expect(page.getByRole("button", { name: "คิดเงิน" })).toBeDisabled({ timeout: 30_000 });
@@ -428,7 +522,7 @@ async function checkoutCurrentCart(
 }
 
 async function reopenPos(page: Page) {
-  await page.goto("/dashboard");
+  await page.getByRole("link", { name: "ภาพรวม เปิด", exact: true }).click();
   await expect(page).toHaveURL(/\/dashboard$/);
   await openPosReady(page);
 }
@@ -438,11 +532,11 @@ async function sellChunkWithFallback(
   businessDate: string,
   chunk: Product[],
   customerNamePrefix: string,
-  chunkNumber: number,
+  saleLabel: string,
   soldNameCounts: Map<string, number>,
   activeTrainerId?: string | number,
 ): Promise<number> {
-  const chunkCustomerName = `${customerNamePrefix} #${chunkNumber}`;
+  const chunkCustomerName = `${customerNamePrefix} ${saleLabel}`;
 
   for (const product of chunk) {
     await addProductToCart(page, product);
@@ -482,7 +576,7 @@ async function sellChunkWithFallback(
       businessDate,
       leftChunk,
       customerNamePrefix,
-      chunkNumber,
+      `${saleLabel}-L`,
       soldNameCounts,
       activeTrainerId,
     );
@@ -490,8 +584,8 @@ async function sellChunkWithFallback(
       page,
       businessDate,
       rightChunk,
-      `${customerNamePrefix}-split`,
-      chunkNumber,
+      customerNamePrefix,
+      `${saleLabel}-R`,
       soldNameCounts,
       activeTrainerId,
     );
@@ -511,11 +605,13 @@ test.describe("live POS full smoke", () => {
 
     await loginAs(page, account);
     await expectSession(page);
+    await closeExistingShiftIfPresent(page);
     const startingCash = await openShiftFromUi(page, requestedStartingCash);
 
     await openPosReady(page);
 
     const editedProduct = await createAndEditProduct(page);
+  await openPosReady(page);
 
     const productsResponse = await apiJson<Product[]>(page, "/api/v1/products");
     expect(productsResponse.status, JSON.stringify(productsResponse.body)).toBe(200);
@@ -532,7 +628,9 @@ test.describe("live POS full smoke", () => {
     expect(refreshedProductsResponse.status, JSON.stringify(refreshedProductsResponse.body)).toBe(200);
 
     const refreshedProducts = Array.isArray(refreshedProductsResponse.body) ? refreshedProductsResponse.body : [];
-    const productsToSell = refreshedProducts.filter(isSellable);
+    const productsToSell = refreshedProducts.filter(
+      (product) => isSellable(product) && !isHistoricalSmokeProduct(product, editedProduct.sku),
+    );
     const editedProductFromApi = productsToSell.find((product) => product.sku === editedProduct.sku);
     const membershipProducts = productsToSell.filter((product) => product.product_type === "MEMBERSHIP");
     const trainingProducts = productsToSell.filter(isTrainingProduct).filter((product) => product.product_type !== "MEMBERSHIP");
@@ -563,7 +661,7 @@ test.describe("live POS full smoke", () => {
         businessDate,
         saleChunk,
         customerName,
-        chunkIndex + 1,
+        `chunk-${chunkIndex + 1}`,
         soldNameCounts,
         activeTrainer?.trainer_id,
       );
@@ -581,7 +679,7 @@ test.describe("live POS full smoke", () => {
     expect(beforeCloseSummary.status, JSON.stringify(beforeCloseSummary.body)).toBe(200);
     const beforeCloseCount = Array.isArray(beforeCloseSummary.body.shift_rows) ? beforeCloseSummary.body.shift_rows.length : 0;
 
-    await page.getByRole("link", { name: "ปิดกะ เปิด" }).click();
+    await page.getByRole("link", { name: "ปิดกะ เปิด", exact: true }).click();
     await expect(page).toHaveURL(/\/shift\/close$/);
     await expect(page.getByRole("heading", { name: "ปิดกะ" })).toBeVisible({ timeout: 20_000 });
     await expect(page.getByText("กำลังโหลดรายการขายของกะ...")).toHaveCount(0);
@@ -591,8 +689,8 @@ test.describe("live POS full smoke", () => {
     await page.getByLabel("หมายเหตุปิดกะ").fill(`Live smoke closed after ${productsToSell.length} sellable products across ${saleChunks.length} orders`);
     await page.getByRole("button", { name: "ส่งผลการนับเงิน" }).click();
 
-    await expect(page.getByText("ยอดคาดหวัง")).toBeVisible({ timeout: 30_000 });
-    await expect(page.getByText("ไม่พบส่วนต่าง")).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole("button", { name: "ล้างผลลัพธ์นี้" })).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText("ไม่พบส่วนต่าง", { exact: true })).toBeVisible({ timeout: 30_000 });
 
     const closedSummary = await apiJson<{ shift_rows: DailyShiftRow[] }>(
       page,

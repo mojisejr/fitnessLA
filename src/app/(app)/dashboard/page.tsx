@@ -1,16 +1,52 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@/features/auth/auth-provider";
 import { generalLedgerEnabled } from "@/lib/feature-flags";
 import { formatCurrency, formatDateTime } from "@/lib/utils";
+import type { AttendanceStatusRecord, StaffAttendanceRecord } from "@/lib/contracts";
+
+type OwnerAttendanceOverview = {
+    users: Array<{
+        user_id: string | number;
+        full_name: string;
+        username: string;
+        role: "ADMIN" | "CASHIER";
+        scheduled_start_time: string | null;
+        scheduled_end_time: string | null;
+        allowed_machine_ip: string | null;
+        latest_attendance: StaffAttendanceRecord | null;
+    }>;
+    attendance_rows: StaffAttendanceRecord[];
+};
+
+async function fetchJson<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
+    const response = await fetch(input, {
+        ...init,
+        credentials: "include",
+        headers: new Headers(init?.headers),
+    });
+
+    if (!response.ok) {
+        const body = await response.json().catch(() => ({ message: "Request failed" }));
+        throw body;
+    }
+
+    return response.json() as Promise<T>;
+}
+
+function formatWorkDate(dateKey: string) {
+    return new Intl.DateTimeFormat("th-TH", { dateStyle: "medium" }).format(new Date(`${dateKey}T00:00:00+07:00`));
+}
 
 export default function DashboardPage() {
     const { session, activeShift, lastClosedShift } = useAuth();
-
-    if (!session) {
-        return null;
-    }
+    const [attendanceStatus, setAttendanceStatus] = useState<AttendanceStatusRecord | null>(null);
+    const [attendanceMessage, setAttendanceMessage] = useState<string | null>(null);
+    const [attendanceError, setAttendanceError] = useState<string | null>(null);
+    const [isAttendanceBusy, setIsAttendanceBusy] = useState(false);
+    const [ownerOverview, setOwnerOverview] = useState<OwnerAttendanceOverview | null>(null);
 
     const quickLinks = [
         { href: "/shift/open", label: "เปิดกะ", description: "เริ่มงานแคชเชียร์ด้วยเงินทอนตั้งต้น" },
@@ -23,6 +59,123 @@ export default function DashboardPage() {
         { href: "/reports/shift-summary", label: "สรุปกะ", description: "ดูโครงรายงานกระทบยอดกะและสถานะข้อมูลที่เชื่อมแล้ว" },
         { href: "/reports/profit-loss", label: "กำไรขาดทุน", description: "ดูรายได้ รายจ่าย และผลการดำเนินงานแบบ real-time จากฐานข้อมูลจริง" },
     ];
+
+    useEffect(() => {
+        let ignore = false;
+
+        async function loadAttendanceData() {
+            if (!session) {
+                return;
+            }
+
+            try {
+                if (session.role === "ADMIN" || session.role === "CASHIER") {
+                    const status = await fetchJson<AttendanceStatusRecord>("/api/v1/attendance/status");
+                    if (!ignore) {
+                        setAttendanceStatus(status);
+                    }
+                }
+
+                if (session.role === "OWNER") {
+                    const overview = await fetchJson<OwnerAttendanceOverview>("/api/v1/admin/users");
+                    if (!ignore) {
+                        setOwnerOverview(overview);
+                    }
+                }
+            } catch (error) {
+                if (!ignore) {
+                    const message =
+                        typeof error === "object" && error !== null && "message" in error && typeof error.message === "string"
+                            ? error.message
+                            : "ไม่สามารถโหลดข้อมูล attendance ได้";
+                    setAttendanceError(message);
+                }
+            }
+        }
+
+        void loadAttendanceData();
+
+        return () => {
+            ignore = true;
+        };
+    }, [session]);
+
+    async function reloadAttendanceStatus() {
+        if (!session) {
+            return;
+        }
+
+        if (session.role !== "ADMIN" && session.role !== "CASHIER") {
+            return;
+        }
+
+        const status = await fetchJson<AttendanceStatusRecord>("/api/v1/attendance/status");
+        setAttendanceStatus(status);
+    }
+
+    async function handleCheckIn() {
+        if (!session) {
+            return;
+        }
+
+        setAttendanceError(null);
+        setAttendanceMessage(null);
+        setIsAttendanceBusy(true);
+
+        try {
+            const response = await fetchJson<{ attendance: StaffAttendanceRecord; warning: { code: string; message: string } | null }>(
+                "/api/v1/attendance/check-in",
+                {
+                    method: "POST",
+                },
+            );
+            await reloadAttendanceStatus();
+            const message = response.warning?.message ?? "ลงชื่อเข้างานเรียบร้อยแล้ว";
+            setAttendanceMessage(message);
+
+            if (response.warning) {
+                window.alert(message);
+            }
+        } catch (error) {
+            setAttendanceError(
+                typeof error === "object" && error !== null && "message" in error && typeof error.message === "string"
+                    ? error.message
+                    : "ไม่สามารถลงชื่อเข้างานได้",
+            );
+        } finally {
+            setIsAttendanceBusy(false);
+        }
+    }
+
+    async function handleCheckOut() {
+        if (!session) {
+            return;
+        }
+
+        setAttendanceError(null);
+        setAttendanceMessage(null);
+        setIsAttendanceBusy(true);
+
+        try {
+            await fetchJson("/api/v1/attendance/check-out", {
+                method: "POST",
+            });
+            await reloadAttendanceStatus();
+            setAttendanceMessage("ลงชื่อออกงานเรียบร้อยแล้ว");
+        } catch (error) {
+            setAttendanceError(
+                typeof error === "object" && error !== null && "message" in error && typeof error.message === "string"
+                    ? error.message
+                    : "ไม่สามารถลงชื่อออกงานได้",
+            );
+        } finally {
+            setIsAttendanceBusy(false);
+        }
+    }
+
+    if (!session) {
+        return null;
+    }
 
     return (
         <div className="space-y-6">
@@ -82,6 +235,125 @@ export default function DashboardPage() {
                         <li>หน้าปิดกะยังซ่อนยอดคาดหวังก่อนยืนยันตามกติกาการนับเงินแบบไม่เห็นยอดคาดหวัง</li>
                         <li>หน้า POS และหน้าหลักอื่น ๆ พร้อมสลับระหว่างข้อมูลทดลองกับข้อมูลจริงตามโหมดที่เลือก</li>
                         <li>รายงานบางชุดยังอยู่ระหว่างขยายข้อมูลฝั่งระบบส่วนกลาง</li>
+                    </ul>
+                </div>
+            </section>
+
+            <section className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
+                {session.role === "ADMIN" || session.role === "CASHIER" ? (
+                    <div className="rounded-[28px] border border-line bg-surface-strong p-6">
+                        <p className="text-xs uppercase tracking-[0.16em] text-muted">ลงชื่อเข้างานประจำวัน</p>
+                        <h2 className="mt-3 text-2xl font-semibold text-foreground">เช็กเวลาเข้างานและออกงาน</h2>
+                        <p className="mt-3 text-sm leading-7 text-muted">
+                            owner ต้องอนุมัติ browser ของเครื่องลงเวลาไว้ก่อนจึงจะ check-in ได้ โดยกติกานี้ใช้เฉพาะตอนลงชื่อเข้างาน ไม่ได้บล็อกการ login จากเครื่องอื่น และ check-out จะทำได้หลังปิดกะเรียบร้อยแล้วเท่านั้น
+                        </p>
+
+                        <div className="mt-5 grid gap-3 sm:grid-cols-3">
+                            <div className="rounded-3xl border border-line bg-background/70 p-4">
+                                <p className="text-sm text-muted">เครื่องปัจจุบัน</p>
+                                <p className="mt-2 text-lg font-semibold text-foreground">{attendanceStatus?.current_ip ?? "ไม่พบ IP"}</p>
+                            </div>
+                            <div className="rounded-3xl border border-line bg-background/70 p-4">
+                                <p className="text-sm text-muted">สิทธิ์เครื่องสำหรับเข้างาน</p>
+                                <p className="mt-2 text-lg font-semibold text-foreground">
+                                    {attendanceStatus?.device_allowed ? "พร้อมใช้งาน" : "ยังไม่ได้รับอนุญาต"}
+                                </p>
+                            </div>
+                            <div className="rounded-3xl border border-line bg-background/70 p-4">
+                                <p className="text-sm text-muted">เครื่องลงเวลาที่อนุมัติ</p>
+                                <p className="mt-2 text-lg font-semibold text-foreground">{attendanceStatus?.active_device?.label ?? "ยังไม่ได้ตั้งค่า"}</p>
+                            </div>
+                        </div>
+
+                        {attendanceStatus?.today ? (
+                            <div className="mt-5 rounded-3xl border border-line bg-background/70 p-5">
+                                <p className="text-xs uppercase tracking-[0.16em] text-muted">บันทึกของวันนี้</p>
+                                <p className="mt-2 text-lg font-semibold text-foreground">{formatWorkDate(attendanceStatus.today.work_date)}</p>
+                                <p className="mt-2 text-sm text-muted">
+                                    เข้า: {attendanceStatus.today.checked_in_at ? formatDateTime(attendanceStatus.today.checked_in_at) : "-"}
+                                </p>
+                                <p className="mt-1 text-sm text-muted">
+                                    ออก: {attendanceStatus.today.checked_out_at ? formatDateTime(attendanceStatus.today.checked_out_at) : "-"}
+                                </p>
+                                <p className="mt-2 text-sm text-muted">
+                                    สถานะมา: {attendanceStatus.today.arrival_status}
+                                    {attendanceStatus.today.late_minutes > 0 ? ` (${attendanceStatus.today.late_minutes} นาที)` : attendanceStatus.today.early_arrival_minutes > 0 ? ` (${attendanceStatus.today.early_arrival_minutes} นาที)` : ""}
+                                </p>
+                            </div>
+                        ) : null}
+
+                        {attendanceError ? (
+                            <div className="mt-4 rounded-[20px] border border-warning bg-warning-soft px-4 py-3 text-sm text-foreground">
+                                {attendanceError}
+                            </div>
+                        ) : null}
+
+                        {attendanceMessage ? (
+                            <div className="mt-4 rounded-[20px] border border-accent bg-accent-soft px-4 py-3 text-sm text-foreground">
+                                {attendanceMessage}
+                            </div>
+                        ) : null}
+
+                        <div className="mt-5 flex flex-wrap gap-3">
+                            <button
+                                type="button"
+                                onClick={() => void handleCheckIn()}
+                                disabled={!attendanceStatus?.can_check_in || isAttendanceBusy}
+                                className="rounded-full bg-accent px-5 py-3 text-sm font-semibold text-black transition hover:bg-accent-strong disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                                {isAttendanceBusy ? "กำลังทำรายการ..." : "ลงชื่อเข้างาน"}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => void handleCheckOut()}
+                                disabled={!attendanceStatus?.can_check_out || isAttendanceBusy}
+                                className="rounded-full border border-line bg-background px-5 py-3 text-sm font-semibold text-foreground transition hover:border-accent disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                                ลงชื่อออกงาน
+                            </button>
+                        </div>
+                    </div>
+                ) : (
+                    <div className="rounded-[28px] border border-line bg-surface-strong p-6">
+                        <p className="text-xs uppercase tracking-[0.16em] text-muted">ภาพรวม attendance วันนี้</p>
+                        <h2 className="mt-3 text-2xl font-semibold text-foreground">ทีมหน้าร้านที่ owner ดูแล</h2>
+                        <div className="mt-5 space-y-3">
+                            {ownerOverview?.users?.slice(0, 6).map((user) => (
+                                <div key={String(user.user_id)} className="rounded-3xl border border-line bg-background/70 p-4">
+                                    <div className="flex items-start justify-between gap-4">
+                                        <div>
+                                            <p className="text-lg font-semibold text-foreground">{user.full_name}</p>
+                                            <p className="text-sm text-muted">@{user.username} · {user.role}</p>
+                                        </div>
+                                        <p className="text-sm text-muted">
+                                            {user.scheduled_start_time && user.scheduled_end_time ? `${user.scheduled_start_time} - ${user.scheduled_end_time}` : "ยังไม่ตั้งกะเวลา"}
+                                        </p>
+                                    </div>
+                                    <p className="mt-2 text-sm text-muted">
+                                        เครื่อง: {user.allowed_machine_ip ?? "ยังไม่กำหนด IP"}
+                                    </p>
+                                    <p className="mt-2 text-sm text-muted">
+                                        ล่าสุด: {user.latest_attendance ? `${formatWorkDate(user.latest_attendance.work_date)} · ${user.latest_attendance.arrival_status}` : "ยังไม่มีการลงชื่อ"}
+                                    </p>
+                                </div>
+                            ))}
+                            {!ownerOverview?.users?.length ? (
+                                <div className="rounded-3xl border border-dashed border-line bg-background p-5 text-sm text-muted">
+                                    ยังไม่มีข้อมูล attendance หรือรายชื่อ admin/cashier ในระบบ
+                                </div>
+                            ) : null}
+                        </div>
+                    </div>
+                )}
+
+                <div className="rounded-[28px] border border-line bg-surface-strong p-6">
+                    <p className="text-xs uppercase tracking-[0.16em] text-muted">เงื่อนไขเวลาเข้างาน</p>
+                    <ul className="mt-4 space-y-3 text-sm leading-7 text-muted">
+                        <li>admin และ cashier ต้องลงชื่อเข้างานจาก browser ของเครื่องที่ owner อนุมัติเท่านั้น</li>
+                        <li>การ login เข้าใช้งานระบบจากเครื่องอื่นยังทำได้ แต่ถ้าไม่ใช่เครื่องที่อนุมัติจะกดเข้างานไม่ได้</li>
+                        <li>หากมาสาย ระบบจะแจ้งเตือนทันทีหลัง check-in พร้อมนับจำนวนนาที</li>
+                        <li>check-out จะเปิดได้เมื่อไม่มีกะเปิดค้างอยู่ในระบบแล้ว</li>
+                        <li>owner สามารถอนุมัติเครื่องลงเวลาได้จากหน้าสร้างผู้ใช้เพื่อควบคุมรอบงานจริง</li>
                     </ul>
                 </div>
             </section>

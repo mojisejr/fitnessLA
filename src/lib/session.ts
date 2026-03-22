@@ -10,6 +10,9 @@ export type UserSession = {
   full_name: string;
   role: AppRole;
   active_shift_id: string | null;
+  scheduled_start_time: string | null;
+  scheduled_end_time: string | null;
+  allowed_machine_ip: string | null;
 };
 
 async function toUserSession(user: User): Promise<UserSession | null> {
@@ -33,6 +36,9 @@ async function toUserSession(user: User): Promise<UserSession | null> {
     full_name: user.name,
     role,
     active_shift_id: activeShift?.id ?? null,
+    scheduled_start_time: user.scheduledStartTime ?? null,
+    scheduled_end_time: user.scheduledEndTime ?? null,
+    allowed_machine_ip: user.allowedMachineIp ?? null,
   };
 }
 

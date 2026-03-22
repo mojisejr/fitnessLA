@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useDeferredValue, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { useAtomValue, useSetAtom } from "jotai";
 import { ShiftGuard } from "@/components/guards/shift-guard";
@@ -1025,6 +1026,24 @@ export default function PosPage() {
                             </section>
 
                             <section className="rounded-3xl border border-line bg-background/70 p-5 md:p-6">
+                                <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                                    <div>
+                                        <p className="text-xs font-semibold text-muted">จัดการสินค้าในหน้าใหม่</p>
+                                        <h2 className="mt-2 text-2xl font-semibold text-foreground">แยกหน้าคลังสินค้า POS เพื่อดูตารางสินค้าและเติมสต็อกได้ง่ายขึ้น</h2>
+                                        <p className="mt-3 max-w-3xl text-sm leading-7 text-muted">
+                                            หน้าใหม่จะแยกสินค้าตามหมวดในรูปแบบตาราง และมีฟอร์มเติมสต็อกจากยอดเดิม เช่น เหลือ 3 ชิ้น เติมเพิ่ม 10 ชิ้น แล้วบันทึกเป็น 13 ชิ้นพร้อมประวัติการเติม
+                                        </p>
+                                    </div>
+                                    <Link
+                                        href="/pos/products"
+                                        className="inline-flex rounded-full bg-accent px-5 py-3 text-sm font-semibold text-black transition hover:bg-accent-strong"
+                                    >
+                                        ไปหน้าจัดการสินค้า
+                                    </Link>
+                                </div>
+                            </section>
+
+                            <section className="hidden rounded-3xl border border-line bg-background/70 p-5 md:p-6">
                                 <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
                                     <div>
                                         <p className="text-xs font-semibold text-muted">จัดการสินค้าใน POS</p>

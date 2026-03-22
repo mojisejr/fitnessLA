@@ -10,6 +10,7 @@ import type {
   MemberSubscriptionRecord,
   OrderResult,
   Product,
+  ProductStockAdjustmentRecord,
   SalesEntryItem,
   ShiftInventorySummaryRow,
   ShiftCloseResult,
@@ -35,6 +36,7 @@ import type {
   CreateChartOfAccountInput,
   CreateMemberInput,
   CreateProductInput,
+  CreateProductStockAdjustmentInput,
   UpdateMemberInput,
   UpdateProductInput,
 } from "@/features/adapters/types";
@@ -74,6 +76,8 @@ let productSequence = Math.max(...mockProducts.map((item) => Number(item.product
 let memberSequence = 1;
 let chartOfAccountsState = mockChartOfAccounts.map((item) => ({ ...item }));
 let productsState = mockProducts.map((item) => ({ ...item }));
+let productStockAdjustmentsState: ProductStockAdjustmentRecord[] = [];
+let productStockAdjustmentSequence = 1;
 let managedUsersState: MockManagedUser[] = [];
 let trainersState: MockTrainerWithAssignments[] = [];
 let shiftInventoryState = new Map<string, Map<string, { product_id: EntityId; opening_stock: number; sold_quantity: number }>>();
@@ -329,6 +333,10 @@ function cloneProduct(product: Product) {
   return { ...product };
 }
 
+function cloneProductStockAdjustment(adjustment: ProductStockAdjustmentRecord) {
+  return { ...adjustment };
+}
+
 function normalizeFeaturedSlot(value: number | null | undefined) {
   if (value == null) {
     return null;
@@ -454,6 +462,8 @@ export function resetMockAdapterState() {
   productSequence = Math.max(...mockProducts.map((item) => Number(item.product_id))) + 1;
   chartOfAccountsState = mockChartOfAccounts.map((item) => ({ ...item }));
   productsState = mockProducts.map((item) => ({ ...item }));
+  productStockAdjustmentsState = [];
+  productStockAdjustmentSequence = 1;
   managedUsersState = [];
   shiftInventoryState = new Map();
   salesRowsState = [];
@@ -629,6 +639,78 @@ export const mockAppAdapter: AppAdapter = {
     }
 
     return cloneProduct(updatedProduct);
+  },
+
+  async listProductStockAdjustments(productId?: EntityId) {
+    await sleep(120);
+
+    return productStockAdjustmentsState
+      .filter((adjustment) => productId === undefined || String(adjustment.product_id) === String(productId))
+      .map(cloneProductStockAdjustment);
+  },
+
+  async addProductStockAdjustment(input: CreateProductStockAdjustmentInput) {
+    await sleep(160);
+
+    const targetProduct = productsState.find((product) => product.product_id === input.productId);
+
+    if (!targetProduct) {
+      throw createError("PRODUCT_NOT_FOUND", "ไม่พบสินค้าที่ต้องการเติมสต็อก");
+    }
+
+    if (!targetProduct.track_stock) {
+      throw createError("PRODUCT_STOCK_NOT_TRACKED", "สินค้านี้ไม่ได้ติดตาม stock");
+    }
+
+    if (!Number.isInteger(input.addedQuantity) || input.addedQuantity <= 0) {
+      throw createError("INVALID_STOCK_ADDITION", "จำนวนที่เติมต้องมากกว่า 0");
+    }
+
+    const previousStock = targetProduct.stock_on_hand ?? 0;
+    const newStock = previousStock + input.addedQuantity;
+
+    productsState = productsState.map((product) =>
+      product.product_id === input.productId
+        ? {
+            ...product,
+            stock_on_hand: newStock,
+          }
+        : product,
+    );
+
+    for (const shiftRows of shiftInventoryState.values()) {
+      const row = shiftRows.get(toProductKey(targetProduct.product_id));
+
+      if (!row) {
+        shiftRows.set(toProductKey(targetProduct.product_id), {
+          product_id: targetProduct.product_id,
+          opening_stock: newStock,
+          sold_quantity: 0,
+        });
+        continue;
+      }
+
+      row.opening_stock = newStock + row.sold_quantity;
+    }
+
+    const nextAdjustment: ProductStockAdjustmentRecord = {
+      adjustment_id: `stock-adjust-${productStockAdjustmentSequence}`,
+      product_id: targetProduct.product_id,
+      product_name: targetProduct.name,
+      product_sku: targetProduct.sku,
+      previous_stock: previousStock,
+      added_quantity: input.addedQuantity,
+      new_stock: newStock,
+      note: input.note?.trim() ? input.note.trim() : null,
+      created_by_user_id: "mock-user",
+      created_by_name: input.performedByName?.trim() || "Mock Inventory Manager",
+      created_at: new Date().toISOString(),
+    };
+
+    productStockAdjustmentSequence += 1;
+    productStockAdjustmentsState = [nextAdjustment, ...productStockAdjustmentsState];
+
+    return cloneProductStockAdjustment(nextAdjustment);
   },
 
   async getShiftInventorySummary(shiftId: EntityId) {
@@ -1135,6 +1217,9 @@ export const mockAppAdapter: AppAdapter = {
       phone: input.phone.trim(),
       username: input.username,
       role: input.role,
+      scheduled_start_time: input.scheduled_start_time?.trim() || null,
+      scheduled_end_time: input.scheduled_end_time?.trim() || null,
+      allowed_machine_ip: input.allowed_machine_ip?.trim() || null,
       password: input.password,
     };
 

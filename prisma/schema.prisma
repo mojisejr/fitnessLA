@@ -27,6 +27,11 @@ model User {
   phone     String?
   role      String  @default("STAFF") // ADMIN, OWNER, STAFF
   isActive  Boolean @default(true)
+  scheduledStartTime String?
+  scheduledEndTime   String?
+  allowedMachineIp   String?
+  attendanceLogs     StaffAttendance[]
+  approvedAttendanceDevices AttendanceDevice[] @relation("AttendanceDeviceApprovedBy")
 
   @@map("user")
 }
@@ -149,6 +154,49 @@ model Shift {
   @@map("shifts")
 }
 
+model StaffAttendance {
+  id                  String   @id @default(cuid())
+  userId              String
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workDate            DateTime
+  scheduledStartTime  String?
+  scheduledEndTime    String?
+  checkedInAt         DateTime?
+  checkedOutAt        DateTime?
+  arrivalStatus       String   @default("UNSCHEDULED") // EARLY, ON_TIME, LATE, UNSCHEDULED
+  departureStatus     String   @default("PENDING") // PENDING, ON_TIME, EARLY_LEAVE, OVERTIME
+  lateMinutes         Int      @default(0)
+  earlyArrivalMinutes Int      @default(0)
+  overtimeMinutes     Int      @default(0)
+  earlyLeaveMinutes   Int      @default(0)
+  machineIp           String?
+  note                String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@unique([userId, workDate])
+  @@index([workDate])
+  @@map("staff_attendance_logs")
+}
+
+model AttendanceDevice {
+  id                 String   @id @default(cuid())
+  label              String
+  tokenHash          String   @unique
+  registeredIp       String?
+  userAgent          String?
+  approvedByUserId   String
+  approvedByUserName String
+  approvedBy         User     @relation("AttendanceDeviceApprovedBy", fields: [approvedByUserId], references: [id], onDelete: Cascade)
+  isActive           Boolean  @default(true)
+  lastSeenAt         DateTime?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([isActive, updatedAt])
+  @@map("attendance_devices")
+}
+
 model Product {
   id               String         @id @default(cuid())
   sku              String         @unique
@@ -168,10 +216,28 @@ model Product {
   orderItems       OrderItem[]
   memberSubscriptions MemberSubscription[]
   trainingEnrollments TrainingServiceEnrollment[]
+  stockAdjustments ProductStockAdjustment[]
   createdAt        DateTime       @default(now())
   updatedAt        DateTime       @updatedAt
 
   @@map("products")
+}
+
+model ProductStockAdjustment {
+  id                String   @id @default(cuid())
+  productId         String
+  product           Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  previousStock     Int
+  addedQuantity     Int
+  newStock          Int
+  note              String?
+  createdByUserId   String
+  createdByUserName String
+  createdAt         DateTime @default(now())
+
+  @@index([productId, createdAt])
+  @@index([createdByUserId])
+  @@map("product_stock_adjustments")
 }
 
 model PosCategory {

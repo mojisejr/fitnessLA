@@ -1,8 +1,10 @@
 import type {
   AdminUserRecord,
+  AttendanceStatusRecord,
   ChartOfAccountRecord,
   CreateTrainerInput,
   EntityId,
+  ManagedStaffUserRecord,
   CreateOrderRequest,
   DailySummary,
   MemberSubscriptionRecord,
@@ -12,6 +14,7 @@ import type {
   MockShiftRecord,
   OrderResult,
   Product,
+  ProductStockAdjustmentRecord,
   ShiftInventorySummaryRow,
   ShiftCloseResult,
   ShiftOpenResult,
@@ -37,6 +40,15 @@ export type CreateAdminUserInput = {
   username: string;
   password: string;
   role: "OWNER" | "ADMIN" | "CASHIER";
+  scheduled_start_time?: string;
+  scheduled_end_time?: string;
+  allowed_machine_ip?: string;
+};
+
+export type UpdateManagedUserInput = {
+  scheduled_start_time?: string | null;
+  scheduled_end_time?: string | null;
+  allowed_machine_ip?: string | null;
 };
 
 export type UpdateProductInput = {
@@ -65,6 +77,13 @@ export type CreateProductInput = {
   stockOnHand?: number | null;
   membershipPeriod?: "DAILY" | "MONTHLY" | "QUARTERLY" | "SEMIANNUAL" | "YEARLY" | null;
   membershipDurationDays?: number | null;
+};
+
+export type CreateProductStockAdjustmentInput = {
+  productId: EntityId;
+  addedQuantity: number;
+  note?: string | null;
+  performedByName?: string;
 };
 
 export type DailySummaryQuery = {
@@ -132,6 +151,8 @@ export interface AppAdapter {
   listProducts: () => Promise<Product[]>;
   createProduct: (input: CreateProductInput) => Promise<Product>;
   updateProduct: (input: UpdateProductInput) => Promise<Product>;
+  listProductStockAdjustments: (productId?: EntityId) => Promise<ProductStockAdjustmentRecord[]>;
+  addProductStockAdjustment: (input: CreateProductStockAdjustmentInput) => Promise<ProductStockAdjustmentRecord>;
   getShiftInventorySummary: (shiftId: EntityId) => Promise<ShiftInventorySummaryRow[]>;
   openShift: (startingCash: number, responsibleName: string) => Promise<ShiftOpenResult>;
   closeShift: (input: {
@@ -158,6 +179,9 @@ export interface AppAdapter {
   createChartOfAccount: (input: CreateChartOfAccountInput) => Promise<ChartOfAccountRecord>;
   toggleChartOfAccount: (accountId: EntityId) => Promise<ChartOfAccountRecord>;
   createAdminUser: (input: CreateAdminUserInput) => Promise<AdminUserRecord>;
+  listManagedUsers?: () => Promise<ManagedStaffUserRecord[]>;
+  updateManagedUser?: (userId: EntityId, input: UpdateManagedUserInput) => Promise<ManagedStaffUserRecord>;
+  getAttendanceStatus?: () => Promise<AttendanceStatusRecord>;
   listTrainers: () => Promise<Array<TrainerRecord & { assignments: TrainingEnrollmentRecord[] }>>;
   createTrainer: (input: CreateTrainerInput) => Promise<TrainerRecord>;
   deleteTrainer: (trainerId: EntityId) => Promise<DeleteTrainerResult>;

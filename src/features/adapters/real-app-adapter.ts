@@ -10,6 +10,7 @@ import type {
   MockShiftRecord,
   OrderResult,
   Product,
+  ProductStockAdjustmentRecord,
   ShiftCloseResult,
   ShiftOpenResult,
   UpdateTrainingEnrollmentInput,
@@ -23,6 +24,7 @@ import type {
   CreateChartOfAccountInput,
   CreateMemberInput,
   CreateProductInput,
+  CreateProductStockAdjustmentInput,
   DailySummaryQuery,
   MemberListFilters,
   UpdateMemberInput,
@@ -152,6 +154,29 @@ export const realAppAdapter: AppAdapter = {
         stock_on_hand: input.stockOnHand ?? undefined,
         membership_period: input.membershipPeriod ?? undefined,
         membership_duration_days: input.membershipDurationDays ?? undefined,
+      }),
+    });
+  },
+
+  async listProductStockAdjustments(productId?: EntityId) {
+    const params = new URLSearchParams();
+
+    if (productId !== undefined) {
+      params.set("product_id", String(productId));
+    }
+
+    const query = params.toString();
+    return fetchJson<ProductStockAdjustmentRecord[]>(`/api/v1/products/stock-adjustments${query ? `?${query}` : ""}`);
+  },
+
+  async addProductStockAdjustment(input: CreateProductStockAdjustmentInput) {
+    return fetchJson<ProductStockAdjustmentRecord>("/api/v1/products/stock-adjustments", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        product_id: String(input.productId),
+        added_quantity: input.addedQuantity,
+        note: input.note === undefined ? undefined : input.note,
       }),
     });
   },
@@ -289,7 +314,12 @@ export const realAppAdapter: AppAdapter = {
     return fetchJson<AdminUserRecord>("/api/v1/admin/users", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(input),
+      body: JSON.stringify({
+        ...input,
+        scheduled_start_time: input.scheduled_start_time,
+        scheduled_end_time: input.scheduled_end_time,
+        allowed_machine_ip: input.allowed_machine_ip,
+      }),
     });
   },
 

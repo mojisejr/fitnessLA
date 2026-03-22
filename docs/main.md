@@ -1,14 +1,15 @@
 # fitnessLA Documentation Hub
 
-## Current Status (2026-03-13)
+## Current Status (2026-03-22)
 
-- Phase: Frontend integration complete for GL/COA/product mapping, waiting for real-mode smoke
+- Phase: attendance machine control and POS product management moved forward on real mode
 - Auth: Better-Auth cookie session is active
-- Verification: build + lint + tests passed in integration round, latest targeted POS validations also passed
-- Next: provide real env/data, run Phase G smoke, and resolve any real-data mismatches
+- Verification: build passed, targeted attendance backend tests passed, attendance smoke passed, POS live smoke passed
+- Next: broaden full-system smoke and add follow-up owner controls if needed
 
 ## Start Here
 
+- `docs/Handoff_2026-03-22_Attendance_Device_And_POS_Changes.md`: latest summary of what was added for attendance device control and POS stock adjustments
 - `project_map.md`: architecture, landmarks, current territory
 - `docs/Status_2026-03-13_Agent-B_End_Of_Day.md`: latest frontend status summary
 - `docs/Handoff_2026-03-13_Frontend_to_Backend_Next.md`: backend handoff for real-mode follow-up

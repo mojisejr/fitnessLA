@@ -14,6 +14,7 @@ async function loginAs(page: Parameters<typeof test>[0]["page"], username: strin
 
     try {
       await expect(page).toHaveURL(/\/dashboard$/, { timeout: 10_000 });
+      await expect(page.getByText(`@${username}`)).toBeVisible({ timeout: 10_000 });
       return;
     } catch {
       lastBodyText = await page.locator("body").innerText();
@@ -37,8 +38,9 @@ test.describe("owner creates user and login smoke", () => {
 
     await loginAs(page, "owner", ownerPassword);
 
-    await page.goto("/admin/users");
-    await expect(page.getByRole("heading", { name: "สร้างผู้ใช้" })).toBeVisible();
+  await page.getByRole("link", { name: "สร้างผู้ใช้ เปิด", exact: true }).click();
+  await expect(page).toHaveURL(/\/admin\/users$/);
+  await expect(page.getByRole("heading", { name: "จัดการผู้ใช้และเวลาเข้างาน" })).toBeVisible();
 
     await page.getByPlaceholder("ชื่อ").fill(fullName);
     await page.getByPlaceholder("เบอร์โทร").fill(phone);
@@ -47,9 +49,8 @@ test.describe("owner creates user and login smoke", () => {
     await page.getByLabel("บทบาท").selectOption("CASHIER");
     await page.getByRole("button", { name: "สร้างผู้ใช้" }).click();
 
-    await expect(page.getByText(`สร้าง user ${username} เรียบร้อยแล้ว สามารถนำ username/password นี้ไป login ได้ทันที`)).toBeVisible();
+    await expect(page.getByText(`สร้าง user ${username} เรียบร้อยแล้ว สามารถนำ username/password นี้ไป login และลงชื่อเข้างานได้ทันที`)).toBeVisible();
     await expect(page.getByText(`@${username}`)).toBeVisible();
-    await expect(page.getByText(phone)).toBeVisible();
 
     await page.getByRole("button", { name: "ออกจากระบบ" }).click();
 

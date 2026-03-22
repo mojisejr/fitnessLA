@@ -30,6 +30,8 @@ const devUsers = [
     email: "admin@fitnessla.local",
     username: "admin",
     role: "ADMIN",
+    scheduledStartTime: "08:00",
+    scheduledEndTime: "17:00",
   },
   {
     id: "user-cashier-dev",
@@ -37,6 +39,8 @@ const devUsers = [
     email: "cashier@fitnessla.local",
     username: "cashier",
     role: "CASHIER",
+    scheduledStartTime: "08:00",
+    scheduledEndTime: "17:00",
   },
 ];
 
@@ -50,11 +54,15 @@ async function main() {
         role: user.role,
         isActive: true,
         emailVerified: true,
+        scheduledStartTime: user.scheduledStartTime ?? null,
+        scheduledEndTime: user.scheduledEndTime ?? null,
       },
       create: {
         ...user,
         emailVerified: true,
         isActive: true,
+        scheduledStartTime: user.scheduledStartTime ?? null,
+        scheduledEndTime: user.scheduledEndTime ?? null,
         image: null,
         createdAt: new Date(),
         updatedAt: new Date(),

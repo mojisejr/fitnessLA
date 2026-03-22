@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 const password = process.env.FITNESSLA_SEED_PASSWORD ?? "ChangeMe123!";
+const ownerFullName = "Owner FitnessLA";
 
 async function loginAsOwner(page: Parameters<typeof test>[0]["page"]) {
   let lastBodyText = "";
@@ -62,7 +63,7 @@ async function ensureActiveShift(page: Parameters<typeof test>[0]["page"]) {
   const opened = await apiJson(page, "/api/v1/shifts/open", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ starting_cash: 500, responsible_name: "Owner Smoke" }),
+    body: JSON.stringify({ starting_cash: 500, responsible_name: ownerFullName }),
   });
 
   expect(opened.status, JSON.stringify(opened.body)).toBe(201);
@@ -70,11 +71,11 @@ async function ensureActiveShift(page: Parameters<typeof test>[0]["page"]) {
 }
 
 async function openPosReady(page: Parameters<typeof test>[0]["page"]) {
-  await page.goto("/pos", { waitUntil: "domcontentloaded" });
-  await expect(page.getByRole("heading", { name: "เคาน์เตอร์ขาย LA GYM" })).toBeVisible({ timeout: 20_000 });
-  await expect(page.getByText("กำลังโหลดสินค้า...")).toHaveCount(0);
+  await page.goto("/pos/products", { waitUntil: "domcontentloaded" });
+  await expect(page.getByRole("heading", { name: "ย้ายการจัดการสินค้าไปหน้าใหม่แบบตารางแยกหมวด" })).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByText("กำลังโหลดรายการสินค้า...")).toHaveCount(0);
   await expect(page.getByText("กำลังโหลดตัวเลือกบัญชีรายได้...")).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "เพิ่มสินค้าใหม่" })).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole("button", { name: "เพิ่มสินค้าใหม่" }).first()).toBeVisible({ timeout: 15_000 });
 }
 
 test.describe("POS product management smoke", () => {
@@ -89,7 +90,7 @@ test.describe("POS product management smoke", () => {
     await ensureActiveShift(page);
     await openPosReady(page);
 
-    await page.getByRole("button", { name: "เพิ่มสินค้าใหม่" }).click();
+    await page.getByRole("button", { name: "เพิ่มสินค้าใหม่" }).first().click();
     await page.getByLabel("SKU").fill(createdSku);
     await page.getByLabel("ชื่อสินค้า").fill(createdName);
     await page.getByLabel("ราคา").fill("85");
@@ -98,7 +99,9 @@ test.describe("POS product management smoke", () => {
     await page.getByRole("button", { name: "สร้างสินค้าใหม่" }).click();
 
     await expect(page.getByText("เพิ่มสินค้าใหม่เรียบร้อยแล้ว")).toBeVisible({ timeout: 20_000 });
-    await expect(page.getByLabel("เลือกสินค้าเพื่อแก้ไข")).toContainText(createdName);
+    await page.getByLabel("ค้นหาสินค้า").fill(createdName);
+    const createdRow = page.getByLabel(`Product row ${createdName}`);
+    await expect(createdRow).toBeVisible({ timeout: 20_000 });
 
     const createProductsResponse = await apiJson(page, "/api/v1/products");
     expect(createProductsResponse.status, JSON.stringify(createProductsResponse.body)).toBe(200);
@@ -107,20 +110,26 @@ test.describe("POS product management smoke", () => {
       : null;
     expect(createdProduct).toBeTruthy();
 
-    await page.getByRole("button", { name: "แก้ไขสินค้าเดิม" }).click();
-    await page.getByLabel("เลือกสินค้าเพื่อแก้ไข").selectOption({ label: createdName });
+    await createdRow.getByRole("button").first().click();
     await page.getByLabel("SKU").fill(updatedSku);
     await page.getByLabel("ชื่อสินค้า").fill(updatedName);
     await page.getByLabel("ราคา").fill("109");
-    await page.getByLabel("สต็อกคงเหลือ").fill("18");
     await page.getByLabel("คำโปรยสินค้า").fill("Real-mode browser smoke update flow");
     await page.getByRole("button", { name: "บันทึกสินค้า" }).click();
 
-    await expect(page.getByText("อัปเดตสินค้าและ stock เรียบร้อยแล้ว")).toBeVisible({ timeout: 20_000 });
-    await expect(page.getByLabel("เลือกสินค้าเพื่อแก้ไข")).toContainText(updatedName);
+    await expect(page.getByText("อัปเดตข้อมูลสินค้าเรียบร้อยแล้ว")).toBeVisible({ timeout: 20_000 });
 
-    await page.getByLabel("Product search").fill(updatedName);
-    await expect(page.getByRole("heading", { name: updatedName })).toBeVisible({ timeout: 20_000 });
+    await page.getByLabel("ค้นหาสินค้า").fill(updatedName);
+    const updatedRow = page.getByLabel(`Product row ${updatedName}`);
+    await expect(updatedRow).toBeVisible({ timeout: 20_000 });
+    await updatedRow.getByRole("button", { name: `เติมสินค้า ${updatedName}` }).click();
+
+    const restockRow = page.getByLabel(`Restock row ${updatedName}`);
+    await restockRow.getByLabel(`เติมเพิ่ม ${updatedName}`).fill("6");
+    await restockRow.getByLabel(`หมายเหตุการเติมสินค้า ${updatedName}`).fill("Real-mode browser smoke inline restock flow");
+    await restockRow.getByRole("button", { name: "บันทึกการเติมสินค้า" }).click();
+
+    await expect(updatedRow).toContainText("18", { timeout: 20_000 });
 
     const updatedProductsResponse = await apiJson(page, "/api/v1/products");
     expect(updatedProductsResponse.status, JSON.stringify(updatedProductsResponse.body)).toBe(200);
