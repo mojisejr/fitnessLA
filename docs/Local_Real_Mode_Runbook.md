@@ -46,6 +46,10 @@ BETTER_AUTH_URL="http://localhost:3000"
 NEXT_PUBLIC_BETTER_AUTH_URL="http://localhost:3000/api/auth"
 NEXT_PUBLIC_APP_ADAPTER="real"
 FITNESSLA_SEED_PASSWORD="ChangeMe123!"
+PLAYWRIGHT_REAL_OWNER_USERNAME="owner"
+PLAYWRIGHT_REAL_OWNER_PASSWORD="ChangeMe123!"
+PLAYWRIGHT_REAL_ADMIN_USERNAME="admin"
+PLAYWRIGHT_REAL_ADMIN_PASSWORD="ChangeMe123!"
 ```
 
 หมายเหตุสำคัญ:
@@ -54,6 +58,7 @@ FITNESSLA_SEED_PASSWORD="ChangeMe123!"
 - `BETTER_AUTH_URL` ใช้ค่าฐาน URL ของแอปตามที่โค้ด server อ่านอยู่ตอนนี้
 - `NEXT_PUBLIC_BETTER_AUTH_URL` ควรชี้ไป auth route โดยตรง
 - ถ้าไม่กำหนด `FITNESSLA_SEED_PASSWORD` ระบบจะ fallback เป็น `ChangeMe123!`
+- ถ้าจะ rerun permanent smoke ด้วยบัญชีจริง ให้ตั้ง `PLAYWRIGHT_REAL_OWNER_USERNAME`, `PLAYWRIGHT_REAL_OWNER_PASSWORD`, `PLAYWRIGHT_REAL_ADMIN_USERNAME`, `PLAYWRIGHT_REAL_ADMIN_PASSWORD`
 
 ## 3. One-Time Setup
 
@@ -85,6 +90,12 @@ npm run dev
 
 ```text
 http://localhost:3000/login
+```
+
+ถ้าจะรัน permanent rerun smoke ให้เปิดแอปค้างไว้ใน terminal หนึ่ง แล้วรันคำสั่งนี้ในอีก terminal:
+
+```powershell
+npm run test:browser:smoke:real-account
 ```
 
 หน้า login ที่อยู่ใน real mode ควรแสดงข้อความว่ากำลังเข้าสู่ระบบแบบ real auth ไม่ใช่ mock

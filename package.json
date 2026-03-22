@@ -11,6 +11,8 @@
     "test": "vitest run",
     "test:browser:smoke": "playwright test",
     "test:browser:smoke:headed": "playwright test --headed",
+    "test:browser:smoke:real-account": "node --env-file=.env ./node_modules/@playwright/test/cli.js test tests/browser/auth-real-accounts.smoke.spec.ts -c playwright.local.config.ts",
+    "test:browser:smoke:real-account:headed": "node --env-file=.env ./node_modules/@playwright/test/cli.js test tests/browser/auth-real-accounts.smoke.spec.ts -c playwright.local.config.ts --headed",
     "test:browser:install": "playwright install chromium",
     "db:migrate": "prisma migrate dev --name init_accounting_auth",
     "db:seed": "prisma db seed",

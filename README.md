@@ -68,12 +68,17 @@ BETTER_AUTH_URL="http://localhost:3000"
 NEXT_PUBLIC_BETTER_AUTH_URL="http://localhost:3000/api/auth"
 NEXT_PUBLIC_APP_ADAPTER="real"
 FITNESSLA_SEED_PASSWORD="ChangeMe123!"
+PLAYWRIGHT_REAL_OWNER_USERNAME="owner"
+PLAYWRIGHT_REAL_OWNER_PASSWORD="ChangeMe123!"
+PLAYWRIGHT_REAL_ADMIN_USERNAME="admin"
+PLAYWRIGHT_REAL_ADMIN_PASSWORD="ChangeMe123!"
 ```
 
 หมายเหตุ:
 
 - แนะนำให้ `BETTER_AUTH_URL` และ browser ใช้ `localhost` ตรงกัน
 - browser smoke setup จะรัน `prisma generate`, `prisma migrate deploy`, และ seed sample trainer/member ให้เอง
+- permanent rerun smoke สำหรับบัญชีจริงจะอ่าน credential จาก `PLAYWRIGHT_REAL_OWNER_USERNAME`, `PLAYWRIGHT_REAL_OWNER_PASSWORD`, `PLAYWRIGHT_REAL_ADMIN_USERNAME`, `PLAYWRIGHT_REAL_ADMIN_PASSWORD`
 
 ## Setup
 
@@ -125,6 +130,8 @@ npm run test
 npm run test:browser:install
 npm run test:browser:smoke
 npm run test:browser:smoke:headed
+npm run test:browser:smoke:real-account
+npm run test:browser:smoke:real-account:headed
 npm run db:migrate
 npm run db:seed
 npm run db:seed:users
@@ -151,6 +158,12 @@ Browser smoke:
 npm run test:browser:smoke
 ```
 
+Permanent rerun smoke with real accounts from `.env`:
+
+```bash
+npm run test:browser:smoke:real-account
+```
+
 ## Browser Smoke Behavior
 
 ชุด Playwright ปัจจุบันตรวจสิ่งต่อไปนี้ใน real mode:
@@ -163,6 +176,7 @@ npm run test:browser:smoke
 - admin เห็น members page แบบ read-only
 - admin เห็น trainers page แบบ read-only
 - admin ไม่เห็นปุ่ม `เพิ่มเทรนเนอร์`
+- permanent real-account smoke rerun ผ่าน spec แยกที่อ่าน credential จาก `.env` โดยไม่ผูกกับ global setup
 
 หมายเหตุการออกแบบ:
 
