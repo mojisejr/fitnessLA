@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { createProduct, listProducts } from "@/features/operations/services";
-import { canManageUsers, toAppRole } from "@/lib/roles";
+import { canManageProducts, toAppRole } from "@/lib/roles";
 import { resolveSessionFromRequest } from "@/lib/session";
 
 function invalidProductResponse(message: string) {
@@ -83,7 +83,7 @@ export async function POST(request: Request) {
     );
   }
 
-  if (!canManageUsers(requesterRole)) {
+  if (!canManageProducts(requesterRole)) {
     return NextResponse.json(
       {
         code: "FORBIDDEN",

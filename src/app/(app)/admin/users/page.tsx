@@ -5,7 +5,13 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { RoleGuard } from "@/components/guards/role-guard";
 import { useAppAdapter } from "@/features/adapters/adapter-provider";
 import type { CreateAdminUserInput } from "@/features/adapters/types";
-import type { AttendanceDeviceStatusRecord, ManagedStaffUserRecord, StaffAttendanceRecord } from "@/lib/contracts";
+import type {
+  AttendanceDeviceStatusRecord,
+  BulkDeleteManagedUsersResult,
+  DeleteManagedUserResult,
+  ManagedStaffUserRecord,
+  StaffAttendanceRecord,
+} from "@/lib/contracts";
 import { getErrorMessage } from "@/lib/utils";
 
 const roleLabel = {
@@ -54,6 +60,19 @@ function formatScheduleWindow(user: ManagedStaffUserRecord) {
   return `${user.scheduled_start_time} - ${user.scheduled_end_time}`;
 }
 
+function mapManagedUserToDeleteResult(user: ManagedStaffUserRecord): DeleteManagedUserResult {
+  if (user.role !== "ADMIN" && user.role !== "CASHIER") {
+    throw new Error("ลบได้เฉพาะ admin และ cashier เท่านั้น");
+  }
+
+  return {
+    user_id: user.user_id,
+    full_name: user.full_name,
+    username: user.username,
+    role: user.role,
+  };
+}
+
 export default function AdminUsersPage() {
   const adapter = useAppAdapter();
   const [managedUsers, setManagedUsers] = useState<ManagedStaffUserRecord[]>([]);
@@ -72,6 +91,9 @@ export default function AdminUsersPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoadingData, setIsLoadingData] = useState(adapter.mode === "real");
   const [savingUserId, setSavingUserId] = useState<string | null>(null);
+  const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false);
+  const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
   const [attendanceDeviceStatus, setAttendanceDeviceStatus] = useState<AttendanceDeviceStatusRecord | null>(null);
   const [attendanceDeviceLabel, setAttendanceDeviceLabel] = useState("เครื่องลงเวลาเข้างานหน้าร้าน");
   const [isRegisteringDevice, setIsRegisteringDevice] = useState(false);
@@ -88,6 +110,7 @@ export default function AdminUsersPage() {
       const response = await fetchJson<AdminUsersResponse>("/api/v1/admin/users");
       setManagedUsers(response.users);
       setAttendanceRows(response.attendance_rows);
+      setSelectedUserIds((current) => current.filter((userId) => response.users.some((user) => String(user.user_id) === userId)));
       setUserSettingsDrafts(
         Object.fromEntries(
           response.users.map((user) => [
@@ -139,6 +162,8 @@ export default function AdminUsersPage() {
 
     return { lateCount, earlyCount, onTimeCount };
   }, [attendanceRows]);
+
+  const selectedUsersCount = selectedUserIds.length;
 
   async function handleCreateUser(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -258,6 +283,84 @@ export default function AdminUsersPage() {
       setErrorMessage(getErrorMessage(error, "ไม่สามารถอนุมัติเครื่องลงเวลาได้"));
     } finally {
       setIsRegisteringDevice(false);
+    }
+  }
+
+  function removeDeletedUsersFromState(deletedUsers: Array<DeleteManagedUserResult>) {
+    const deletedIds = new Set(deletedUsers.map((user) => String(user.user_id)));
+
+    setManagedUsers((current) => current.filter((user) => !deletedIds.has(String(user.user_id))));
+    setAttendanceRows((current) => current.filter((row) => !deletedIds.has(String(row.user_id))));
+    setSelectedUserIds((current) => current.filter((userId) => !deletedIds.has(userId)));
+    setUserSettingsDrafts((current) => {
+      const next = { ...current };
+      for (const deletedUser of deletedUsers) {
+        delete next[String(deletedUser.user_id)];
+      }
+      return next;
+    });
+  }
+
+  function toggleUserSelection(userId: string) {
+    setSelectedUserIds((current) =>
+      current.includes(userId) ? current.filter((value) => value !== userId) : [...current, userId],
+    );
+  }
+
+  async function handleDeleteUser(user: ManagedStaffUserRecord) {
+    const userId = String(user.user_id);
+    setDeletingUserId(userId);
+    setStatusMessage(null);
+    setErrorMessage(null);
+
+    try {
+      if (adapter.mode === "real") {
+        const deletedUser = await fetchJson<DeleteManagedUserResult>(`/api/v1/admin/users/${encodeURIComponent(userId)}`, {
+          method: "DELETE",
+        });
+        removeDeletedUsersFromState([deletedUser]);
+        setStatusMessage(`ลบ ${deletedUser.full_name} (@${deletedUser.username}) เรียบร้อยแล้ว`);
+      } else {
+        removeDeletedUsersFromState([mapManagedUserToDeleteResult(user)]);
+        setStatusMessage(`ลบ ${user.full_name} (@${user.username}) เรียบร้อยแล้ว`);
+      }
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error, "ไม่สามารถลบผู้ใช้ได้"));
+    } finally {
+      setDeletingUserId(null);
+    }
+  }
+
+  async function handleBulkDeleteSelectedUsers() {
+    if (selectedUserIds.length === 0) {
+      return;
+    }
+
+    setIsBulkDeleting(true);
+    setStatusMessage(null);
+    setErrorMessage(null);
+
+    try {
+      if (adapter.mode === "real") {
+        const deleted = await fetchJson<BulkDeleteManagedUsersResult>("/api/v1/admin/users/bulk-delete", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ user_ids: selectedUserIds }),
+        });
+        removeDeletedUsersFromState(deleted.deleted_users);
+        setStatusMessage(`ลบผู้ใช้ ${deleted.deleted_count} รายการเรียบร้อยแล้ว`);
+      } else {
+        const selectedSet = new Set(selectedUserIds);
+        const deletedUsers = managedUsers
+          .filter((user) => selectedSet.has(String(user.user_id)))
+          .map(mapManagedUserToDeleteResult);
+        removeDeletedUsersFromState(deletedUsers);
+        setStatusMessage(`ลบผู้ใช้ ${deletedUsers.length} รายการเรียบร้อยแล้ว`);
+      }
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error, "ไม่สามารถลบผู้ใช้ที่เลือกได้"));
+    } finally {
+      setIsBulkDeleting(false);
     }
   }
 
@@ -458,8 +561,18 @@ export default function AdminUsersPage() {
               <p className="text-xs uppercase tracking-[0.16em] text-muted">รายชื่อ admin และ cashier</p>
               <h2 className="mt-2 text-2xl font-semibold text-foreground">กำหนดเวลางานของพนักงาน</h2>
             </div>
-            <div className="rounded-[20px] border border-accent bg-accent-soft px-4 py-3 text-sm font-semibold text-foreground">
-              {managedUsers.length} user
+            <div className="flex flex-wrap justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => void handleBulkDeleteSelectedUsers()}
+                disabled={selectedUsersCount === 0 || isBulkDeleting}
+                className="rounded-full border border-warning bg-warning-soft px-4 py-3 text-sm font-semibold text-foreground transition hover:border-warning disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isBulkDeleting ? "กำลังลบ..." : `ลบที่เลือก ${selectedUsersCount > 0 ? `(${selectedUsersCount})` : ""}`}
+              </button>
+              <div className="rounded-[20px] border border-accent bg-accent-soft px-4 py-3 text-sm font-semibold text-foreground">
+                {managedUsers.length} user
+              </div>
             </div>
           </div>
 
@@ -490,7 +603,15 @@ export default function AdminUsersPage() {
                 return (
                   <div key={userId} className="rounded-3xl border border-line bg-background/70 p-5">
                     <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-                      <div>
+                      <div className="flex items-start gap-3">
+                        <input
+                          type="checkbox"
+                          aria-label={`เลือก ${user.full_name}`}
+                          checked={selectedUserIds.includes(userId)}
+                          onChange={() => toggleUserSelection(userId)}
+                          className="mt-1 h-5 w-5 rounded border-line bg-surface-strong"
+                        />
+                        <div>
                         <p className="text-xs uppercase tracking-[0.16em] text-muted">{roleLabel[user.role]}</p>
                         <h3 className="mt-2 text-xl font-semibold text-foreground">{user.full_name}</h3>
                         <p className="mt-1 text-sm text-muted">@{user.username}</p>
@@ -503,6 +624,7 @@ export default function AdminUsersPage() {
                         ) : (
                           <p className="mt-2 text-sm text-muted">ยังไม่มี attendance log</p>
                         )}
+                        </div>
                       </div>
 
                       <div className="grid gap-3 sm:grid-cols-2 xl:min-w-96">
@@ -540,8 +662,16 @@ export default function AdminUsersPage() {
                     <div className="mt-4 flex flex-wrap justify-end gap-3">
                       <button
                         type="button"
+                        onClick={() => void handleDeleteUser(user)}
+                        disabled={deletingUserId === userId || isBulkDeleting}
+                        className="rounded-full border border-warning bg-warning-soft px-4 py-2 text-sm font-semibold text-foreground transition hover:border-warning disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {deletingUserId === userId ? "กำลังลบ..." : "ลบผู้ใช้"}
+                      </button>
+                      <button
+                        type="button"
                         onClick={() => void handleSaveUserSettings(userId)}
-                        disabled={savingUserId === userId}
+                        disabled={savingUserId === userId || deletingUserId === userId}
                         className="rounded-full border border-accent bg-accent-soft px-4 py-2 text-sm font-semibold text-foreground transition hover:border-accent-strong hover:bg-accent/20 disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         {savingUserId === userId ? "กำลังบันทึก..." : "บันทึกเวลางาน"}

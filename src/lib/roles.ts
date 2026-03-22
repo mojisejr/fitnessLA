@@ -16,6 +16,11 @@ export function canManageUsers(role: string | null | undefined): boolean {
   return appRole === "OWNER" || appRole === "ADMIN";
 }
 
+export function canManageProducts(role: string | null | undefined): boolean {
+  const appRole = toAppRole(role);
+  return appRole === "OWNER" || appRole === "ADMIN" || appRole === "CASHIER";
+}
+
 export function canManageMembers(role: string | null | undefined): boolean {
   return toAppRole(role) === "OWNER";
 }

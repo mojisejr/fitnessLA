@@ -20,7 +20,7 @@ const navItems: NavItem[] = [
     { href: "/dashboard", label: "ภาพรวม", roles: ["OWNER", "ADMIN", "CASHIER"] },
     { href: "/shift/open", label: "เปิดกะ", roles: ["OWNER", "ADMIN", "CASHIER"] },
     { href: "/pos", label: "POS", roles: ["OWNER", "ADMIN", "CASHIER"] },
-    { href: "/pos/products", label: "สินค้า POS", roles: ["OWNER", "ADMIN"] },
+    { href: "/pos/products", label: "สินค้า POS", roles: ["OWNER", "ADMIN", "CASHIER"] },
     { href: "/expenses", label: "รายจ่าย", roles: ["OWNER", "ADMIN", "CASHIER"] },
     { href: "/shift/close", label: "ปิดกะ", roles: ["OWNER", "ADMIN", "CASHIER"] },
     { href: "/members", label: "สมาชิก", roles: ["OWNER", "ADMIN"] },
@@ -29,6 +29,7 @@ const navItems: NavItem[] = [
     { href: "/reports/daily-summary", label: "สรุปยอด", roles: ["OWNER", "ADMIN"] },
     { href: "/reports/shift-summary", label: "สรุปกะ", roles: ["OWNER", "ADMIN"] },
     { href: "/reports/profit-loss", label: "กำไรขาดทุน", roles: ["OWNER"] },
+    { href: "/admin/attendance", label: "attendance ทีม", roles: ["OWNER"] },
     { href: "/admin/users", label: "สร้างผู้ใช้", roles: ["OWNER"] },
 ];
 

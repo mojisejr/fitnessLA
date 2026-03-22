@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { canManageUsers, toAppRole } from "../../src/lib/roles";
+import { canManageProducts, canManageUsers, toAppRole } from "../../src/lib/roles";
 
 describe("admin users role guard", () => {
   it("accepts OWNER and ADMIN", () => {
@@ -18,5 +18,12 @@ describe("admin users role guard", () => {
     expect(toAppRole("owner")).toBe("OWNER");
     expect(toAppRole("Admin")).toBe("ADMIN");
     expect(toAppRole("cashier")).toBe("CASHIER");
+  });
+
+  it("allows cashier to manage POS products", () => {
+    expect(canManageProducts("OWNER")).toBe(true);
+    expect(canManageProducts("ADMIN")).toBe(true);
+    expect(canManageProducts("CASHIER")).toBe(true);
+    expect(canManageProducts("staff")).toBe(false);
   });
 });

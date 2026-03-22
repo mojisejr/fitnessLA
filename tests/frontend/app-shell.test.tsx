@@ -124,4 +124,43 @@ describe("AppShell", () => {
     });
     expect(screen.getByText("เงินที่ทำได้")).toBeInTheDocument();
   });
+
+  it("shows POS products navigation for cashier", async () => {
+    mockUseAuth.mockReturnValue({
+      session: {
+        user_id: "u2",
+        username: "cashier",
+        full_name: "Pim Counter",
+        role: "CASHIER",
+        active_shift_id: null,
+      },
+      activeShift: null,
+      logout: vi.fn(),
+      switchRole: vi.fn(),
+      mode: "real",
+    });
+
+    render(
+      <AppShell>
+        <div>content</div>
+      </AppShell>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole("link", { name: /สินค้า POS/i })).toBeInTheDocument();
+    });
+    expect(screen.queryByRole("link", { name: /attendance ทีม/i })).not.toBeInTheDocument();
+  });
+
+  it("shows owner-only attendance navigation for owner", async () => {
+    render(
+      <AppShell>
+        <div>content</div>
+      </AppShell>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole("link", { name: /attendance ทีม/i })).toBeInTheDocument();
+    });
+  });
 });

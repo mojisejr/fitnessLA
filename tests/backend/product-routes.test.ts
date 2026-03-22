@@ -107,25 +107,41 @@ describe("phase2 product routes", () => {
     }));
   });
 
-  it("returns 403 for cashier product create", async () => {
+  it("returns 201 for cashier product create", async () => {
     mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "CASHIER" });
+    mockCreateProduct.mockResolvedValue({
+      product_id: "p3",
+      sku: "SNACK-001",
+      name: "Protein Bar",
+      price: 95,
+      product_type: "GOODS",
+      pos_category: "FOOD",
+      stock_on_hand: 12,
+      track_stock: true,
+    });
 
     const response = await productsPOST(
       new Request("http://localhost/api/v1/products", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          sku: "PT-001",
-          name: "PT Session",
-          price: 1200,
-          product_type: "SERVICE",
+          sku: "SNACK-001",
+          name: "Protein Bar",
+          price: 95,
+          product_type: "GOODS",
+          pos_category: "FOOD",
+          stock_on_hand: 12,
         }),
       }),
     );
     const body = await response.json();
 
-    expect(response.status).toBe(403);
-    expect(body.code).toBe("FORBIDDEN");
+    expect(response.status).toBe(201);
+    expect(body).toMatchObject({
+      product_id: "p3",
+      sku: "SNACK-001",
+      pos_category: "FOOD",
+    });
   });
 
   it("returns 200 for admin product update", async () => {

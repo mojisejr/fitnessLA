@@ -31,6 +31,10 @@ export type AttendanceArrivalStatus = "EARLY" | "ON_TIME" | "LATE" | "UNSCHEDULE
 
 export type AttendanceDepartureStatus = "PENDING" | "ON_TIME" | "EARLY_LEAVE" | "OVERTIME";
 
+export type AttendanceSummaryPeriod = "DAY" | "WEEK" | "MONTH" | "CUSTOM";
+
+export type AttendanceSummaryStatus = "NO_RECORD" | "ON_TIME" | "EARLY" | "LATE" | "MIXED";
+
 export interface StaffAttendanceRecord {
   attendance_id: EntityId;
   user_id: EntityId;
@@ -57,6 +61,51 @@ export interface ManagedStaffUserRecord extends AdminUserRecord {
   scheduled_end_time: string | null;
   allowed_machine_ip: string | null;
   latest_attendance: StaffAttendanceRecord | null;
+}
+
+export interface DeleteManagedUserResult {
+  user_id: EntityId;
+  full_name: string;
+  username: string;
+  role: Extract<Role, "ADMIN" | "CASHIER">;
+}
+
+export interface BulkDeleteManagedUsersResult {
+  deleted_count: number;
+  deleted_users: DeleteManagedUserResult[];
+}
+
+export interface StaffAttendanceSummaryRecord {
+  user_id: EntityId;
+  full_name: string;
+  username: string;
+  role: Extract<Role, "ADMIN" | "CASHIER">;
+  scheduled_start_time: string | null;
+  scheduled_end_time: string | null;
+  attendance_days: number;
+  checked_in_days: number;
+  checked_out_days: number;
+  on_time_days: number;
+  late_days: number;
+  early_days: number;
+  late_minutes_total: number;
+  early_arrival_minutes_total: number;
+  overtime_minutes_total: number;
+  early_leave_minutes_total: number;
+  summary_status: AttendanceSummaryStatus;
+  latest_work_date: string | null;
+  latest_checked_in_at: string | null;
+  latest_checked_out_at: string | null;
+  latest_arrival_status: AttendanceArrivalStatus | null;
+  latest_departure_status: AttendanceDepartureStatus | null;
+}
+
+export interface AttendanceSummaryReport {
+  period: AttendanceSummaryPeriod;
+  range_start: string;
+  range_end: string;
+  summary_rows: StaffAttendanceSummaryRecord[];
+  filtered_attendance_rows: StaffAttendanceRecord[];
 }
 
 export interface AttendanceDeviceRecord {

@@ -40,7 +40,7 @@ describe("admin users page", () => {
 
     renderWithProviders(<AdminUsersPage />);
 
-    await screen.findByRole("heading", { name: "สร้างผู้ใช้" });
+    await screen.findByRole("heading", { name: "จัดการผู้ใช้และเวลาเข้างาน" });
 
     fireEvent.change(screen.getByPlaceholderText("ชื่อ"), {
       target: { value: "June Desk" },
@@ -60,10 +60,10 @@ describe("admin users page", () => {
     fireEvent.click(screen.getByRole("button", { name: "สร้างผู้ใช้" }));
 
     await waitFor(() => {
-      expect(screen.getByText("สร้าง user june.desk เรียบร้อยแล้ว สามารถนำ username/password นี้ไป login ได้ทันที")).toBeInTheDocument();
+      expect(screen.getByText("สร้าง user june.desk เรียบร้อยแล้ว สามารถนำ username/password นี้ไป login และลงชื่อเข้างานได้ทันที")).toBeInTheDocument();
     });
 
-    expect(screen.getByText("0812345678")).toBeInTheDocument();
+    expect(screen.getByText("@june.desk")).toBeInTheDocument();
   });
 
   it("blocks admin role from this owner-only page", () => {
@@ -99,7 +99,7 @@ describe("admin users page", () => {
 
     renderWithProviders(<AdminUsersPage />);
 
-    await screen.findByRole("heading", { name: "สร้างผู้ใช้" });
+    await screen.findByRole("heading", { name: "จัดการผู้ใช้และเวลาเข้างาน" });
 
     fireEvent.change(screen.getByPlaceholderText("ชื่อ"), {
       target: { value: "June Desk" },
@@ -117,6 +117,47 @@ describe("admin users page", () => {
 
     expect(screen.getByText("ชื่อผู้ใช้ต้องมีอย่างน้อย 3 ตัว และใช้ได้เฉพาะ a-z, 0-9, จุด, ขีดล่าง, ขีดกลาง")).toBeInTheDocument();
 
-    expect(screen.getByText(/ยังไม่มี user ที่สร้างในรอบนี้/)).toBeInTheDocument();
+    expect(screen.getByText(/ยังไม่มี admin หรือ cashier ในฐานข้อมูลจริง/)).toBeInTheDocument();
+  });
+
+  it("removes selected mock users from the page", async () => {
+    seedMockSession({
+      session: {
+        user_id: 1,
+        username: "owner",
+        full_name: "Owner FitnessLA",
+        role: "OWNER",
+        active_shift_id: null,
+      },
+      activeShift: null,
+      lastClosedShift: null,
+    });
+
+    renderWithProviders(<AdminUsersPage />);
+
+    await screen.findByRole("heading", { name: "จัดการผู้ใช้และเวลาเข้างาน" });
+
+    fireEvent.change(screen.getByPlaceholderText("ชื่อ"), {
+      target: { value: "June Desk" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("เบอร์โทร"), {
+      target: { value: "0812345678" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("username"), {
+      target: { value: "june.desk" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("password"), {
+      target: { value: "deskpass123" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "สร้างผู้ใช้" }));
+
+    await screen.findByText("@june.desk");
+
+    fireEvent.click(screen.getByLabelText("เลือก June Desk"));
+    fireEvent.click(screen.getByRole("button", { name: /ลบที่เลือก/i }));
+
+    await waitFor(() => {
+      expect(screen.queryByText("@june.desk")).not.toBeInTheDocument();
+    });
   });
 });

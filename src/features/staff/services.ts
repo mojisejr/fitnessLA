@@ -2,10 +2,15 @@ import { Prisma } from "@prisma/client";
 import { hashPassword } from "better-auth/crypto";
 
 import type {
+  AttendanceSummaryPeriod,
+  AttendanceSummaryReport,
   AttendanceDeviceRecord,
   AttendanceDeviceStatusRecord,
   AttendanceStatusRecord,
+  BulkDeleteManagedUsersResult,
+  DeleteManagedUserResult,
   ManagedStaffUserRecord,
+  StaffAttendanceSummaryRecord,
   StaffAttendanceRecord,
   UserSession,
 } from "@/lib/contracts";
@@ -42,6 +47,14 @@ type UpdateManagedUserSettingsInput = {
   scheduled_start_time?: string | null;
   scheduled_end_time?: string | null;
   allowed_machine_ip?: string | null;
+};
+
+type AttendanceSummaryQuery = {
+  period: AttendanceSummaryPeriod;
+  date?: string;
+  start_date?: string;
+  end_date?: string;
+  user_id?: string;
 };
 
 type AttendanceDeviceRow = {
@@ -149,6 +162,118 @@ function mapAttendanceDeviceRecord(record: AttendanceDeviceRow): AttendanceDevic
     last_seen_at: record.lastSeenAt?.toISOString() ?? null,
     created_at: record.createdAt.toISOString(),
   };
+}
+
+function isManagedUserRole(role: string) {
+  const appRole = toAppRole(role);
+  return appRole === "ADMIN" || appRole === "CASHIER";
+}
+
+function mapDeletedManagedUserRecord(user: {
+  id: string;
+  name: string;
+  username: string;
+  role: string;
+}): DeleteManagedUserResult {
+  const role = toAppRole(user.role);
+  if (role !== "ADMIN" && role !== "CASHIER") {
+    throw new Error("MANAGED_USER_DELETE_FORBIDDEN");
+  }
+
+  return {
+    user_id: user.id,
+    full_name: user.name,
+    username: user.username,
+    role,
+  };
+}
+
+function getThaiNoonDate(dateKey: string) {
+  return new Date(`${dateKey}T12:00:00.000+07:00`);
+}
+
+function shiftThaiDateKey(dateKey: string, days: number) {
+  const next = getThaiNoonDate(dateKey);
+  next.setUTCDate(next.getUTCDate() + days);
+  return getThaiDateKey(next);
+}
+
+function getMonthBoundary(dateKey: string, boundary: "start" | "end") {
+  const current = getThaiNoonDate(dateKey);
+  const year = current.getUTCFullYear();
+  const monthIndex = current.getUTCMonth();
+
+  if (boundary === "start") {
+    return getThaiDateKey(new Date(Date.UTC(year, monthIndex, 1, 5, 0, 0)));
+  }
+
+  return getThaiDateKey(new Date(Date.UTC(year, monthIndex + 1, 0, 5, 0, 0)));
+}
+
+function resolveAttendanceSummaryRange(query: AttendanceSummaryQuery) {
+  if (query.period === "CUSTOM") {
+    if (!query.start_date || !query.end_date) {
+      throw new Error("INVALID_DATE_RANGE");
+    }
+
+    return {
+      rangeStart: query.start_date,
+      rangeEnd: query.end_date,
+    };
+  }
+
+  if (!query.date) {
+    throw new Error("INVALID_DATE_RANGE");
+  }
+
+  if (query.period === "DAY") {
+    return {
+      rangeStart: query.date,
+      rangeEnd: query.date,
+    };
+  }
+
+  if (query.period === "WEEK") {
+    const anchor = getThaiNoonDate(query.date);
+    const dayOfWeek = anchor.getUTCDay();
+    const daysFromMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+    const rangeStart = shiftThaiDateKey(query.date, -daysFromMonday);
+    return {
+      rangeStart,
+      rangeEnd: shiftThaiDateKey(rangeStart, 6),
+    };
+  }
+
+  return {
+    rangeStart: getMonthBoundary(query.date, "start"),
+    rangeEnd: getMonthBoundary(query.date, "end"),
+  };
+}
+
+function resolveAttendanceSummaryStatus(summary: {
+  checkedInDays: number;
+  onTimeDays: number;
+  lateDays: number;
+  earlyDays: number;
+}): StaffAttendanceSummaryRecord["summary_status"] {
+  if (summary.checkedInDays === 0) {
+    return "NO_RECORD";
+  }
+
+  const activeStatuses = [summary.onTimeDays > 0, summary.lateDays > 0, summary.earlyDays > 0].filter(Boolean).length;
+  if (activeStatuses > 1) {
+    return "MIXED";
+  }
+
+  if (summary.lateDays > 0) {
+    return "LATE";
+  }
+
+  if (summary.earlyDays > 0) {
+    return "EARLY";
+  }
+
+  return "ON_TIME";
 }
 
 export async function createManagedUser(input: CreateManagedUserInput) {
@@ -274,6 +399,71 @@ export async function updateManagedUserSettings(userId: string, input: UpdateMan
   };
 }
 
+export async function deleteManagedUser(userId: string): Promise<DeleteManagedUserResult> {
+  const target = await prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      id: true,
+      name: true,
+      username: true,
+      role: true,
+    },
+  });
+
+  if (!target) {
+    throw new Error("MANAGED_USER_NOT_FOUND");
+  }
+
+  if (!isManagedUserRole(target.role)) {
+    throw new Error("MANAGED_USER_DELETE_FORBIDDEN");
+  }
+
+  await prisma.user.delete({
+    where: { id: userId },
+  });
+
+  return mapDeletedManagedUserRecord(target);
+}
+
+export async function deleteManagedUsers(userIds: string[]): Promise<BulkDeleteManagedUsersResult> {
+  const normalizedIds = [...new Set(userIds.map((userId) => userId.trim()).filter(Boolean))];
+  if (normalizedIds.length === 0) {
+    throw new Error("MANAGED_USER_IDS_REQUIRED");
+  }
+
+  const targets = await prisma.user.findMany({
+    where: {
+      id: { in: normalizedIds },
+    },
+    select: {
+      id: true,
+      name: true,
+      username: true,
+      role: true,
+    },
+    orderBy: [{ role: "asc" }, { name: "asc" }],
+  });
+
+  if (targets.length !== normalizedIds.length) {
+    throw new Error("MANAGED_USER_NOT_FOUND");
+  }
+
+  if (targets.some((target) => !isManagedUserRole(target.role))) {
+    throw new Error("MANAGED_USER_DELETE_FORBIDDEN");
+  }
+
+  await prisma.user.deleteMany({
+    where: {
+      id: { in: normalizedIds },
+    },
+  });
+
+  return {
+    deleted_count: targets.length,
+    deleted_users: targets.map(mapDeletedManagedUserRecord),
+  };
+}
+
 export async function listAttendanceRows(limit = 60): Promise<StaffAttendanceRecord[]> {
   const rows = await prisma.staffAttendance.findMany({
     include: {
@@ -291,6 +481,102 @@ export async function listAttendanceRows(limit = 60): Promise<StaffAttendanceRec
   });
 
   return rows.map(mapAttendanceRecord);
+}
+
+export async function getAttendanceSummaryReport(query: AttendanceSummaryQuery): Promise<AttendanceSummaryReport> {
+  const { rangeStart, rangeEnd } = resolveAttendanceSummaryRange(query);
+
+  const managedUsers = await prisma.user.findMany({
+    where: {
+      role: { in: ["ADMIN", "CASHIER"] },
+      ...(query.user_id ? { id: query.user_id } : {}),
+    },
+    select: {
+      id: true,
+      name: true,
+      username: true,
+      role: true,
+      scheduledStartTime: true,
+      scheduledEndTime: true,
+      allowedMachineIp: true,
+    },
+    orderBy: [{ role: "asc" }, { name: "asc" }],
+  });
+
+  const managedUserIds = managedUsers.map((user) => user.id);
+
+  const attendanceRows = managedUserIds.length === 0
+    ? []
+    : await prisma.staffAttendance.findMany({
+      where: {
+        userId: { in: managedUserIds },
+        workDate: {
+          gte: thaiDateKeyToDate(rangeStart),
+          lte: thaiDateKeyToDate(rangeEnd),
+        },
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            username: true,
+            role: true,
+          },
+        },
+      },
+      orderBy: [{ workDate: "desc" }, { checkedInAt: "desc" }],
+    });
+
+  const mappedRows = attendanceRows.map(mapAttendanceRecord);
+
+  const summaryRows: StaffAttendanceSummaryRecord[] = managedUsers.map((user) => {
+    const role = toAppRole(user.role);
+    if (role !== "ADMIN" && role !== "CASHIER") {
+      throw new Error("INVALID_ROLE");
+    }
+
+    const rows = mappedRows.filter((row) => String(row.user_id) === user.id);
+    const checkedInDays = rows.filter((row) => row.checked_in_at).length;
+    const checkedOutDays = rows.filter((row) => row.checked_out_at).length;
+    const onTimeDays = rows.filter((row) => row.arrival_status === "ON_TIME").length;
+    const lateDays = rows.filter((row) => row.arrival_status === "LATE").length;
+    const earlyDays = rows.filter((row) => row.arrival_status === "EARLY").length;
+    const latestRow = rows[0] ?? null;
+
+    return {
+      user_id: user.id,
+      full_name: user.name,
+      username: user.username,
+      role,
+      scheduled_start_time: user.scheduledStartTime,
+      scheduled_end_time: user.scheduledEndTime,
+      attendance_days: rows.length,
+      checked_in_days: checkedInDays,
+      checked_out_days: checkedOutDays,
+      on_time_days: onTimeDays,
+      late_days: lateDays,
+      early_days: earlyDays,
+      late_minutes_total: rows.reduce((sum, row) => sum + row.late_minutes, 0),
+      early_arrival_minutes_total: rows.reduce((sum, row) => sum + row.early_arrival_minutes, 0),
+      overtime_minutes_total: rows.reduce((sum, row) => sum + row.overtime_minutes, 0),
+      early_leave_minutes_total: rows.reduce((sum, row) => sum + row.early_leave_minutes, 0),
+      summary_status: resolveAttendanceSummaryStatus({ checkedInDays, onTimeDays, lateDays, earlyDays }),
+      latest_work_date: latestRow?.work_date ?? null,
+      latest_checked_in_at: latestRow?.checked_in_at ?? null,
+      latest_checked_out_at: latestRow?.checked_out_at ?? null,
+      latest_arrival_status: latestRow?.arrival_status ?? null,
+      latest_departure_status: latestRow?.departure_status ?? null,
+    };
+  });
+
+  return {
+    period: query.period,
+    range_start: rangeStart,
+    range_end: rangeEnd,
+    summary_rows: summaryRows,
+    filtered_attendance_rows: mappedRows,
+  };
 }
 
 async function getTodayAttendanceRow(userId: string) {

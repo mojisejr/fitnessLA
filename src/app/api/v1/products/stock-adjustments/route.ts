@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { addProductStockAdjustment, listProductStockAdjustments } from "@/features/operations/services";
-import { canManageUsers, toAppRole } from "@/lib/roles";
+import { canManageProducts, toAppRole } from "@/lib/roles";
 import { resolveSessionFromRequest } from "@/lib/session";
 
 const createStockAdjustmentSchema = z.object({
@@ -27,7 +27,7 @@ export async function GET(request: Request) {
     return authError("ต้องยืนยันตัวตนก่อนดูประวัติการเติมสินค้า", 401);
   }
 
-  if (!canManageUsers(requesterRole)) {
+  if (!canManageProducts(requesterRole)) {
     return authError("สิทธิ์ไม่เพียงพอสำหรับการดูประวัติการเติมสินค้า", 403);
   }
 
@@ -55,7 +55,7 @@ export async function POST(request: Request) {
     return authError("ต้องยืนยันตัวตนก่อนเติมสินค้า", 401);
   }
 
-  if (!canManageUsers(requesterRole)) {
+  if (!canManageProducts(requesterRole)) {
     return authError("สิทธิ์ไม่เพียงพอสำหรับการเติมสินค้า", 403);
   }
 

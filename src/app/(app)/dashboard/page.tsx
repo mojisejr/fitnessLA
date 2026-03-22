@@ -2,24 +2,11 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+
 import { useAuth } from "@/features/auth/auth-provider";
 import { generalLedgerEnabled } from "@/lib/feature-flags";
+import { type AttendanceStatusRecord, type StaffAttendanceRecord } from "@/lib/contracts";
 import { formatCurrency, formatDateTime } from "@/lib/utils";
-import type { AttendanceStatusRecord, StaffAttendanceRecord } from "@/lib/contracts";
-
-type OwnerAttendanceOverview = {
-    users: Array<{
-        user_id: string | number;
-        full_name: string;
-        username: string;
-        role: "ADMIN" | "CASHIER";
-        scheduled_start_time: string | null;
-        scheduled_end_time: string | null;
-        allowed_machine_ip: string | null;
-        latest_attendance: StaffAttendanceRecord | null;
-    }>;
-    attendance_rows: StaffAttendanceRecord[];
-};
 
 async function fetchJson<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
     const response = await fetch(input, {
@@ -46,7 +33,6 @@ export default function DashboardPage() {
     const [attendanceMessage, setAttendanceMessage] = useState<string | null>(null);
     const [attendanceError, setAttendanceError] = useState<string | null>(null);
     const [isAttendanceBusy, setIsAttendanceBusy] = useState(false);
-    const [ownerOverview, setOwnerOverview] = useState<OwnerAttendanceOverview | null>(null);
 
     const quickLinks = [
         { href: "/shift/open", label: "เปิดกะ", description: "เริ่มงานแคชเชียร์ด้วยเงินทอนตั้งต้น" },
@@ -54,6 +40,7 @@ export default function DashboardPage() {
         { href: "/members", label: "สมาชิก", description: "ดูข้อมูลสมาชิก แพ็กเกจ วันเริ่มใช้ และวันหมดอายุ" },
         { href: "/expenses", label: "รายจ่าย", description: "บันทึกรายจ่ายและตรวจสอบบัญชีรายจ่ายที่ใช้งานอยู่" },
         { href: "/coa", label: "ผังบัญชี", description: "ตรวจบัญชีรายได้และค่าใช้จ่ายจากฐานข้อมูลจริง และปรับสถานะบัญชีได้" },
+        { href: "/admin/attendance", label: "attendance ทีม", description: "ดูเวลาเข้าออก สรุปรายคนย้อนหลัง และยอดมาสายหรือมาก่อนของทีมหน้าร้าน" },
         { href: "/admin/users", label: "สร้างผู้ใช้", description: "สร้าง user ใหม่พร้อม username และ password เพื่อใช้งานจริง" },
         { href: "/reports/daily-summary", label: "สรุปยอด", description: "ดูยอดรวมรายวัน รายสัปดาห์ รายเดือน หรือช่วงเวลาที่กำหนด" },
         { href: "/reports/shift-summary", label: "สรุปกะ", description: "ดูโครงรายงานกระทบยอดกะและสถานะข้อมูลที่เชื่อมแล้ว" },
@@ -76,12 +63,6 @@ export default function DashboardPage() {
                     }
                 }
 
-                if (session.role === "OWNER") {
-                    const overview = await fetchJson<OwnerAttendanceOverview>("/api/v1/admin/users");
-                    if (!ignore) {
-                        setOwnerOverview(overview);
-                    }
-                }
             } catch (error) {
                 if (!ignore) {
                     const message =
@@ -277,7 +258,11 @@ export default function DashboardPage() {
                                 </p>
                                 <p className="mt-2 text-sm text-muted">
                                     สถานะมา: {attendanceStatus.today.arrival_status}
-                                    {attendanceStatus.today.late_minutes > 0 ? ` (${attendanceStatus.today.late_minutes} นาที)` : attendanceStatus.today.early_arrival_minutes > 0 ? ` (${attendanceStatus.today.early_arrival_minutes} นาที)` : ""}
+                                    {attendanceStatus.today.late_minutes > 0
+                                        ? ` (${attendanceStatus.today.late_minutes} นาที)`
+                                        : attendanceStatus.today.early_arrival_minutes > 0
+                                            ? ` (${attendanceStatus.today.early_arrival_minutes} นาที)`
+                                            : ""}
                                 </p>
                             </div>
                         ) : null}
@@ -315,33 +300,21 @@ export default function DashboardPage() {
                     </div>
                 ) : (
                     <div className="rounded-[28px] border border-line bg-surface-strong p-6">
-                        <p className="text-xs uppercase tracking-[0.16em] text-muted">ภาพรวม attendance วันนี้</p>
-                        <h2 className="mt-3 text-2xl font-semibold text-foreground">ทีมหน้าร้านที่ owner ดูแล</h2>
-                        <div className="mt-5 space-y-3">
-                            {ownerOverview?.users?.slice(0, 6).map((user) => (
-                                <div key={String(user.user_id)} className="rounded-3xl border border-line bg-background/70 p-4">
-                                    <div className="flex items-start justify-between gap-4">
-                                        <div>
-                                            <p className="text-lg font-semibold text-foreground">{user.full_name}</p>
-                                            <p className="text-sm text-muted">@{user.username} · {user.role}</p>
-                                        </div>
-                                        <p className="text-sm text-muted">
-                                            {user.scheduled_start_time && user.scheduled_end_time ? `${user.scheduled_start_time} - ${user.scheduled_end_time}` : "ยังไม่ตั้งกะเวลา"}
-                                        </p>
-                                    </div>
-                                    <p className="mt-2 text-sm text-muted">
-                                        เครื่อง: {user.allowed_machine_ip ?? "ยังไม่กำหนด IP"}
-                                    </p>
-                                    <p className="mt-2 text-sm text-muted">
-                                        ล่าสุด: {user.latest_attendance ? `${formatWorkDate(user.latest_attendance.work_date)} · ${user.latest_attendance.arrival_status}` : "ยังไม่มีการลงชื่อ"}
-                                    </p>
-                                </div>
-                            ))}
-                            {!ownerOverview?.users?.length ? (
-                                <div className="rounded-3xl border border-dashed border-line bg-background p-5 text-sm text-muted">
-                                    ยังไม่มีข้อมูล attendance หรือรายชื่อ admin/cashier ในระบบ
-                                </div>
-                            ) : null}
+                        <p className="text-xs uppercase tracking-[0.16em] text-muted">attendance ทีมหน้าร้าน</p>
+                        <h2 className="mt-3 text-2xl font-semibold text-foreground">ย้ายสรุป attendance owner ไปหน้าแยกแล้ว</h2>
+                        <p className="mt-3 text-sm leading-7 text-muted">
+                            ใช้หน้า attendance ทีม เพื่อดูเวลาเข้าออกของวันนี้, สรุปรายวัน รายสัปดาห์ รายเดือน, หรือเลือกช่วงวันพร้อมดูย้อนหลังรายคนแบบเต็มหน้า
+                        </p>
+                        <div className="mt-5 rounded-3xl border border-line bg-background/70 p-5">
+                            <p className="text-sm leading-7 text-muted">
+                                หน้านี้คงไว้เป็นภาพรวมเริ่มงาน ส่วน attendance owner แบบละเอียดถูกย้ายออกไปเพื่อให้ดูรายวันและย้อนหลังได้เต็มพื้นที่มากขึ้น
+                            </p>
+                            <Link
+                                href="/admin/attendance"
+                                className="mt-4 inline-flex rounded-full bg-accent px-5 py-3 text-sm font-semibold text-black transition hover:bg-accent-strong"
+                            >
+                                ไปหน้า attendance ทีม
+                            </Link>
                         </div>
                     </div>
                 )}
@@ -357,6 +330,7 @@ export default function DashboardPage() {
                     </ul>
                 </div>
             </section>
+
             <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                 {quickLinks
                     .filter((item) => item.href !== "/reports/daily-summary" || session.role !== "CASHIER")
