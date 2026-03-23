@@ -166,6 +166,17 @@ export type BulkDeleteTrainingEnrollmentsResult = {
   deleted_enrollments: DeleteTrainingEnrollmentResult[];
 };
 
+export type DeleteProductResult = {
+  product_id: EntityId;
+  sku: string;
+  name: string;
+};
+
+export type BulkDeleteProductsResult = {
+  deleted_count: number;
+  deleted_products: DeleteProductResult[];
+};
+
 export interface AppAdapter {
   mode: "mock" | "real";
   authenticateUser: (username: string, password: string) => Promise<UserSession>;
@@ -177,6 +188,7 @@ export interface AppAdapter {
   updateIngredient: (input: UpdateIngredientInput) => Promise<IngredientRecord>;
   createProduct: (input: CreateProductInput) => Promise<Product>;
   updateProduct: (input: UpdateProductInput) => Promise<Product>;
+  deleteProducts: (productIds: EntityId[]) => Promise<BulkDeleteProductsResult>;
   getProductRecipe: (productId: EntityId) => Promise<ProductRecipeRecord>;
   replaceProductRecipe: (input: ReplaceProductRecipeInput) => Promise<ProductRecipeRecord>;
   listProductStockAdjustments: (productId?: EntityId) => Promise<ProductStockAdjustmentRecord[]>;

@@ -121,6 +121,17 @@ export type CreateProductStockAdjustmentInputDto = {
   note?: string | null;
 };
 
+export type DeleteProductResultDto = {
+  product_id: string;
+  sku: string;
+  name: string;
+};
+
+export type BulkDeleteProductsResultDto = {
+  deleted_count: number;
+  deleted_products: DeleteProductResultDto[];
+};
+
 export type ActiveShiftDto = {
   shift_id: string;
   opened_at: string;
@@ -1271,7 +1282,7 @@ export async function addProductStockAdjustment(
     throw new Error("PRODUCT_NOT_FOUND");
   }
 
-  if (!Number.isInteger(input.added_quantity) || input.added_quantity <= 0) {
+  if (!Number.isInteger(input.added_quantity) || input.added_quantity === 0) {
     throw new Error("INVALID_STOCK_ADDITION");
   }
 
@@ -1297,6 +1308,10 @@ export async function addProductStockAdjustment(
 
     const previousStock = product.stockOnHand ?? 0;
     const newStock = previousStock + input.added_quantity;
+
+    if (newStock < 0) {
+      throw new Error("INSUFFICIENT_STOCK");
+    }
 
     await tx.product.update({
       where: { id: product.id },
@@ -1998,6 +2013,58 @@ export async function updateProduct(input: UpdateProductInputDto): Promise<Produ
     posCategoryCode: updated.posCategoryCode,
     featuredSlot: updated.featuredSlot,
     revenueAccountId: updated.revenueAccountId,
+  });
+}
+
+export async function deleteProducts(productIds: string[]): Promise<BulkDeleteProductsResultDto> {
+  const normalizedProductIds = [...new Set(productIds.map((productId) => productId.trim()).filter(Boolean))];
+
+  if (normalizedProductIds.length === 0) {
+    return {
+      deleted_count: 0,
+      deleted_products: [],
+    };
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const targets = await tx.product.findMany({
+      where: {
+        id: { in: normalizedProductIds },
+        isActive: true,
+      },
+      select: {
+        id: true,
+        sku: true,
+        name: true,
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    if (targets.length === 0) {
+      return {
+        deleted_count: 0,
+        deleted_products: [],
+      };
+    }
+
+    await tx.product.updateMany({
+      where: {
+        id: { in: targets.map((product) => product.id) },
+      },
+      data: {
+        isActive: false,
+        featuredSlot: null,
+      },
+    });
+
+    return {
+      deleted_count: targets.length,
+      deleted_products: targets.map((product) => ({
+        product_id: product.id,
+        sku: product.sku,
+        name: product.name,
+      })),
+    };
   });
 }
 

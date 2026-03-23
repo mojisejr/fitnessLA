@@ -21,6 +21,19 @@ export function canManageProducts(role: string | null | undefined): boolean {
   return appRole === "OWNER" || appRole === "ADMIN";
 }
 
+export function canAccessPosProductInventory(role: string | null | undefined): boolean {
+  const appRole = toAppRole(role);
+  return appRole === "OWNER" || appRole === "ADMIN" || appRole === "CASHIER";
+}
+
+export function canDeleteProducts(role: string | null | undefined): boolean {
+  return toAppRole(role) === "OWNER";
+}
+
+export function canDecreaseProductStock(role: string | null | undefined): boolean {
+  return toAppRole(role) === "OWNER";
+}
+
 export function canManageMembers(role: string | null | undefined): boolean {
   return toAppRole(role) === "OWNER";
 }

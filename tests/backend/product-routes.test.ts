@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { GET as productsGET, POST as productsPOST } from "../../src/app/api/v1/products/route";
 import { PATCH as productsPATCH } from "../../src/app/api/v1/products/[productId]/route";
+import { POST as bulkDeleteProductsPOST } from "../../src/app/api/v1/products/bulk-delete/route";
+import { GET as stockAdjustmentsGET, POST as stockAdjustmentsPOST } from "../../src/app/api/v1/products/stock-adjustments/route";
 import { GET as ingredientsGET, POST as ingredientsPOST } from "../../src/app/api/v1/ingredients/route";
 import { PATCH as ingredientPATCH } from "../../src/app/api/v1/ingredients/[ingredientId]/route";
 import { GET as productRecipeGET, PATCH as productRecipePATCH } from "../../src/app/api/v1/products/[productId]/recipe/route";
@@ -10,6 +12,9 @@ const mockResolveSessionFromRequest = vi.fn();
 const mockListProducts = vi.fn();
 const mockCreateProduct = vi.fn();
 const mockUpdateProduct = vi.fn();
+const mockDeleteProducts = vi.fn();
+const mockListProductStockAdjustments = vi.fn();
+const mockAddProductStockAdjustment = vi.fn();
 const mockListIngredients = vi.fn();
 const mockCreateIngredient = vi.fn();
 const mockUpdateIngredient = vi.fn();
@@ -24,6 +29,9 @@ vi.mock("../../src/features/operations/services", () => ({
   listProducts: (...args: unknown[]) => mockListProducts(...args),
   createProduct: (...args: unknown[]) => mockCreateProduct(...args),
   updateProduct: (...args: unknown[]) => mockUpdateProduct(...args),
+  deleteProducts: (...args: unknown[]) => mockDeleteProducts(...args),
+  listProductStockAdjustments: (...args: unknown[]) => mockListProductStockAdjustments(...args),
+  addProductStockAdjustment: (...args: unknown[]) => mockAddProductStockAdjustment(...args),
   listIngredients: (...args: unknown[]) => mockListIngredients(...args),
   createIngredient: (...args: unknown[]) => mockCreateIngredient(...args),
   updateIngredient: (...args: unknown[]) => mockUpdateIngredient(...args),
@@ -120,18 +128,8 @@ describe("phase2 product routes", () => {
     }));
   });
 
-  it("returns 201 for cashier product create", async () => {
+  it("returns 403 for cashier product create", async () => {
     mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "CASHIER" });
-    mockCreateProduct.mockResolvedValue({
-      product_id: "p3",
-      sku: "SNACK-001",
-      name: "Protein Bar",
-      price: 95,
-      product_type: "GOODS",
-      pos_category: "FOOD",
-      stock_on_hand: 12,
-      track_stock: true,
-    });
 
     const response = await productsPOST(
       new Request("http://localhost/api/v1/products", {
@@ -149,12 +147,99 @@ describe("phase2 product routes", () => {
     );
     const body = await response.json();
 
-    expect(response.status).toBe(201);
-    expect(body).toMatchObject({
-      product_id: "p3",
-      sku: "SNACK-001",
-      pos_category: "FOOD",
+    expect(response.status).toBe(403);
+    expect(body.code).toBe("FORBIDDEN");
+  });
+
+  it("returns 200 when cashier reads stock adjustment history", async () => {
+    mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "CASHIER" });
+    mockListProductStockAdjustments.mockResolvedValue([
+      {
+        adjustment_id: "adj-1",
+        product_id: "prod-1",
+        product_name: "Mineral Water",
+        product_sku: "WATER-01",
+        previous_stock: 10,
+        added_quantity: 5,
+        new_stock: 15,
+        created_by_user_id: "u1",
+        created_by_name: "Cashier User",
+        created_at: new Date().toISOString(),
+      },
+    ]);
+
+    const response = await stockAdjustmentsGET(new Request("http://localhost/api/v1/products/stock-adjustments?product_id=prod-1"));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body[0]).toMatchObject({ product_id: "prod-1", added_quantity: 5 });
+  });
+
+  it("returns 201 when cashier increases stock", async () => {
+    mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", full_name: "Cashier User", role: "CASHIER" });
+    mockAddProductStockAdjustment.mockResolvedValue({
+      adjustment_id: "adj-1",
+      product_id: "prod-1",
+      product_name: "Mineral Water",
+      product_sku: "WATER-01",
+      previous_stock: 10,
+      added_quantity: 3,
+      new_stock: 13,
+      created_by_user_id: "u1",
+      created_by_name: "Cashier User",
+      created_at: new Date().toISOString(),
     });
+
+    const response = await stockAdjustmentsPOST(new Request("http://localhost/api/v1/products/stock-adjustments", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        product_id: "prod-1",
+        added_quantity: 3,
+      }),
+    }));
+    const body = await response.json();
+
+    expect(response.status).toBe(201);
+    expect(body.new_stock).toBe(13);
+  });
+
+  it("returns 403 when cashier tries to decrease stock", async () => {
+    mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", full_name: "Cashier User", role: "CASHIER" });
+
+    const response = await stockAdjustmentsPOST(new Request("http://localhost/api/v1/products/stock-adjustments", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        product_id: "prod-1",
+        added_quantity: -2,
+      }),
+    }));
+    const body = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(body.code).toBe("FORBIDDEN");
+  });
+
+  it("returns 200 when owner bulk deletes products", async () => {
+    mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "OWNER" });
+    mockDeleteProducts.mockResolvedValue({
+      deleted_count: 2,
+      deleted_products: [
+        { product_id: "prod-1", sku: "WATER-01", name: "Mineral Water" },
+        { product_id: "prod-2", sku: "SNACK-01", name: "Protein Bar" },
+      ],
+    });
+
+    const response = await bulkDeleteProductsPOST(new Request("http://localhost/api/v1/products/bulk-delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ product_ids: ["prod-1", "prod-2"] }),
+    }));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.deleted_count).toBe(2);
   });
 
   it("returns 200 for admin product update", async () => {

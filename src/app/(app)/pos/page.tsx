@@ -156,7 +156,7 @@ function buildProductSearchIndex(product: Product) {
 export default function PosPage() {
     const adapter = useAppAdapter();
     const { activeShift, session } = useAuth();
-    const canManagePosProducts = session?.role === "OWNER" || session?.role === "ADMIN";
+    const canManagePosProducts = session?.role === "OWNER" || session?.role === "ADMIN" || session?.role === "CASHIER";
     const cartLines = useAtomValue(cartLinesAtom);
     const cartSubtotal = useAtomValue(cartSubtotalAtom);
     const cartCount = useAtomValue(cartCountAtom);

@@ -2,12 +2,14 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { addProductStockAdjustment, listProductStockAdjustments } from "@/features/operations/services";
-import { canManageProducts, toAppRole } from "@/lib/roles";
+import { canAccessPosProductInventory, canDecreaseProductStock, toAppRole } from "@/lib/roles";
 import { resolveSessionFromRequest } from "@/lib/session";
 
 const createStockAdjustmentSchema = z.object({
   product_id: z.string().trim().min(1),
-  added_quantity: z.number().int().positive(),
+  added_quantity: z.number().int().refine((value) => value !== 0, {
+    message: "จำนวนที่ปรับต้องไม่เป็น 0",
+  }),
   note: z.string().trim().max(240).nullable().optional(),
 });
 
@@ -27,7 +29,7 @@ export async function GET(request: Request) {
     return authError("ต้องยืนยันตัวตนก่อนดูประวัติการเติมสินค้า", 401);
   }
 
-  if (!canManageProducts(requesterRole)) {
+  if (!canAccessPosProductInventory(requesterRole)) {
     return authError("สิทธิ์ไม่เพียงพอสำหรับการดูประวัติการเติมสินค้า", 403);
   }
 
@@ -55,7 +57,7 @@ export async function POST(request: Request) {
     return authError("ต้องยืนยันตัวตนก่อนเติมสินค้า", 401);
   }
 
-  if (!canManageProducts(requesterRole)) {
+  if (!canAccessPosProductInventory(requesterRole)) {
     return authError("สิทธิ์ไม่เพียงพอสำหรับการเติมสินค้า", 403);
   }
 
@@ -82,6 +84,10 @@ export async function POST(request: Request) {
     );
   }
 
+  if (parseResult.data.added_quantity < 0 && !canDecreaseProductStock(requesterRole)) {
+    return authError("เฉพาะ owner เท่านั้นที่ลดสต็อกสินค้าได้", 403);
+  }
+
   try {
     const created = await addProductStockAdjustment(session.user_id, session.full_name, parseResult.data);
     return NextResponse.json(created, { status: 201 });
@@ -102,8 +108,15 @@ export async function POST(request: Request) {
 
     if (error instanceof Error && error.message === "INVALID_STOCK_ADDITION") {
       return NextResponse.json(
-        { code: "INVALID_STOCK_ADDITION", message: "จำนวนที่เติมต้องมากกว่า 0" },
+        { code: "INVALID_STOCK_ADDITION", message: "จำนวนที่ปรับสต็อกต้องไม่เป็น 0" },
         { status: 400 },
+      );
+    }
+
+    if (error instanceof Error && error.message === "INSUFFICIENT_STOCK") {
+      return NextResponse.json(
+        { code: "INSUFFICIENT_STOCK", message: "สต็อกคงเหลือไม่พอสำหรับการตัดออก" },
+        { status: 409 },
       );
     }
 

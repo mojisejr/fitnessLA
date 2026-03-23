@@ -14,9 +14,11 @@ type SellCategory = "ALL" | keyof typeof POS_CATEGORY_LABEL;
 type PosEditorCategory = Exclude<SellCategory, "ALL">;
 type FeaturedSlot = 1 | 2 | 3 | 4;
 type EditableProductType = "GOODS" | "SERVICE";
+type StockAdjustmentDirection = "INCREASE" | "DECREASE";
 type InlineRestockDraft = {
     quantity: string;
     note: string;
+    direction: StockAdjustmentDirection;
 };
 type DraftRecipeItem = {
     key: string;
@@ -100,12 +102,16 @@ function buildProductSearchIndex(product: Product) {
 export default function PosProductsPage() {
     const adapter = useAppAdapter();
     const { session } = useAuth();
+    const canManageProductCatalog = session?.role === "OWNER" || session?.role === "ADMIN";
+    const canDeleteProducts = session?.role === "OWNER";
+    const canDecreaseStock = session?.role === "OWNER";
 
     const [products, setProducts] = useState<Product[]>([]);
     const [productsLoading, setProductsLoading] = useState(true);
     const [productsError, setProductsError] = useState<string | null>(null);
     const [query, setQuery] = useState("");
     const [selectedCategory, setSelectedCategory] = useState<SellCategory>("ALL");
+    const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
     const [selectedProductId, setSelectedProductId] = useState("");
     const [isCreateMode, setIsCreateMode] = useState(false);
     const [newProductType, setNewProductType] = useState<EditableProductType>("GOODS");
@@ -130,6 +136,9 @@ export default function PosProductsPage() {
     const [inlineRestockDrafts, setInlineRestockDrafts] = useState<Record<string, InlineRestockDraft>>({});
     const [inlineRestockFeedback, setInlineRestockFeedback] = useState<Record<string, InlineRestockFeedback>>({});
     const [restockingProductId, setRestockingProductId] = useState<string | null>(null);
+    const [isDeletingProducts, setIsDeletingProducts] = useState(false);
+    const [bulkDeleteError, setBulkDeleteError] = useState<string | null>(null);
+    const [bulkDeleteMessage, setBulkDeleteMessage] = useState<string | null>(null);
     const [ingredients, setIngredients] = useState<IngredientRecord[]>([]);
     const [ingredientsLoading, setIngredientsLoading] = useState(true);
     const [ingredientsError, setIngredientsError] = useState<string | null>(null);
@@ -198,6 +207,16 @@ export default function PosProductsPage() {
                 }))
                 .filter((section) => section.products.length > 0),
         [filteredProducts],
+    );
+
+    const filteredProductIds = useMemo(
+        () => filteredProducts.map((product) => String(product.product_id)),
+        [filteredProducts],
+    );
+
+    const selectedFilteredCount = useMemo(
+        () => selectedProductIds.filter((productId) => filteredProductIds.includes(productId)).length,
+        [filteredProductIds, selectedProductIds],
     );
 
     const trackedProducts = useMemo(() => products.filter((product) => product.track_stock), [products]);
@@ -372,6 +391,18 @@ export default function PosProductsPage() {
     }, [isCreateMode, selectedProduct]);
 
     useEffect(() => {
+        const activeProductIds = new Set(products.map((product) => String(product.product_id)));
+
+        setSelectedProductIds((current) => current.filter((productId) => activeProductIds.has(productId)));
+
+        if (selectedProductId && !activeProductIds.has(selectedProductId)) {
+            setSelectedProductId(products[0] ? String(products[0].product_id) : "");
+            setIsCreateMode(false);
+            setActiveRestockProductId("");
+        }
+    }, [products, selectedProductId]);
+
+    useEffect(() => {
         if (isCreateMode) {
             setSelectedRevenueAccountId("");
             setAdjustments([]);
@@ -389,6 +420,10 @@ export default function PosProductsPage() {
     }, [isCreateMode, refreshAdjustments, refreshRecipe, selectedProduct]);
 
     function openCreateMode() {
+        if (!canManageProductCatalog) {
+            return;
+        }
+
         setIsCreateMode(true);
         setActiveRestockProductId("");
         setNewProductType("GOODS");
@@ -416,6 +451,75 @@ export default function PosProductsPage() {
         setIsCreateMode(false);
         setEditorMessage(null);
         setEditorError(null);
+    }
+
+    function toggleProductSelection(productId: string) {
+        setSelectedProductIds((current) =>
+            current.includes(productId)
+                ? current.filter((value) => value !== productId)
+                : [...current, productId],
+        );
+        setBulkDeleteError(null);
+        setBulkDeleteMessage(null);
+    }
+
+    function toggleSelectAllFilteredProducts() {
+        if (selectedFilteredCount === filteredProductIds.length) {
+            setSelectedProductIds((current) => current.filter((productId) => !filteredProductIds.includes(productId)));
+        } else {
+            setSelectedProductIds((current) => [...new Set([...current, ...filteredProductIds])]);
+        }
+        setBulkDeleteError(null);
+        setBulkDeleteMessage(null);
+    }
+
+    function removeDeletedProductsFromState(productIds: string[]) {
+        const deletedIdSet = new Set(productIds);
+
+        setProducts((current) => current.filter((product) => !deletedIdSet.has(String(product.product_id))));
+        setSelectedProductIds((current) => current.filter((productId) => !deletedIdSet.has(productId)));
+        setInlineRestockDrafts((current) => {
+            const next = { ...current };
+            for (const productId of productIds) {
+                delete next[productId];
+            }
+            return next;
+        });
+        setInlineRestockFeedback((current) => {
+            const next = { ...current };
+            for (const productId of productIds) {
+                delete next[productId];
+            }
+            return next;
+        });
+
+        if (productIds.includes(selectedProductId)) {
+            setSelectedProductId("");
+            setAdjustments([]);
+            setRecipe(null);
+            setRecipeRows([]);
+            setActiveRestockProductId("");
+        }
+    }
+
+    async function handleDeleteSelectedProducts() {
+        if (!canDeleteProducts || selectedProductIds.length === 0) {
+            return;
+        }
+
+        setIsDeletingProducts(true);
+        setBulkDeleteError(null);
+        setBulkDeleteMessage(null);
+
+        try {
+            const result = await adapter.deleteProducts(selectedProductIds);
+            removeDeletedProductsFromState(result.deleted_products.map((product) => String(product.product_id)));
+            setBulkDeleteMessage(`ลบสินค้า ${result.deleted_count} รายการเรียบร้อยแล้ว`);
+        } catch (error) {
+            setBulkDeleteError(getErrorMessage(error, "ไม่สามารถลบสินค้าที่เลือกได้"));
+        } finally {
+            setIsDeletingProducts(false);
+        }
     }
 
     function clearInlineRestockFeedback(productId: string) {
@@ -583,6 +687,7 @@ export default function PosProductsPage() {
             [productId]: {
                 quantity: current[productId]?.quantity ?? "",
                 note: current[productId]?.note ?? "",
+                direction: current[productId]?.direction ?? "INCREASE",
                 ...patch,
             },
         }));
@@ -596,6 +701,10 @@ export default function PosProductsPage() {
     }
 
     async function handleSaveProduct() {
+        if (!canManageProductCatalog) {
+            return;
+        }
+
         if (!selectedProduct && !isCreateMode) {
             return;
         }
@@ -681,15 +790,29 @@ export default function PosProductsPage() {
         }
 
         const productId = String(product.product_id);
-        const draft = inlineRestockDrafts[productId] ?? { quantity: "", note: "" };
+        const draft = inlineRestockDrafts[productId] ?? { quantity: "", note: "", direction: "INCREASE" };
         const parsedQuantity = Number(draft.quantity);
+        const quantityDelta = draft.direction === "DECREASE" ? -parsedQuantity : parsedQuantity;
 
         if (!Number.isInteger(parsedQuantity) || parsedQuantity <= 0) {
             setInlineRestockFeedback((current) => ({
                 ...current,
                 [productId]: {
                     tone: "error",
-                    message: "จำนวนที่เติมต้องเป็นจำนวนเต็มมากกว่า 0",
+                    message: draft.direction === "DECREASE"
+                        ? "จำนวนที่ตัดออกต้องเป็นจำนวนเต็มมากกว่า 0"
+                        : "จำนวนที่เติมต้องเป็นจำนวนเต็มมากกว่า 0",
+                },
+            }));
+            return;
+        }
+
+        if (draft.direction === "DECREASE" && !canDecreaseStock) {
+            setInlineRestockFeedback((current) => ({
+                ...current,
+                [productId]: {
+                    tone: "error",
+                    message: "เฉพาะ owner เท่านั้นที่ลดสต็อกสินค้าได้",
                 },
             }));
             return;
@@ -703,7 +826,7 @@ export default function PosProductsPage() {
         try {
             const created = await adapter.addProductStockAdjustment({
                 productId: product.product_id,
-                addedQuantity: parsedQuantity,
+                addedQuantity: quantityDelta,
                 note: draft.note || null,
                 performedByName: session?.full_name,
             });
@@ -719,13 +842,16 @@ export default function PosProductsPage() {
                 [productId]: {
                     quantity: "",
                     note: "",
+                    direction: current[productId]?.direction ?? "INCREASE",
                 },
             }));
             setInlineRestockFeedback((current) => ({
                 ...current,
                 [productId]: {
                     tone: "success",
-                    message: `เติมสต็อก ${created.product_name} จาก ${created.previous_stock} เป็น ${created.new_stock} เรียบร้อยแล้ว`,
+                    message: quantityDelta < 0
+                        ? `ลดสต็อก ${created.product_name} จาก ${created.previous_stock} เป็น ${created.new_stock} เรียบร้อยแล้ว`
+                        : `เติมสต็อก ${created.product_name} จาก ${created.previous_stock} เป็น ${created.new_stock} เรียบร้อยแล้ว`,
                 },
             }));
         } catch (error) {
@@ -736,7 +862,15 @@ export default function PosProductsPage() {
                     ...current,
                     [productId]: {
                         tone: "error",
-                        message: "จำนวนที่เติมต้องมากกว่า 0",
+                        message: "จำนวนที่ปรับสต็อกต้องไม่เป็น 0",
+                    },
+                }));
+            } else if (errorCode === "INSUFFICIENT_STOCK") {
+                setInlineRestockFeedback((current) => ({
+                    ...current,
+                    [productId]: {
+                        tone: "error",
+                        message: "สต็อกคงเหลือไม่พอสำหรับการตัดออก",
                     },
                 }));
             } else if (errorCode === "PRODUCT_STOCK_NOT_TRACKED") {
@@ -762,7 +896,7 @@ export default function PosProductsPage() {
     }
 
     return (
-        <RoleGuard allowedRoles={["OWNER", "ADMIN"]}>
+        <RoleGuard allowedRoles={["OWNER", "ADMIN", "CASHIER"]}>
             <div className="grid gap-6 xl:grid-cols-[minmax(0,1.3fr)_420px]">
                 <section className="space-y-6 rounded-[28px] border border-line bg-surface-strong p-6 md:p-8">
                     <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
@@ -830,14 +964,43 @@ export default function PosProductsPage() {
                                 </option>
                             ))}
                         </select>
-                        <button
-                            type="button"
-                            onClick={openCreateMode}
-                            className="rounded-full bg-accent px-5 py-3 text-sm font-semibold text-black transition hover:bg-accent-strong"
-                        >
-                            เพิ่มสินค้าใหม่
-                        </button>
+                        {canManageProductCatalog ? (
+                            <button
+                                type="button"
+                                onClick={openCreateMode}
+                                className="rounded-full bg-accent px-5 py-3 text-sm font-semibold text-black transition hover:bg-accent-strong"
+                            >
+                                เพิ่มสินค้าใหม่
+                            </button>
+                        ) : (
+                            <div className="rounded-[20px] border border-line bg-background/70 px-4 py-3 text-sm text-muted">
+                                แคชเชียร์เข้าหน้านี้เพื่อเติมสต็อกและดูประวัติการปรับสินค้าได้
+                            </div>
+                        )}
                     </div>
+
+                    {canDeleteProducts ? (
+                        <div className="flex flex-wrap items-center gap-3 rounded-[22px] border border-line bg-background/70 p-4">
+                            <button
+                                type="button"
+                                onClick={toggleSelectAllFilteredProducts}
+                                disabled={filteredProductIds.length === 0}
+                                className="rounded-full border border-line px-4 py-2 text-sm font-semibold text-foreground transition hover:border-accent hover:bg-accent-soft disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                                {selectedFilteredCount === filteredProductIds.length && filteredProductIds.length > 0 ? "ยกเลิกเลือกทั้งหมดในผลลัพธ์" : "เลือกทั้งหมดในผลลัพธ์"}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => void handleDeleteSelectedProducts()}
+                                disabled={selectedProductIds.length === 0 || isDeletingProducts}
+                                className="rounded-full border border-warning px-4 py-2 text-sm font-semibold text-foreground transition hover:bg-warning-soft disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                                {isDeletingProducts ? "กำลังลบสินค้า..." : `ลบสินค้าที่เลือก ${selectedProductIds.length > 0 ? `(${selectedProductIds.length})` : ""}`}
+                            </button>
+                            {bulkDeleteError ? <div className="text-sm text-warning">{bulkDeleteError}</div> : null}
+                            {bulkDeleteMessage ? <div className="text-sm text-foreground">{bulkDeleteMessage}</div> : null}
+                        </div>
+                    ) : null}
 
                     {productsLoading ? (
                         <div className="rounded-3xl border border-dashed border-line bg-background p-6 text-sm text-muted">
@@ -863,6 +1026,7 @@ export default function PosProductsPage() {
                                         <table className="min-w-230 divide-y divide-line text-sm">
                                             <thead className="bg-[#14130f]">
                                                 <tr>
+                                                    {canDeleteProducts ? <th className="px-4 py-3 text-left font-semibold text-muted">เลือก</th> : null}
                                                     <th className="px-4 py-3 text-left font-semibold text-muted">สินค้า</th>
                                                     <th className="px-4 py-3 text-left font-semibold text-muted">SKU</th>
                                                     <th className="px-4 py-3 text-left font-semibold text-muted">ประเภท</th>
@@ -878,13 +1042,15 @@ export default function PosProductsPage() {
                                                 {section.products.map((product) => {
                                                     const productId = String(product.product_id);
                                                     const isSelected = String(product.product_id) === selectedProductId && !isCreateMode;
+                                                    const isChecked = selectedProductIds.includes(productId);
                                                     const isInlineRestockOpen = activeRestockProductId === productId;
-                                                    const restockDraft = inlineRestockDrafts[productId] ?? { quantity: "", note: "" };
+                                                    const restockDraft = inlineRestockDrafts[productId] ?? { quantity: "", note: "", direction: "INCREASE" };
                                                     const restockFeedback = inlineRestockFeedback[productId] ?? null;
                                                     const parsedDraftQuantity = Number(restockDraft.quantity);
+                                                    const signedDraftQuantity = restockDraft.direction === "DECREASE" ? -parsedDraftQuantity : parsedDraftQuantity;
                                                     const projectedStock = !Number.isInteger(parsedDraftQuantity) || parsedDraftQuantity <= 0
                                                         ? product.stock_on_hand ?? 0
-                                                        : (product.stock_on_hand ?? 0) + parsedDraftQuantity;
+                                                        : Math.max(0, (product.stock_on_hand ?? 0) + signedDraftQuantity);
                                                     const revenueAccount = chartOfAccounts.find(
                                                         (account) => String(account.account_id) === String(product.revenue_account_id),
                                                     );
@@ -895,6 +1061,17 @@ export default function PosProductsPage() {
                                                                 className={isSelected ? "bg-accent-soft/10" : "bg-transparent"}
                                                                 aria-label={`Product row ${product.name}`}
                                                             >
+                                                                {canDeleteProducts ? (
+                                                                    <td className="px-4 py-4 align-top">
+                                                                        <input
+                                                                            aria-label={`เลือกสินค้า ${product.name}`}
+                                                                            type="checkbox"
+                                                                            checked={isChecked}
+                                                                            onChange={() => toggleProductSelection(productId)}
+                                                                            className="h-4 w-4 rounded border-line"
+                                                                        />
+                                                                    </td>
+                                                                ) : null}
                                                                 <td className="px-4 py-4 align-top">
                                                                     <button
                                                                         type="button"
@@ -936,23 +1113,37 @@ export default function PosProductsPage() {
                                                                         onClick={() => openEditMode(productId)}
                                                                         className="rounded-full border border-line px-4 py-2 text-xs font-semibold text-foreground transition hover:border-accent hover:bg-accent-soft"
                                                                     >
-                                                                        จัดการ
+                                                                        {canManageProductCatalog ? "จัดการ" : "ดูรายละเอียด"}
                                                                     </button>
                                                                 </td>
                                                             </tr>
                                                             {product.track_stock && isInlineRestockOpen ? (
                                                                 <tr aria-label={`Restock row ${product.name}`}>
-                                                                    <td colSpan={9} className="px-4 pb-4 pt-0">
+                                                                    <td colSpan={canDeleteProducts ? 10 : 9} className="px-4 pb-4 pt-0">
                                                                         <div className="rounded-[22px] border border-line bg-[#161510] p-4">
-                                                                            <div className="grid gap-3 lg:grid-cols-[180px_180px_minmax(0,1fr)_auto] lg:items-end">
+                                                                            <div className="grid gap-3 lg:grid-cols-[180px_180px_180px_minmax(0,1fr)_auto] lg:items-end">
                                                                                 <div className="rounded-[18px] border border-line bg-background/70 px-4 py-3 text-sm text-foreground">
                                                                                     <p className="text-xs text-muted">ของเดิม</p>
                                                                                     <p className="mt-2 text-2xl font-semibold">{product.stock_on_hand ?? 0}</p>
                                                                                 </div>
+                                                                                {canDecreaseStock ? (
+                                                                                    <label className="block">
+                                                                                        <span className="text-sm font-medium text-foreground">ประเภทการปรับ</span>
+                                                                                        <select
+                                                                                            aria-label={`ประเภทการปรับ ${product.name}`}
+                                                                                            value={restockDraft.direction}
+                                                                                            onChange={(event) => updateInlineRestockDraft(productId, { direction: event.target.value as StockAdjustmentDirection })}
+                                                                                            className="mt-2 w-full rounded-[18px] border border-line bg-[#fff8de] px-4 py-3 text-[#17130a] outline-none transition focus:border-accent"
+                                                                                        >
+                                                                                            <option value="INCREASE">เติมเข้า</option>
+                                                                                            <option value="DECREASE">ตัดออก</option>
+                                                                                        </select>
+                                                                                    </label>
+                                                                                ) : null}
                                                                                 <label className="block">
-                                                                                    <span className="text-sm font-medium text-foreground">เติมเพิ่ม</span>
+                                                                                    <span className="text-sm font-medium text-foreground">{restockDraft.direction === "DECREASE" ? "จำนวนที่ตัดออก" : "จำนวนที่เติม"}</span>
                                                                                     <input
-                                                                                        aria-label={`เติมเพิ่ม ${product.name}`}
+                                                                                        aria-label={`${restockDraft.direction === "DECREASE" ? "ตัดออก" : "เติมเพิ่ม"} ${product.name}`}
                                                                                         inputMode="numeric"
                                                                                         value={restockDraft.quantity}
                                                                                         onChange={(event) => updateInlineRestockDraft(productId, { quantity: event.target.value })}
@@ -960,17 +1151,17 @@ export default function PosProductsPage() {
                                                                                     />
                                                                                 </label>
                                                                                 <label className="block">
-                                                                                    <span className="text-sm font-medium text-foreground">หมายเหตุการเติมสินค้า</span>
+                                                                                    <span className="text-sm font-medium text-foreground">หมายเหตุการปรับสินค้า</span>
                                                                                     <input
-                                                                                        aria-label={`หมายเหตุการเติมสินค้า ${product.name}`}
+                                                                                        aria-label={`หมายเหตุการปรับสินค้า ${product.name}`}
                                                                                         value={restockDraft.note}
                                                                                         onChange={(event) => updateInlineRestockDraft(productId, { note: event.target.value })}
-                                                                                        placeholder="เช่น รับของเข้ารอบเช้า"
+                                                                                        placeholder={restockDraft.direction === "DECREASE" ? "เช่น สินค้าเสียหายหรือใช้ภายใน" : "เช่น รับของเข้ารอบเช้า"}
                                                                                         className="mt-2 w-full rounded-[18px] border border-line bg-[#fff8de] px-4 py-3 text-[#17130a] outline-none transition focus:border-accent"
                                                                                     />
                                                                                 </label>
                                                                                 <div className="rounded-[18px] border border-line bg-background/70 px-4 py-3 text-sm text-foreground">
-                                                                                    <p className="text-xs text-muted">ยอดหลังเติม</p>
+                                                                                    <p className="text-xs text-muted">ยอดหลังปรับ</p>
                                                                                     <p className="mt-2 text-2xl font-semibold">{projectedStock}</p>
                                                                                 </div>
                                                                             </div>
@@ -988,7 +1179,7 @@ export default function PosProductsPage() {
                                                                                     disabled={restockingProductId === productId}
                                                                                     className="rounded-full bg-accent px-5 py-3 text-sm font-semibold text-black transition hover:bg-accent-strong disabled:cursor-not-allowed disabled:opacity-60"
                                                                                 >
-                                                                                    {restockingProductId === productId ? "กำลังบันทึก..." : "บันทึกการเติมสินค้า"}
+                                                                                    {restockingProductId === productId ? "กำลังบันทึก..." : restockDraft.direction === "DECREASE" ? "บันทึกการลดสต็อก" : "บันทึกการเติมสินค้า"}
                                                                                 </button>
                                                                                 <button
                                                                                     type="button"
@@ -1019,26 +1210,30 @@ export default function PosProductsPage() {
                 </section>
 
                 <aside className="space-y-6 rounded-[28px] border border-line bg-surface-strong p-6 md:p-8">
+                    {canManageProductCatalog ? (
+                    <>
                     <section className="rounded-3xl border border-line bg-background/70 p-5">
-                        <div className="flex flex-wrap gap-3">
-                            <button
-                                type="button"
-                                onClick={openCreateMode}
-                                className="rounded-full bg-accent px-5 py-3 text-sm font-semibold text-black transition hover:bg-accent-strong"
-                            >
-                                เพิ่มสินค้าใหม่
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => openEditMode()}
-                                disabled={!selectedProduct}
-                                className="rounded-full border border-line px-5 py-3 text-sm font-semibold text-foreground transition hover:border-accent hover:bg-accent-soft disabled:cursor-not-allowed disabled:opacity-50"
-                            >
-                                แก้ไขสินค้าที่เลือก
-                            </button>
-                        </div>
+                        {canManageProductCatalog ? (
+                            <>
+                                <div className="flex flex-wrap gap-3">
+                                    <button
+                                        type="button"
+                                        onClick={openCreateMode}
+                                        className="rounded-full bg-accent px-5 py-3 text-sm font-semibold text-black transition hover:bg-accent-strong"
+                                    >
+                                        เพิ่มสินค้าใหม่
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => openEditMode()}
+                                        disabled={!selectedProduct}
+                                        className="rounded-full border border-line px-5 py-3 text-sm font-semibold text-foreground transition hover:border-accent hover:bg-accent-soft disabled:cursor-not-allowed disabled:opacity-50"
+                                    >
+                                        แก้ไขสินค้าที่เลือก
+                                    </button>
+                                </div>
 
-                        <div className="mt-5 space-y-4">
+                                <div className="mt-5 space-y-4">
                             <label className="block">
                                 <span className="text-sm font-medium text-foreground">{isCreateMode ? "ประเภทสินค้าใหม่" : "สินค้า"}</span>
                                 {isCreateMode ? (
@@ -1197,37 +1392,52 @@ export default function PosProductsPage() {
                             {editorError ? <div className="rounded-[20px] border border-warning bg-warning-soft px-4 py-3 text-sm text-foreground">{editorError}</div> : null}
                             {editorMessage ? <div className="rounded-[20px] border border-accent bg-accent-soft px-4 py-3 text-sm text-foreground">{editorMessage}</div> : null}
 
-                            <div className="flex flex-wrap gap-3">
-                                <button
-                                    type="button"
-                                    onClick={() => void handleSaveProduct()}
-                                    disabled={(!selectedProduct && !isCreateMode) || isSavingProduct}
-                                    className="rounded-full bg-accent px-5 py-3 text-sm font-semibold text-black transition hover:bg-accent-strong disabled:cursor-not-allowed disabled:opacity-60"
-                                >
-                                    {isSavingProduct ? "กำลังบันทึก..." : isCreateMode ? "สร้างสินค้าใหม่" : "บันทึกสินค้า"}
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        if (isCreateMode) {
-                                            openCreateMode();
-                                        } else if (selectedProduct) {
-                                            openEditMode(String(selectedProduct.product_id));
-                                        }
-                                    }}
-                                    className="rounded-full border border-line px-5 py-3 text-sm font-semibold text-foreground transition hover:border-accent hover:bg-accent-soft"
-                                >
-                                    รีเซ็ตฟอร์ม
-                                </button>
+                                    <div className="flex flex-wrap gap-3">
+                                        <button
+                                            type="button"
+                                            onClick={() => void handleSaveProduct()}
+                                            disabled={(!selectedProduct && !isCreateMode) || isSavingProduct}
+                                            className="rounded-full bg-accent px-5 py-3 text-sm font-semibold text-black transition hover:bg-accent-strong disabled:cursor-not-allowed disabled:opacity-60"
+                                        >
+                                            {isSavingProduct ? "กำลังบันทึก..." : isCreateMode ? "สร้างสินค้าใหม่" : "บันทึกสินค้า"}
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                if (isCreateMode) {
+                                                    openCreateMode();
+                                                } else if (selectedProduct) {
+                                                    openEditMode(String(selectedProduct.product_id));
+                                                }
+                                            }}
+                                            className="rounded-full border border-line px-5 py-3 text-sm font-semibold text-foreground transition hover:border-accent hover:bg-accent-soft"
+                                        >
+                                            รีเซ็ตฟอร์ม
+                                        </button>
+                                    </div>
+                                </div>
+                            </>
+                        ) : (
+                            <div className="space-y-4 rounded-[22px] border border-line bg-[#161510] p-4 text-sm text-foreground">
+                                <p className="text-xs font-semibold text-muted">สิทธิ์ของแคชเชียร์</p>
+                                <h2 className="text-xl font-semibold text-foreground">หน้านี้เปิดให้เติมสต็อกและดูประวัติการปรับสินค้า</h2>
+                                <p className="leading-7 text-muted">
+                                    การสร้างสินค้าใหม่, แก้ไขรายละเอียดสินค้า, ผูกสูตร และลบหลายรายการ ยังสงวนไว้สำหรับ owner หรือ admin เพื่อป้องกันการแก้ catalog โดยไม่ตั้งใจ
+                                </p>
+                                {selectedProduct ? (
+                                    <div className="rounded-[18px] border border-line bg-background/70 px-4 py-3 text-sm text-foreground">
+                                        รายการที่เลือก: {selectedProduct.name}
+                                    </div>
+                                ) : null}
                             </div>
-                        </div>
+                        )}
                     </section>
 
                     <section className="rounded-3xl border border-line bg-background/70 p-5">
                         <div className="flex items-start justify-between gap-3">
                             <div>
                                 <p className="text-xs font-semibold text-muted">จัดการ stock แบบ inline</p>
-                                <h2 className="mt-2 text-xl font-semibold text-foreground">เติมจากแถวสินค้าทันที แล้วค่อย update ฐานข้อมูลจากยอดเดิม</h2>
+                                <h2 className="mt-2 text-xl font-semibold text-foreground">ปรับสต็อกจากแถวสินค้าทันทีโดยอิงยอดคงเหลือจริง</h2>
                             </div>
                             {selectedProduct?.track_stock ? (
                                 <div className="rounded-full border border-line px-3 py-1 text-xs font-semibold text-foreground">
@@ -1239,7 +1449,7 @@ export default function PosProductsPage() {
                         {selectedProduct?.track_stock ? (
                             <div className="mt-4 space-y-3 rounded-[22px] border border-line bg-[#161510] p-4 text-sm text-foreground">
                                 <p className="leading-7 text-muted">
-                                    สินค้าที่ติดตาม stock จะเติมจากปุ่ม + เติมสินค้า ในแถวของรายการนั้นโดยตรง เพื่อให้ยอดใหม่ถูกคำนวณจากของเดิมแล้วบันทึกเข้า database พร้อมประวัติการเติมทุกครั้ง
+                                    สินค้าที่ติดตาม stock จะปรับจากปุ่มในแถวของรายการนั้นโดยตรง เพื่อให้ยอดใหม่ถูกคำนวณจากของเดิมแล้วบันทึกเข้า database พร้อมประวัติทุกครั้ง
                                 </p>
                                 {inlineRestockFeedback[String(selectedProduct.product_id)] ? (
                                     <div className={`rounded-[18px] px-4 py-3 ${inlineRestockFeedback[String(selectedProduct.product_id)]?.tone === "error" ? "border border-warning bg-warning-soft text-foreground" : "border border-accent bg-accent-soft text-foreground"}`}>
@@ -1282,7 +1492,7 @@ export default function PosProductsPage() {
                                         </div>
                                         <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold">
                                             <span className="rounded-full bg-accent-soft px-3 py-1 text-foreground">เดิม {adjustment.previous_stock}</span>
-                                            <span className="rounded-full border border-line px-3 py-1 text-foreground">เติม +{adjustment.added_quantity}</span>
+                                            <span className="rounded-full border border-line px-3 py-1 text-foreground">{adjustment.added_quantity >= 0 ? `เติม +${adjustment.added_quantity}` : `ตัด ${adjustment.added_quantity}`}</span>
                                             <span className="rounded-full border border-line px-3 py-1 text-foreground">รวม {adjustment.new_stock}</span>
                                         </div>
                                         {adjustment.note ? <p className="mt-3 text-sm leading-6 text-muted">{adjustment.note}</p> : null}
@@ -1525,6 +1735,8 @@ export default function PosProductsPage() {
                             </div>
                         )}
                     </section>
+                    </>
+                    ) : null}
                 </aside>
             </div>
         </RoleGuard>

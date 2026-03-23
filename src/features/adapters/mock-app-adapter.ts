@@ -838,6 +838,43 @@ export const mockAppAdapter: AppAdapter = {
     return cloneProduct(updatedProduct);
   },
 
+  async deleteProducts(productIds) {
+    await sleep(180);
+
+    const normalizedProductIds = [...new Set(productIds.map((productId) => String(productId)))];
+    const deletedProducts = productsState
+      .filter((product) => normalizedProductIds.includes(String(product.product_id)))
+      .map((product) => ({
+        product_id: product.product_id,
+        sku: product.sku,
+        name: product.name,
+      }));
+
+    if (deletedProducts.length === 0) {
+      return {
+        deleted_count: 0,
+        deleted_products: [],
+      };
+    }
+
+    const deletedIdSet = new Set(deletedProducts.map((product) => String(product.product_id)));
+
+    productsState = productsState.filter((product) => !deletedIdSet.has(String(product.product_id)));
+    productRecipeItemsState = productRecipeItemsState.filter((item) => !deletedIdSet.has(String(item.product_id)));
+    productStockAdjustmentsState = productStockAdjustmentsState.filter((item) => !deletedIdSet.has(String(item.product_id)));
+
+    for (const shiftRows of shiftInventoryState.values()) {
+      for (const productId of deletedIdSet) {
+        shiftRows.delete(toProductKey(productId));
+      }
+    }
+
+    return {
+      deleted_count: deletedProducts.length,
+      deleted_products: deletedProducts,
+    };
+  },
+
   async getProductRecipe(productId: EntityId) {
     await sleep(120);
 
@@ -927,12 +964,16 @@ export const mockAppAdapter: AppAdapter = {
       throw createError("PRODUCT_STOCK_NOT_TRACKED", "สินค้านี้ไม่ได้ติดตาม stock");
     }
 
-    if (!Number.isInteger(input.addedQuantity) || input.addedQuantity <= 0) {
+    if (!Number.isInteger(input.addedQuantity) || input.addedQuantity === 0) {
       throw createError("INVALID_STOCK_ADDITION", "จำนวนที่เติมต้องมากกว่า 0");
     }
 
     const previousStock = targetProduct.stock_on_hand ?? 0;
     const newStock = previousStock + input.addedQuantity;
+
+    if (newStock < 0) {
+      throw createError("INSUFFICIENT_STOCK", "สต็อกคงเหลือไม่พอสำหรับการตัดออก");
+    }
 
     productsState = productsState.map((product) =>
       product.product_id === input.productId

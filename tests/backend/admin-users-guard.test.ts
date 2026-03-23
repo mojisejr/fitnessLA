@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { canManageProducts, canManageUsers, toAppRole } from "../../src/lib/roles";
+import {
+  canAccessPosProductInventory,
+  canDecreaseProductStock,
+  canDeleteProducts,
+  canManageProducts,
+  canManageUsers,
+  toAppRole,
+} from "../../src/lib/roles";
 
 describe("admin users role guard", () => {
   it("accepts OWNER and ADMIN", () => {
@@ -25,5 +32,15 @@ describe("admin users role guard", () => {
     expect(canManageProducts("ADMIN")).toBe(true);
     expect(canManageProducts("CASHIER")).toBe(false);
     expect(canManageProducts("staff")).toBe(false);
+  });
+
+  it("allows cashier to access POS inventory but not destructive product actions", () => {
+    expect(canAccessPosProductInventory("OWNER")).toBe(true);
+    expect(canAccessPosProductInventory("ADMIN")).toBe(true);
+    expect(canAccessPosProductInventory("CASHIER")).toBe(true);
+    expect(canDeleteProducts("OWNER")).toBe(true);
+    expect(canDeleteProducts("ADMIN")).toBe(false);
+    expect(canDecreaseProductStock("OWNER")).toBe(true);
+    expect(canDecreaseProductStock("CASHIER")).toBe(false);
   });
 });

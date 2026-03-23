@@ -196,6 +196,16 @@ export const realAppAdapter: AppAdapter = {
     });
   },
 
+  async deleteProducts(productIds: EntityId[]) {
+    return fetchJson<{ deleted_count: number; deleted_products: Array<{ product_id: EntityId; sku: string; name: string }> }>("/api/v1/products/bulk-delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        product_ids: productIds.map((productId) => String(productId)),
+      }),
+    });
+  },
+
   async getProductRecipe(productId: EntityId) {
     return fetchJson<ProductRecipeRecord>(`/api/v1/products/${encodeURIComponent(String(productId))}/recipe`);
   },

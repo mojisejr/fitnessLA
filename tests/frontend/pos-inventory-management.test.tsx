@@ -41,11 +41,12 @@ describe("POS inventory management", () => {
         await waitForPosReady();
 
         const waterRow = screen.getByLabelText("Product row Mineral Water");
+        fireEvent.click(within(waterRow).getAllByRole("button")[0]);
         fireEvent.click(within(waterRow).getByRole("button", { name: "เติมสินค้า Mineral Water" }));
         fireEvent.change(screen.getByLabelText("เติมเพิ่ม Mineral Water"), {
             target: { value: "10" },
         });
-        fireEvent.change(screen.getByLabelText("หมายเหตุการเติมสินค้า Mineral Water"), {
+        fireEvent.change(screen.getByLabelText("หมายเหตุการปรับสินค้า Mineral Water"), {
             target: { value: "เติมจากสต็อกรอบเช้า" },
         });
         fireEvent.click(screen.getByRole("button", { name: "บันทึกการเติมสินค้า" }));
@@ -55,7 +56,7 @@ describe("POS inventory management", () => {
             expect(within(restockRow).getByText(`เติมสต็อก Mineral Water จาก ${initialStock} เป็น ${expectedStock} เรียบร้อยแล้ว`)).toBeInTheDocument();
         }, { timeout: 25000 });
 
-        expect(screen.getByText("ยอดหลังเติม")).toBeInTheDocument();
+        expect(screen.getByText("ยอดหลังปรับ")).toBeInTheDocument();
 
         const historyPanel = screen.getByText("ดูย้อนหลังว่าเติมเมื่อไร เพิ่มเท่าไร และจบที่กี่ชิ้น").closest("section");
         expect(historyPanel).not.toBeNull();
@@ -148,7 +149,84 @@ describe("POS inventory management", () => {
         expect(within(recipeSection as HTMLElement).getAllByText(/฿13.50/).length).toBeGreaterThan(0);
     }, 30000);
 
-    it("blocks cashier from opening POS product management", () => {
+    it("lets owner reduce stock from the POS products page", async () => {
+        clearMockSession();
+        seedMockSession({
+            session: {
+                user_id: 1,
+                username: "owner",
+                full_name: "Owner User",
+                role: "OWNER",
+                active_shift_id: 701,
+            },
+            activeShift: {
+                shift_id: 701,
+                opened_at: new Date().toISOString(),
+                starting_cash: 500,
+            },
+            lastClosedShift: null,
+        });
+
+        renderWithProviders(<PosProductsPage />);
+
+        await waitForPosReady();
+
+        const initialProducts = await mockAppAdapter.listProducts();
+        const mineralWater = initialProducts.find((product) => product.name === "Mineral Water");
+        const initialStock = mineralWater?.stock_on_hand ?? 0;
+        const expectedStock = initialStock - 2;
+
+        const waterRow = screen.getByLabelText("Product row Mineral Water");
+        fireEvent.click(within(waterRow).getByRole("button", { name: "เติมสินค้า Mineral Water" }));
+        fireEvent.change(screen.getByLabelText("ประเภทการปรับ Mineral Water"), {
+            target: { value: "DECREASE" },
+        });
+        fireEvent.change(screen.getByLabelText("ตัดออก Mineral Water"), {
+            target: { value: "2" },
+        });
+        fireEvent.click(screen.getByRole("button", { name: "บันทึกการลดสต็อก" }));
+
+        await waitFor(() => {
+            const restockRow = screen.getByLabelText("Restock row Mineral Water");
+            expect(within(restockRow).getByText(`ลดสต็อก Mineral Water จาก ${initialStock} เป็น ${expectedStock} เรียบร้อยแล้ว`)).toBeInTheDocument();
+        }, { timeout: 25000 });
+    }, 30000);
+
+    it("lets owner bulk delete selected products", async () => {
+        clearMockSession();
+        seedMockSession({
+            session: {
+                user_id: 1,
+                username: "owner",
+                full_name: "Owner User",
+                role: "OWNER",
+                active_shift_id: 701,
+            },
+            activeShift: {
+                shift_id: 701,
+                opened_at: new Date().toISOString(),
+                starting_cash: 500,
+            },
+            lastClosedShift: null,
+        });
+
+        renderWithProviders(<PosProductsPage />);
+
+        await waitForPosReady();
+
+        fireEvent.click(screen.getByLabelText("เลือกสินค้า Mineral Water"));
+        fireEvent.click(screen.getByLabelText("เลือกสินค้า Iced Americano"));
+        fireEvent.click(screen.getByRole("button", { name: "ลบสินค้าที่เลือก (2)" }));
+
+        await waitFor(() => {
+            expect(screen.getByText("ลบสินค้า 2 รายการเรียบร้อยแล้ว")).toBeInTheDocument();
+        }, { timeout: 25000 });
+
+        expect(screen.queryByLabelText("Product row Mineral Water")).not.toBeInTheDocument();
+        expect(screen.queryByLabelText("Product row Iced Americano")).not.toBeInTheDocument();
+    }, 30000);
+
+    it("allows cashier to open POS product inventory for stock work", async () => {
         clearMockSession();
         seedMockSession({
             session: {
@@ -168,7 +246,10 @@ describe("POS inventory management", () => {
 
         renderWithProviders(<PosProductsPage />);
 
-        expect(screen.getByText("บทบาทของคุณยังเข้าใช้งานหน้านี้ไม่ได้")).toBeInTheDocument();
-        expect(screen.queryByText("ย้ายการจัดการสินค้าไปหน้าใหม่แบบตารางแยกหมวด")).not.toBeInTheDocument();
+        await waitForPosReady();
+
+        expect(screen.getByText("ย้ายการจัดการสินค้าไปหน้าใหม่แบบตารางแยกหมวด")).toBeInTheDocument();
+        expect(screen.queryByText("บทบาทของคุณยังเข้าใช้งานหน้านี้ไม่ได้")).not.toBeInTheDocument();
+        expect(screen.getByLabelText("Product row Mineral Water")).toBeInTheDocument();
     });
 });
