@@ -12,7 +12,7 @@ import type {
     ManagedStaffUserRecord,
     StaffAttendanceRecord,
 } from "@/lib/contracts";
-import { getErrorMessage } from "@/lib/utils";
+import { createAppError, getErrorMessage } from "@/lib/utils";
 
 const roleLabel = {
     OWNER: "เจ้าของ",
@@ -41,7 +41,7 @@ async function fetchJson<T>(input: RequestInfo, init?: RequestInit): Promise<T> 
 
     if (!response.ok) {
         const body = await response.json().catch(() => ({ message: "Request failed" }));
-        throw body;
+        throw createAppError(body, "Request failed");
     }
 
     return response.json() as Promise<T>;

@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useAuth } from "@/features/auth/auth-provider";
 import { generalLedgerEnabled } from "@/lib/feature-flags";
 import { type AttendanceStatusRecord, type StaffAttendanceRecord } from "@/lib/contracts";
-import { formatCurrency, formatDateTime } from "@/lib/utils";
+import { createAppError, formatCurrency, formatDateTime } from "@/lib/utils";
 
 async function fetchJson<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
     const response = await fetch(input, {
@@ -17,7 +17,7 @@ async function fetchJson<T>(input: RequestInfo, init?: RequestInit): Promise<T> 
 
     if (!response.ok) {
         const body = await response.json().catch(() => ({ message: "Request failed" }));
-        throw body;
+        throw createAppError(body, "Request failed");
     }
 
     return response.json() as Promise<T>;

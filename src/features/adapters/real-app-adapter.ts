@@ -37,6 +37,7 @@ import type {
   UpdateProductInput,
 } from "@/features/adapters/types";
 import { authClient } from "@/lib/auth-client";
+import { createAppError } from "@/lib/utils";
 
 function createHeaders(headers?: HeadersInit): Headers {
   return new Headers(headers);
@@ -50,7 +51,7 @@ async function fetchJson<T>(input: RequestInfo, init?: RequestInit): Promise<T> 
   });
   if (!response.ok) {
     const body = await response.json().catch(() => ({ message: "Request failed" }));
-    throw body;
+    throw createAppError(body, "Request failed");
   }
 
   return response.json() as Promise<T>;
@@ -69,7 +70,7 @@ async function fetchOptionalJson<T>(input: RequestInfo, init?: RequestInit): Pro
 
   if (!response.ok) {
     const body = await response.json().catch(() => ({ message: "Request failed" }));
-    throw body;
+    throw createAppError(body, "Request failed");
   }
 
   return response.json() as Promise<T>;
@@ -82,10 +83,10 @@ export const realAppAdapter: AppAdapter = {
     const normalizedUsername = username.trim();
 
     if (!normalizedUsername) {
-      throw {
+      throw createAppError({
         code: "INVALID_CREDENTIALS",
         message: "กรุณาระบุชื่อผู้ใช้",
-      };
+      });
     }
 
     if (!password) {
@@ -98,10 +99,10 @@ export const realAppAdapter: AppAdapter = {
     });
 
     if (signInResult.error) {
-      throw {
+      throw createAppError({
         code: "INVALID_CREDENTIALS",
         message: signInResult.error.message ?? "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง",
-      };
+      });
     }
 
     return fetchJson<UserSession>("/api/auth/session");

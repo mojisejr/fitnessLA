@@ -9,7 +9,7 @@ import type {
   StaffAttendanceRecord,
   StaffAttendanceSummaryRecord,
 } from "@/lib/contracts";
-import { getErrorMessage } from "@/lib/utils";
+import { createAppError, getErrorMessage } from "@/lib/utils";
 
 async function fetchJson<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
   const response = await fetch(input, {
@@ -20,7 +20,7 @@ async function fetchJson<T>(input: RequestInfo, init?: RequestInit): Promise<T> 
 
   if (!response.ok) {
     const body = await response.json().catch(() => ({ message: "Request failed" }));
-    throw body;
+    throw createAppError(body, "Request failed");
   }
 
   return response.json() as Promise<T>;
