@@ -62,7 +62,7 @@ function createEnrollmentDraft(enrollment: TrainingEnrollmentRecord): Enrollment
             typeof enrollment.sessions_remaining === "number" ? String(enrollment.sessions_remaining) : "",
         status: enrollment.status,
         closeReason: enrollment.close_reason ?? "",
-        scheduleEntries: enrollment.schedule_entries.map((entry) => ({
+        scheduleEntries: (enrollment.schedule_entries ?? []).map((entry) => ({
             day_of_week: entry.day_of_week,
             start_time: entry.start_time,
             end_time: entry.end_time,
@@ -679,9 +679,9 @@ export default function TrainersPage() {
                                                         เพิ่มวันเวลา
                                                     </button>
                                                 </div>
-                                            ) : enrollment.schedule_entries.length > 0 ? (
+                                            ) : (enrollment.schedule_entries ?? []).length > 0 ? (
                                                 <div className="space-y-2">
-                                                    {enrollment.schedule_entries.map((entry, scheduleIndex) => (
+                                                    {(enrollment.schedule_entries ?? []).map((entry, scheduleIndex) => (
                                                         <div
                                                             key={`${enrollment.enrollment_id}-readonly-${scheduleIndex}`}
                                                             className="rounded-[14px] border border-line bg-surface-strong px-3 py-2 text-xs"

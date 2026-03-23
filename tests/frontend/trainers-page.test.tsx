@@ -24,6 +24,7 @@ const mockAdapter = {
     createChartOfAccount: vi.fn(),
     toggleChartOfAccount: vi.fn(),
     createAdminUser: vi.fn(),
+    listRegisteredTrainerUsers: vi.fn(),
     listTrainers: vi.fn(),
     createTrainer: vi.fn(),
     deleteTrainer: vi.fn(),
@@ -76,6 +77,7 @@ describe("Trainers page", () => {
                         sessions_remaining: 8,
                         price: 4500,
                         status: "ACTIVE",
+                        schedule_entries: [],
                         closed_at: null,
                         close_reason: null,
                         updated_at: "2026-03-21T02:00:00.000Z",
@@ -94,11 +96,20 @@ describe("Trainers page", () => {
                         sessions_remaining: 0,
                         price: 500,
                         status: "CLOSED",
+                        schedule_entries: [],
                         closed_at: "2026-02-11T00:00:00.000Z",
                         close_reason: "จบคอร์ส",
                         updated_at: "2026-02-11T00:00:00.000Z",
                     },
                 ],
+            },
+        ]);
+        mockAdapter.listRegisteredTrainerUsers.mockResolvedValue([
+            {
+                user_id: "trainer-user-1",
+                username: "trainer.new",
+                full_name: "Trainer New",
+                phone: "0800000000",
             },
         ]);
         mockAdapter.createTrainer.mockResolvedValue({
@@ -153,16 +164,15 @@ describe("Trainers page", () => {
             expect(screen.getByText("สมชาย ยิมเนส")).toBeInTheDocument();
         });
 
-        fireEvent.change(screen.getByPlaceholderText("ชื่อเทรนเนอร์"), {
-            target: { value: "Trainer New" },
+        fireEvent.change(screen.getByRole("combobox"), {
+            target: { value: "trainer-user-1" },
         });
         fireEvent.click(screen.getByRole("button", { name: "เพิ่มเทรนเนอร์" }));
 
         await waitFor(() => {
             expect(mockAdapter.createTrainer).toHaveBeenCalledWith({
-                full_name: "Trainer New",
-                nickname: undefined,
-                phone: undefined,
+                user_id: "trainer-user-1",
+                full_name: "",
             });
         });
 
@@ -171,7 +181,7 @@ describe("Trainers page", () => {
         const remainingInputs = await screen.findAllByPlaceholderText(/10|1|ไม่จำกัด/);
         const statusSelects = screen.getAllByRole("combobox");
         fireEvent.change(remainingInputs[0], { target: { value: "6" } });
-        fireEvent.change(statusSelects[0], { target: { value: "EXPIRED" } });
+        fireEvent.change(statusSelects[1], { target: { value: "EXPIRED" } });
         fireEvent.click(screen.getAllByRole("button", { name: "บันทึก" })[0]);
 
         await waitFor(() => {
@@ -179,6 +189,7 @@ describe("Trainers page", () => {
                 sessions_remaining: 6,
                 status: "EXPIRED",
                 close_reason: null,
+                schedule_entries: [],
             });
         });
 
@@ -251,6 +262,7 @@ describe("Trainers page", () => {
                         sessions_remaining: 8,
                         price: 4500,
                         status: "ACTIVE",
+                        schedule_entries: [],
                         closed_at: null,
                         close_reason: null,
                         updated_at: "2026-03-21T02:00:00.000Z",
@@ -304,6 +316,7 @@ describe("Trainers page", () => {
                         sessions_remaining: 8,
                         price: 4500,
                         status: "ACTIVE",
+                        schedule_entries: [],
                         closed_at: null,
                         close_reason: null,
                         updated_at: "2026-03-21T02:00:00.000Z",
@@ -322,6 +335,7 @@ describe("Trainers page", () => {
                         sessions_remaining: 19,
                         price: 6500,
                         status: "ACTIVE",
+                        schedule_entries: [],
                         closed_at: null,
                         close_reason: null,
                         updated_at: "2026-03-21T03:00:00.000Z",

@@ -1,188 +1,343 @@
-# Project Map: fitnessLA (Gym Management System)
+# Project Map: fitnessLA
 
-## 🎯 Philosophy
-**"Accounting First, Operations Second"**
-ระบบบริหารจัดการฟิตเนสที่มุ่งเน้นความถูกต้องทางบัญชีและการควบคุมเงินสดเป็นอันดับแรก เพื่อแก้ปัญหาเงินรั่วไหล ยอดเงินไม่ตรงกะ และความยุ่งยากในการทำงานร่วมกับนักบัญชี หัวใจหลักคือการบันทึก transactions แบบ Double-Entry อัตโนมัติทุกครั้งที่เกิดเหตุการณ์ทางการเงิน
+Updated: 2026-03-23
+Grounded from: repository structure, Prisma schema, README, API contract, recent commits, and handoff docs in this repo.
 
-## 🗺️ Key Landmarks
-- [docs/PRD_Phase1.md](docs/PRD_Phase1.md): รายละเอียดความต้องการทางด้านธุรกิจและคุณสมบัติของระบบใน Phase 1
-- [docs/API_Contract.md](docs/API_Contract.md): สัญญา API และ DTO Interfaces ที่ตกลงร่วมกัน (Single Source of Truth)
-- [docs/DatabaseSchema.md](docs/DatabaseSchema.md): โครงสร้างฐานข้อมูลที่รองรับ Double-Entry Accounting
-- [docs/WorkSplit_2People_Phase1.md](docs/WorkSplit_2People_Phase1.md): พื้นฐานการแบ่งงาน Backend/Frontend
+## Philosophy
 
-## 🚀 Execution Blueprints
-- [docs/Plan_Person_A.md](docs/Plan_Person_A.md): แผนการทำงานละเอียดสำหรับระบบ Backend/Finance Core (Agent A)
-- [docs/Plan_Person_B.md](docs/Plan_Person_B.md): แผนการทำงานละเอียดสำหรับระบบหน้าจอ POS/Flow (Agent B)
-- [docs/Plan_Scaffold_Foundation.md](docs/Plan_Scaffold_Foundation.md): แผนการตั้งโครงสร้างพื้นฐาน (Phase 1)
-- [docs/WorkSplit_2People_Phase1.md](docs/WorkSplit_2People_Phase1.md): แผนการแบ่งงานและ **GitHub Parallel Workflow** (Integration Gate)
+fitnessLA คือระบบ frontdesk + POS + accounting สำหรับยิมที่วางแกนเป็น accounting-first operations:
 
-## 👤 Current Operating Truth
-- **Current Mode:** real-mode recovery closed by solo full-stack pass on 2026-03-21
-- **Primary Responsibility Now:** keep frontend, backend, schema, and smoke docs aligned to the same runtime truth
-- **Current Status:** repo recovery for members/product/POS/checkout is complete; dev DB smoke is green; documentation refresh is the remaining housekeeping boundary
+- เงินสดหน้าร้านต้อง trace ได้ตั้งแต่เปิดกะจนปิดกะ
+- การขายสินค้า, สมาชิก, และแพ็กเกจเทรนต้องลงบน backend truth ไม่ใช่ browser-local state
+- role และ machine restrictions ต้องบังคับจากระบบจริง ไม่ใช่แค่ซ่อนปุ่มบน UI
+- รายงาน, stock, attendance, และสมาชิก ต้องอิงฐานข้อมูลเดียวกันเพื่อคุม operational drift
 
-## 🏛️ System Architecture
-- **Frontend:** Next.js 15+ (App Router), Tailwind CSS, Lucide React, PWA (Serwist)
-- **Backend:** Next.js API Routes, Better-Auth (Username/Password), Prisma ORM
-- **Database:** Supabase (PostgreSQL + Storage for Receipts/Images)
-- **State:** React Context / Jotai (Cart & Shift State)
-- **Testing:** Vitest (Unit Tests focus)
-  - **Location:** All tests MUST be stored in the root `tests/` directory.
+## Current Operating Truth
 
----
-- **Core Entities:** `users`, `products`, `member_subscriptions`, `chart_of_accounts`
-- **Accounting & Logs:** `journal_entries`, `journal_lines`, `document_sequences`
-- **Transaction Flow:** `shifts` -> `orders`/`order_items` -> `tax_documents`
-- **Expense Control:** `expenses` (Linked to `shifts` and `chart_of_accounts`)
-- **Product Metadata Reality:** `products` now carry `trackStock`, `stockOnHand`, `membershipPeriod`, and `membershipDurationDays`
+- Runtime หลักใช้ Next.js App Router + Next API routes ใน repo เดียว
+- Auth จริงใช้ Better Auth cookie session ผ่าน `src/app/api/auth/[...all]` และ `middleware.ts`
+- Data layer หลักใช้ Prisma + PostgreSQL
+- UI ยังมีทั้ง mock adapter และ real adapter แต่ current product direction คือ real-mode เป็น truth หลัก
+- Domain ปัจจุบันไม่ได้มีแค่ POS/สมาชิกแล้ว แต่ขยายถึง attendance devices, trainer linkage, ingredient recipes, stock adjustments, และ training enrollments
+- Recent commit signals บอกชัดว่าโปรเจกต์กำลังขยับจาก recovery mode ไปสู่ integrated operations mode
 
-## �️ Testing Standards (Vitest)
-- **Unit Testing Focus:** เน้นทดสอบ Business Logic และ Utility Functions ที่สำคัญ
-- **Location:** ไฟล์ Test ทั้งหมด (**Agent A** และ **Agent B**) ต้องเก็บไว้ในโฟลเดอร์ `tests/` ที่ Root เท่านั้น
-- **Requirement:** Agent ต้องเขียน Unit Test สำหรับ Case ที่ซับซ้อน (เช่น การคำนวณบัญชี, การคำนวณยอดเงินทอน) ให้ผ่านก่อนส่ง PR
+## Tech Stack
 
-## �🐉 Challenges & Dragons
-- **Concurrency in Running Numbers:** การรันเลขที่เอกสาร (`document_sequences`) ห้ามซ้ำและห้ามข้าม ต้องใช้ `SELECT ... FOR UPDATE` หรือ Database-level locking ในช่วงที่รันเลข
-- **Atomic Double-Entry:** ทุกธุรกรรม (Sale/Expense) ต้องเขียนลงทั้งตาราง Transaction และ Accounting (`journal_lines`) ภายใน Unit of Work เดียวกัน (ACID)
-- **Soft Control:** ห้ามลบข้อมูล (`DELETE`) ทุกอย่างใช้ `status` (ACTIVE, VOIDED, CLOSED) เพื่อรักษา Audit Trail
-- **Strict Blind Drop:** การคุมพนักงานตอนปิดกะ (`shifts.expected_cash` vs `shifts.actual_cash`) เพื่อตรวจจับส่วนต่าง (`difference`)
-- **Mock vs Real Drift:** หน้าที่เคยอาศัย browser-local member registry หรือ mock-only stock semantics ต้องถูกเช็กกับ backend truth ทุกครั้งก่อน release
-- **Migration Truth:** dev database อาจ drift จาก local migration history; ต้องเช็ก `prisma migrate status` ก่อนใช้ smoke results เป็น evidence
+- Frontend: Next.js 16, React 19, Tailwind CSS
+- Backend: Route Handlers ใน `src/app/api`, service modules ใน `src/features`
+- Auth: Better Auth
+- Database: Prisma + PostgreSQL
+- State: Jotai สำหรับ POS/cart state และ React provider สำหรับ adapter/auth shell
+- Validation: Zod usage ตาม route/service boundaries บางส่วน + contract-driven mapping
+- Testing: Vitest + Playwright
 
-## 🚩 Status & Signals
-- **Current Phase:** Recovery Phase 1-4 complete, dev DB real-mode smoke complete, docs refresh in progress
-- **Latest Update:** 2026-03-21 (members truth moved to backend/API, product stock + membership metadata implemented, checkout side effects validated on dev DB)
-- **Current Runtime Truth:**
-  - Better-Auth cookie session is the real auth path
-  - members page in real mode reads backend/API data, not browser-local registry
-  - product create/update supports `stock_on_hand`, `membership_period`, and `membership_duration_days`
-  - membership checkout creates persisted member records and goods checkout decrements stock in backend truth
-- **Latest Evidence Docs:** [docs/Local_Real_Mode_Runbook.md](docs/Local_Real_Mode_Runbook.md), [docs/Phase_G_Smoke_Checklist.md](docs/Phase_G_Smoke_Checklist.md)
+## Key Landmarks
 
-## 🤝 Implementation Integration Matrix (Agent A ⬌ Agent B)
-*(Use this matrix to track feature handoffs from Mock to Real)*
-| Feature / Module | Backend (Agent A) | Frontend (Agent B) | Next Action |
-| :--- | :--- | :--- | :--- |
-| **Auth / Session** | ✅ DONE (Better-Auth) | 🏗️ Mocked | Agent B เปลี่ยนไปยิง API session จริง |
-| **List Products** | ✅ DONE (`GET /api/v1/products`) | ✅ Real adapter wired | Run smoke on product metadata parity |
-| **Open Shift** | ✅ DONE (`POST /api/v1/shifts/open`) | 🏗️ Mocked | Agent B ผูก `real-app-adapter.ts` |
-| **Active Shift Check**| ✅ DONE (`GET /api/v1/shifts/active`)| 🏗️ Mocked | Agent B ผูก `real-app-adapter.ts` |
-| **Orders & Checkout** | ✅ DONE (`POST /api/v1/orders`) | ✅ Real adapter wired | Keep validating stock/membership error UX |
-| **Petty Cash** | ✅ DONE (`POST /api/v1/expenses`) | 🏗️ Mocked | Agent B ผูก `real-app-adapter.ts` |
-| **Close Shift** | ✅ DONE (`POST /api/v1/shifts/close`) | 🏗️ Mocked | Agent B switch close flow to real adapter endpoint |
-| **Daily Summary** | ✅ DONE (`GET /api/v1/reports/daily-summary`) | 🏗️ Mocked | Agent B switch report page to real adapter endpoint |
-| **Shift Inventory Summary** | ✅ DONE (`GET /api/v1/shifts/:shiftId/inventory-summary`) | ✅ Real adapter wired | Agent B run smoke for cashier-owner boundary + no-data fallback |
-| **COA Management** | ✅ DONE (`GET/POST /api/v1/coa`, `PATCH /api/v1/coa/:id/toggle`) | 🏗️ Shell ready | Extended smoke remains optional after core flow |
-| **Product-COA Mapping** | ✅ DONE (`POST/PATCH /api/v1/products` + `revenue_account_id`) | ✅ Real mode verified | Product create/edit smoke passed on dev DB |
-| **Members API / Page** | ✅ DONE (`GET /api/v1/members`, `POST /api/v1/members/:memberId/renew`, `POST /api/v1/members/:memberId/restart`) | ✅ Members page reads API truth | UI controls for renew/restart are still not surfaced |
-| **General Ledger CSV** | ✅ DONE (`GET /api/v1/reports/gl`) | 🏗️ Placeholder | Agent B ต่อปุ่ม Download CSV ด้วย `start_date/end_date` |
+### Product Surface
 
-## 🔄 2026-03-15 Grounding Delta (For Agent B Final Integration)
+- `src/app/(app)`
+  - หน้าใช้งานหลักของระบบหลัง login
+  - มี surface สำคัญ: `dashboard`, `pos`, `pos/products`, `members`, `trainers`, `expenses`, `coa`, `shift/open`, `shift/close`, `reports/*`, `admin/users`, `admin/attendance`
+- `src/app/login/page.tsx`
+  - จุดเข้าใช้งานของ auth flow
+- `src/components/layout/app-shell.tsx`
+  - navigation shell ที่เป็นตัวสะท้อน role-based product surface จริง
 
-### ✅ Done ล่าสุด (ล็อกแล้ว)
-- Agent A ปิด Phase 1-4 ตาม blueprint `#fitnessla-agent-a-final-100` พร้อม commit chain และ evidence ครบ
-- Endpoint รายงานหลักพร้อมใช้งาน: `daily-summary`, `shift-summary`, `gl`, `shifts/:shiftId/inventory-summary`
-- Real adapter ไม่เหลือ `NOT_IMPLEMENTED` สำหรับ `getShiftInventorySummary()` แล้ว
-- Hard gate ล่าสุดผ่านครบ 2 รอบติดกัน: `npm run build`, `npm run lint`, `npx vitest run` (`24 files / 113 tests`)
+### API Surface
 
-### 🟡 Remaining สำหรับ Agent B
-- รัน smoke ตามลำดับจาก handoff final (open -> order -> expense -> close -> daily/shift/gl)
-- ยืนยัน UX/error state ใน real mode สำหรับ `SHIFT_OWNER_MISMATCH`, `SHIFT_NOT_FOUND`, และ no-data inventory (`[]`)
-- เตรียม release checklist ของฝั่ง UI (download CSV, report filters, close-shift inventory visibility)
+- `src/app/api/auth`
+  - Better Auth routes และ current-session route
+- `src/app/api/v1/shifts`
+  - เปิดกะ, ปิดกะ, active shift, inventory summary
+- `src/app/api/v1/orders`
+  - POS checkout และ owner-level sale editing / deletion flows
+- `src/app/api/v1/products`
+  - catalog, create/update, stock adjustment, recipe binding, bulk delete
+- `src/app/api/v1/members`
+  - list, renew, restart, toggle active, special member flows
+- `src/app/api/v1/trainers`
+  - trainer CRUD, registered-user binding, training enrollments
+- `src/app/api/v1/attendance`
+  - check-in/check-out/status/device approval
+- `src/app/api/v1/admin/users`
+  - staff management และ attendance summary
+- `src/app/api/v1/reports`
+  - daily summary, shift summary, general ledger
+- `src/app/api/v1/coa`, `expenses`, `ingredients`
+  - operational master data และ supporting finance/POS flows
 
-### 🔴 Must Not Forget
-- ทุก request real mode ต้อง `credentials: include`
-- `GET /api/v1/reports/gl` ต้องใช้ `start_date/end_date` format `YYYY-MM-DD`
-- `GET /api/v1/shifts/:shiftId/inventory-summary`:
-  - OWNER/ADMIN ดูได้ทุกกะ
-  - CASHIER ดูได้เฉพาะกะตัวเอง
-  - no-data ต้องคืน `[]` แบบ deterministic
+### Business Logic And Adapters
 
-## 🔄 2026-03-11 Grounding Delta (For Agent B)
+- `src/features/adapters/real-app-adapter.ts`
+  - bridge หลักระหว่าง UI กับ API truth
+- `src/features/adapters/mock-app-adapter.ts`
+  - mock-mode fallback; เป็นจุดเสี่ยงเรื่อง drift ถ้า contract เปลี่ยนแต่ mock ไม่ตาม
+- `src/features/operations/services.ts`
+  - core POS/shift/accounting/stock behavior
+- `src/features/staff/services.ts`
+  - staff attendance, device approval, admin-user operations, trainer linkage บางส่วน
+- `src/features/expenses`, `src/features/pos`, `src/features/auth`, `src/features/members`
+  - domain-specific UI/service support modules
 
-### ✅ Done ล่าสุด (ล็อกแล้ว)
-- Better-Auth แบบ cookie session เปิดใช้งานจริงแล้วใน `src/lib/auth.ts`
-- Session resolution ฝั่ง server ย้ายไปใช้ `auth.api.getSession()` ใน `src/lib/session.ts`
-- Route protection ด้วย `middleware.ts` ใช้งานแล้วสำหรับเส้นทางหลักของแอป
-- `real-app-adapter.ts` ต่อ endpoint จริงสำหรับ login/session, products, shifts, orders, expenses, daily summary, admin users
-- Hard Gate ผ่าน: build + lint + test (74/74)
+### Data And Contracts
 
-### 🟡 Remaining สำหรับ Agent B
-- Manual smoke test ฝั่ง browser ในโหมด `NEXT_PUBLIC_APP_ADAPTER=real`
-- ตรวจสอบ flow ปิดกะ, POS checkout, และ expenses จาก UI จริงพร้อม cookie persistence
-- เก็บ UX state บางจุดให้ครบ (loading/error/empty) ในหน้าที่เพิ่งต่อ endpoint จริง
+- `prisma/schema.prisma`
+  - source of truth ของ persistence model ปัจจุบัน
+- `src/lib/contracts.ts`
+  - frontend-facing domain contracts ที่ต้อง align กับ API reality
+- `docs/API_Contract.md`
+  - runtime-aligned contract document สำหรับ integration
+- `docs/DatabaseSchema.md`
+  - schema narrative ที่ควร sync กับ map นี้เมื่อ schema เปลี่ยน
 
-### 🔴 ยังไม่เปิดใช้งานจริง (ต้องรอ backend contract/implementation)
-- COA CRUD จริง
-- Product create/update/stock update จริง
-- Shift inventory summary จริง
-- Advanced reports (shift summary, P&L, GL) และ export APIs
+### Testing And Operational Scripts
 
-### 🚀 แผนต่อไป
-1. ปิดงาน smoke test + regression ย่อยในโหมด real
-2. Freeze รายการ mismatch ระหว่าง UI กับ API contract ที่ยังขาด
-3. เปิดแผน Phase 2 สำหรับ COA/Product management/report APIs ตามลำดับความสำคัญของ owner
+- `tests/backend`
+  - route/service tests ของ finance, members, trainers, attendance, admin users, products
+- `tests/frontend`
+  - page and interaction coverage สำหรับ UI shells และ adapter alignment
+- `tests/browser`
+  - smoke/e2e flows สำหรับ auth, POS, attendance, trainer schedule, product management
+- `scripts/full-smoke-test.mjs`
+  - smoke orchestration ระดับระบบ
+- `scripts/production-orders-smoke.mjs`
+  - production-like order verification path
+- `scripts/seed-real-mode.mjs`
+  - baseline data สำหรับ local real-mode validation
 
-## 🔄 2026-03-12 Grounding Delta (For Agent B)
+### High-Value Docs
 
-### ✅ Done ล่าสุด (ล็อกแล้ว)
-- Dynamic revenue journaling ใน `createOrderWithJournal` ใช้งานแล้ว: เครดิตบัญชีรายได้ตามสินค้า และ fallback บัญชี `4010`
-- GL export API พร้อมใช้งานแล้วที่ `GET /api/v1/reports/gl?start_date=YYYY-MM-DD&end_date=YYYY-MM-DD`
-- COA และ Product revenue mapping พร้อมใช้งานจริงผ่าน `real-app-adapter.ts`
-- Hard gate ผ่านครบ: `npm run build`, `npm run lint`, `npx vitest run` (89/89)
+- `README.md`
+  - current scope และ run order ที่อ่านง่ายที่สุดสำหรับเริ่มงาน
+- `docs/Handoff_2026-03-22_Attendance_Device_And_POS_Changes.md`
+  - สรุป attendance-device และ POS product changes ล่าสุด
+- `docs/Smoke_Test_Report_2026-03-23.md`
+  - หลักฐาน smoke รอบล่าสุด
+- `docs/Local_Real_Mode_Runbook.md`
+  - ขั้นตอนยืนยัน runtime จริง
+- `docs/Phase_G_Smoke_Checklist.md`
+  - regression surface สำคัญ
 
-### 🟡 Remaining สำหรับ Agent B
-- ต่อหน้า `/reports/general-ledger` จาก placeholder เป็น flow ดาวน์โหลด CSV จริง
-- ต่อหน้า COA/Product management ให้ครบ real mode โดยยึด response shape ใน `API_Contract.md`
-- เพิ่ม UX state (loading/error/empty/success) สำหรับ COA, Product update, GL export
+## Application Surfaces
 
-### 🔴 Must Not Forget
-- ทุกคำขอที่เรียก API ต้องส่ง cookie (`credentials: include`) ใน real adapter
-- GL endpoint คืนค่าเป็น `text/csv` (ไม่ใช่ JSON) และต้องส่ง query params ทั้ง `start_date` และ `end_date`
-- ห้ามแก้ชื่อ field contract ฝั่ง frontend (`revenue_account_id`, `account_code`, `account_name`) โดยไม่อัปเดต contract ก่อน
-- อย่าทำ bypass flow เปิดกะ/ปิดกะใน UI เพราะ backend ใช้ hard gate (`SHIFT_NOT_OPEN`, `SHIFT_OWNER_MISMATCH`)
+### Human Roles
 
-### 🚀 แผนต่อไป
-1. Agent B ต่อปุ่ม export CSV ที่หน้า General Ledger แล้วทำ smoke test บน owner account
-2. Agent B ต่อฟอร์ม Product create/edit ให้เลือก revenue account จาก `/api/v1/coa`
-3. รัน regression frontend tests และเพิ่ม test สำหรับ GL download interaction
+- `OWNER`
+  - จัดการ staff, attendance devices, trainers, members, reports, products, COA
+- `ADMIN`
+  - ใช้งานหน้าร้านและงานจัดการบางส่วนตาม guard ที่เปิดไว้
+- `CASHIER` หรือ `STAFF`
+  - เน้น shift, POS, attendance
 
-## 🔄 2026-03-14 Grounding Delta (For Agent A)
+หมายเหตุ: schema ของ `User.role` ยังใช้ค่าฝั่ง persistence แบบ string และมีคอมเมนต์เก่าปะปน (`ADMIN`, `OWNER`, `STAFF`) ขณะที่ API contract หลายจุดพูดถึง `CASHIER`; จุดนี้ต้องตีความจาก runtime implementation ไม่ใช่ชื่อ enum ในเอกสารอย่างเดียว
 
-### ✅ Done ล่าสุด (ล็อกแล้ว)
-- แก้ deploy blocker ที่ Vercel พบใน `src/lib/mock-api.ts` โดยทำให้ `fetchMockDailySummary()` คืน `shift_rows` ครบตาม `DailySummary`
-- ยืนยัน `npm run build` ผ่านหลังแก้ และ push แล้วบน branch `staging`
-- งาน frontend/integration ฝั่ง shift, expenses, reports อยู่ในสถานะที่ Agent A รับไปต่อที่ backend/data layer ได้โดยไม่ต้องย้อนแก้ UI รอบใหญ่
+### Major UI Areas
 
-### 🟡 Remaining สำหรับ Agent A
-- persist `responsible_name` ลง DB จริงของ `Shift`
-- ออกแบบและเปิด endpoint `shift summary` โดยตรงแทนการให้ UI ประกอบจาก `daily summary`
-- ยืนยัน real-mode dataset สำหรับ expense accounts และ smoke-test users
-- แก้ production secret hygiene ของ `BETTER_AUTH_SECRET`
+- Dashboard: login landing + attendance status + team summary
+- Shift: open/close shift และ blind-drop cash flow
+- POS: checkout, product browsing, stock-sensitive selling, membership/training package selling
+- POS Products: product CRUD, stock adjustments, recipe management
+- Members: subscription registry, renew/restart, activation control
+- Trainers: trainer registry, optional user linkage, training enrollment flow
+- Admin Users: staff provisioning, work schedule, attendance device approval, attendance history
+- Reports: daily summary, shift summary, profit/loss, general ledger
 
-### 🔴 Must Not Forget
-- ถ้าเปลี่ยน contract ของ `DailySummary` ต้อง sync `contracts`, `mock-api`, `mock-data`, adapters, และ report pages พร้อมกัน
-- deploy รอบนี้ล้มเพราะ mock response shape ไม่ครบ ไม่ใช่เพราะ route จริงพัง
-- ให้ใช้ `docs/Handoff_2026-03-14_Agent-A_Next_After_Deploy_Fix.md` เป็น starting point ของ Agent A รอบถัดไป
+## Data Flow
 
-## 🔄 2026-03-21 Grounding Delta (Recovery Closure + Real Smoke)
+### Runtime Flow
 
-### ✅ Verified In Runtime
-- dev DB ถูก reset/reapplied จน `prisma migrate status` กลับมา `Database schema is up to date!`
-- `npm run db:seed:real-mode` สร้าง baseline users (`owner`, `admin`, `staff`) และ seeded products/accounts ได้จริง
-- browser smoke ผ่านครบเส้นหลัก:
-  - login as `owner`
-  - open shift
-  - create product `SNK-002`
-  - edit product to `Smoke Snack Plus`
-  - checkout `Monthly Membership` for `Somchai Smoke`
-  - verify member `MBR-2026-0001` on `/members`
-  - close shift with expected `1700`, actual `1700`, difference `0`
+1. Browser login ผ่าน Better Auth
+2. `middleware.ts` + session helpers ตรวจ cookie/session ก่อนเข้า `(app)` routes
+3. Page components เรียก adapter layer (`real-app-adapter` เป็น truth path หลัก)
+4. Adapter ยิง `src/app/api/v1/*` พร้อม credentials ใน real mode
+5. Route handlers ส่งต่อไป service layer ใน `src/features/*/services.ts`
+6. Service layer ทำ validation, authorization, orchestration, และ Prisma writes/reads
+7. Prisma commit ลง PostgreSQL แล้วตอบ DTO กลับขึ้นมา
+8. Reports และ UI state อ่านข้อมูลจาก persistence truth ชุดเดียวกัน
 
-### 🟡 Remaining Boundary
-- `project_map.md`, `README.md`, `API_Contract.md`, and schema docs must stay synchronized with the new members/product truth
-- members renew/restart routes exist and pass API-level behavior, but members-page action buttons are still intentionally absent
+### Operational Flow
 
-### 🔴 Must Not Forget
-- `GET /api/v1/shifts/:shiftId/inventory-summary` still reports deterministic sold totals with a zeroed opening baseline; it is not a full opening-stock ledger yet
-- smoke confidence is meaningful only after confirming database migration truth first
+- Shift open -> creates active cashier context
+- Order checkout -> creates order/order items/tax docs and triggers stock/member/training/accounting side effects
+- Expense posting -> records cash outflow against COA and shift
+- Shift close -> computes expected vs actual cash and closes operational loop
+- Attendance check-in/check-out -> writes staff attendance using approved device rules
+- Admin user management -> controls who can operate and from which browser/device
+
+## Database Schema
+
+Schema ปัจจุบันแบ่งได้เป็น 7 กลุ่มโดเมนหลัก:
+
+### 1. Identity And Access
+
+- `User`
+  - เก็บ identity หลัก, role, active flag, schedule time, allowed machine fields, optional trainer linkage
+- `Session`, `Account`, `Verification`
+  - Better Auth persistence tables
+
+### 2. Accounting Core
+
+- `ChartOfAccount`
+  - ผังบัญชี, ใช้ทั้งกับ journal lines, expenses, product revenue mapping
+- `JournalEntry` และ `JournalLine`
+  - double-entry journal backbone
+- `DocumentSequence`
+  - running number สำหรับเอกสารภาษี
+
+### 3. Shift And Cash Operations
+
+- `Shift`
+  - เปิด/ปิดกะ, starting cash, expected/actual cash, difference, responsible name
+- `Expense`
+  - petty cash / operational spending ที่ผูกกับ shift และ COA
+
+### 4. POS Catalog And Inventory
+
+- `Product`
+  - goods/service/membership/training-package surface รวม field stock และ membership metadata
+- `ProductStockAdjustment`
+  - audit trail ของการเติม stock
+- `PosCategory`
+  - category master สำหรับ POS display
+- `Ingredient` และ `ProductRecipeItem`
+  - โครงสร้าง recipe/ingredient สำหรับสินค้าที่ประกอบจากวัตถุดิบ
+
+### 5. Sales And Tax Documents
+
+- `Order`
+  - sale header ผูก shift และ payment method
+- `OrderItem`
+  - รายการสินค้าใน sale
+- `TaxDocument`
+  - invoice/receipt document ที่รันเลขผ่าน `DocumentSequence`
+
+### 6. Membership And Training
+
+- `MemberSubscription`
+  - member registry + lifecycle ของ membership จริง
+- `Trainer`
+  - trainer registry และ optional binding ไป `User`
+- `TrainingServiceEnrollment`
+  - enrollment ของแพ็กเกจเทรน โดยผูกกับ order, order item, package product, trainer, member subscription
+  - รองรับ `scheduleEntries` แบบ JSON สำหรับเก็บตารางนัด
+
+### 7. Attendance Control
+
+- `StaffAttendance`
+  - attendance log ต่อ user/day พร้อม arrival/departure metrics
+- `AttendanceDevice`
+  - browser/device approval records ที่ owner อนุมัติให้ลงเวลาได้
+
+### Core Relationships
+
+- User -> many Sessions, Accounts, StaffAttendance, AttendanceDevices approved
+- User -> optional one Trainer
+- Shift -> many Orders, Expenses
+- Order -> many OrderItems, TaxDocuments, TrainingServiceEnrollments
+- Product -> many OrderItems, MemberSubscriptions, TrainingServiceEnrollments, RecipeItems, StockAdjustments
+- ChartOfAccount -> many JournalLines, Expenses, Products
+- JournalEntry -> many JournalLines
+- MemberSubscription -> many TrainingServiceEnrollments
+- Trainer -> many TrainingServiceEnrollments
+- Ingredient -> many ProductRecipeItems
+
+### ER Snapshot
+
+```mermaid
+erDiagram
+    User ||--o{ Session : has
+    User ||--o{ Account : has
+    User ||--o{ StaffAttendance : logs
+    User ||--o{ AttendanceDevice : approves
+    User o|--|| Trainer : linked_profile
+
+    Shift ||--o{ Order : contains
+    Shift ||--o{ Expense : records
+
+    Order ||--o{ OrderItem : has
+    Order ||--o{ TaxDocument : issues
+    Order ||--o{ TrainingServiceEnrollment : creates
+
+    Product ||--o{ OrderItem : sold_as
+    Product ||--o{ MemberSubscription : membership_product
+    Product ||--o{ TrainingServiceEnrollment : package_product
+    Product ||--o{ ProductStockAdjustment : adjusted_by
+    Product ||--o{ ProductRecipeItem : recipe
+
+    Ingredient ||--o{ ProductRecipeItem : part_of
+
+    ChartOfAccount ||--o{ JournalLine : posted_to
+    JournalEntry ||--o{ JournalLine : contains
+    ChartOfAccount ||--o{ Expense : expense_account
+    ChartOfAccount ||--o{ Product : revenue_mapping
+
+    DocumentSequence ||--o{ TaxDocument : numbers
+
+    MemberSubscription ||--o{ TrainingServiceEnrollment : enrolls
+    Trainer ||--o{ TrainingServiceEnrollment : teaches
+    OrderItem ||--o{ TrainingServiceEnrollment : source_item
+```
+
+## Testing And Verification Map
+
+- Unit/integration truth อยู่ใน `tests/backend`
+- UI contract alignment อยู่ใน `tests/frontend`
+- browser truth อยู่ใน `tests/browser`
+- commands สำคัญจาก `package.json`
+  - `npm run build`
+  - `npm run lint`
+  - `npm run test`
+  - `npm run test:browser:smoke`
+  - `npm run test:browser:smoke:real-account`
+  - `npm run db:seed:real-mode`
+
+## Recent Change Signals
+
+หลักฐานจาก commit ล่าสุดบน branch ปัจจุบัน:
+
+- `2026-03-23` `fix: normalize runtime error handling`
+  - แตะ `dashboard`, `admin/users`, `admin/attendance`, `real-app-adapter`, auth provider, utils
+  - สัญญาณว่า runtime error surface และ adapter behavior ยังเป็น active stabilization zone
+- `2026-03-23` `Add POS inventory role controls and production order smoke script`
+  - ยืนยันว่า role-based control ใน POS products และ production-like smoke scripts เพิ่งขยาย
+- `2026-03-23` `Add trainer user linkage and full smoke test report`
+  - เพิ่ม trainer-user binding, training enrollment scheduling, smoke evidence, และ app-shell surface ใหม่
+- `2026-03-23` `Add ingredient recipes and UI smoke coverage`
+  - catalog domain ขยับจาก simple products ไปสู่ recipe-aware operations
+
+สรุป: โปรเจกต์กำลังอยู่ในช่วง integrate หลาย domain เข้าหา runtime เดียว ไม่ใช่แค่ปิด recovery backlog แบบเดิมอีกแล้ว
+
+## Challenges And Dragons
+
+- Adapter Drift
+  - mock adapter, real adapter, contracts, และ UI pages ต้อง sync กันตลอด ไม่งั้นหน้าเดียวกันจะมี behavior คนละ truth
+- Role Semantics Drift
+  - persistence role names, UI labels, guards, และ docs มีร่องรอยคำว่า `STAFF` กับ `CASHIER` ปะปนกันอยู่
+- Attendance Device Rules
+  - login ไม่ได้เท่ากับ check-in allowed; machine approval logic เป็นคนละชั้นกับ auth
+- Accounting Atomicity
+  - order, expense, stock, membership, training, และ journal side effects ต้องเป็น transactionally coherent โดยเฉพาะ checkout path
+- Stock And Recipe Complexity
+  - ตอนนี้มีทั้ง `stockOnHand` และ recipe graph; ต้องระวังไม่ให้ inventory semantics ซ้อนกันแบบไม่มี source of truth เดียว
+- Migration Truth
+  - repo นี้เพิ่ม migration ถี่มากในช่วงล่าสุด; ก่อนเชื่อ smoke result ต้องเช็ก migration state และ Prisma client generation เสมอ
+- Report Reliability
+  - reports ต้องอ่าน persistence truth เดียวกับ operations; ถ้า DTO drift จะพังแบบเงียบได้ง่าย
+- Documentation Sync
+  - `README.md`, `docs/API_Contract.md`, `docs/DatabaseSchema.md`, runbooks, และ map นี้ต้องขยับตาม schema และ role behavior ล่าสุดเสมอ
+
+## Practical Grounding Notes
+
+- ถ้าจะทำงานใน real mode ให้เริ่มจาก `README.md` + `docs/Local_Real_Mode_Runbook.md`
+- ถ้าจะแก้ schema ให้ดู `prisma/schema.prisma` พร้อม migration ล่าสุดทั้ง `phase14`, `phase15`, และ `training_enrollment_schedule`
+- ถ้าจะแก้ UI integration ให้เช็ก `src/features/adapters/real-app-adapter.ts`, `src/lib/contracts.ts`, และ test suites ที่เกี่ยวข้องพร้อมกัน
+- ถ้าจะไล่ smoke failures ล่าสุด ให้เริ่มจาก `docs/Smoke_Test_Report_2026-03-23.md` และ `scripts/full-smoke-test.mjs`
+
+## Suggested Next Action
+
+ถ้าจะต่อจาก map นี้ในรอบ implementation ให้เปิด `/ppp` สำหรับ mission ถัดไป โดยแนะนำ candidate themes ตามความเสี่ยงปัจจุบัน:
+
+- unify role semantics (`STAFF` vs `CASHIER`)
+- lock down adapter/contract drift
+- define inventory truth between stock adjustment and ingredient recipes
+- consolidate trainer/member/training lifecycle rules

@@ -659,40 +659,20 @@ describe("A-2 operations routes", () => {
     });
   });
 
-  it("returns GL CSV report for owner", async () => {
+  it("returns 404 when general ledger feature is disabled", async () => {
     mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "OWNER" });
-    mockGetGeneralLedgerReport.mockResolvedValue([
-      {
-        date: "2026-03-09",
-        account_code: "1010",
-        account_name: "Cash",
-        debit: 3000,
-        credit: 0,
-        description: "Order ORD-2026-0001",
-      },
-      {
-        date: "2026-03-09",
-        account_code: "4010",
-        account_name: "General Revenue",
-        debit: 0,
-        credit: 3000,
-        description: "Order ORD-2026-0001",
-      },
-    ]);
 
     const response = await generalLedgerGET(
       new Request("http://localhost/api/v1/reports/gl?start_date=2026-03-09&end_date=2026-03-09"),
     );
-    const body = await response.text();
+    const body = await response.json();
 
-    expect(response.status).toBe(200);
-    expect(response.headers.get("Content-Type")).toContain("text/csv");
-    expect(body).toContain("Date,Account Code,Account Name,Debit,Credit,Description");
-    expect(body).toContain("2026-03-09,1010,Cash,3000.00,0.00,Order ORD-2026-0001");
-    expect(body).toContain("2026-03-09,4010,General Revenue,0.00,3000.00,Order ORD-2026-0001");
+    expect(response.status).toBe(404);
+    expect(body.code).toBe("FEATURE_DISABLED");
+    expect(mockGetGeneralLedgerReport).not.toHaveBeenCalled();
   });
 
-  it("returns 400 when GL date params are invalid", async () => {
+  it("returns 404 before validating GL params when feature is disabled", async () => {
     mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "ADMIN" });
 
     const response = await generalLedgerGET(
@@ -700,7 +680,8 @@ describe("A-2 operations routes", () => {
     );
     const body = await response.json();
 
-    expect(response.status).toBe(400);
-    expect(body.code).toBe("VALIDATION_ERROR");
+    expect(response.status).toBe(404);
+    expect(body.code).toBe("FEATURE_DISABLED");
+    expect(mockGetGeneralLedgerReport).not.toHaveBeenCalled();
   });
 });

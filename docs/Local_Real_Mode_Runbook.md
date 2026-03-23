@@ -11,6 +11,7 @@
 - login ด้วย Better-Auth session cookie บน local
 - ทดสอบ route guard และ session persistence
 - ทดสอบ core operational flow: open shift -> create/edit product -> checkout membership -> verify members -> close shift
+- ทดสอบ cash-sensitive checkout flow: membership CASH และ PT CASH หลังเปิดกะ
 - ทดสอบ COA / GL เป็น extended verification หลัง flow หลักผ่านแล้ว
 
 ## Current Ground Truth
@@ -186,7 +187,22 @@ npm run test:browser:smoke:real-account
 
 - request `POST /api/v1/orders` สำเร็จ
 - ได้ `order_number` และ `tax_doc_number`
+- ควรมีอย่างน้อย 1 รอบที่ใช้ `payment_method: CASH` เพื่อยืนยันว่า flow อัปเดต `expected_cash` ได้โดยไม่ชน transaction timeout
 - ถ้า payload ไม่ถูกต้อง backend จะคืน named errors เช่น `INSUFFICIENT_STOCK`, `MEMBERSHIP_CUSTOMER_REQUIRED`, `MEMBERSHIP_SINGLE_QUANTITY`, `SHIFT_NOT_OPEN`
+
+### Step 5A: Checkout PT Package With Cash
+
+- เพิ่ม PT package ลงตะกร้า
+- เลือก trainer ที่ active
+- ใส่ `customer_info.name`
+- เลือก `payment_method: CASH`
+- ยืนยัน checkout
+
+ผลที่คาดหวัง:
+
+- request `POST /api/v1/orders` สำเร็จ
+- enrollment ถูกสร้างตาม package ที่ซื้อ
+- ไม่มี 500 หรือ `expired transaction` ใน server logs
 
 ### Step 6: Verify Members Page
 

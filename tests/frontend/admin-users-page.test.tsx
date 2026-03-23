@@ -117,7 +117,7 @@ describe("admin users page", () => {
 
     expect(screen.getByText("ชื่อผู้ใช้ต้องมีอย่างน้อย 3 ตัว และใช้ได้เฉพาะ a-z, 0-9, จุด, ขีดล่าง, ขีดกลาง")).toBeInTheDocument();
 
-    expect(screen.getByText(/ยังไม่มี admin หรือ cashier ในฐานข้อมูลจริง/)).toBeInTheDocument();
+    expect(screen.getByText("ยังไม่มี user ที่ owner จัดการในฐานข้อมูลจริง")).toBeInTheDocument();
   });
 
   it("removes selected mock users from the page", async () => {

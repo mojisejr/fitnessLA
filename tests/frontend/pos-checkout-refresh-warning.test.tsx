@@ -90,9 +90,9 @@ describe("POS checkout refresh warning", () => {
     it("keeps checkout success visible when post-checkout refresh fails", async () => {
         render(<PosPage />);
 
-        await screen.findByRole("button", { name: "เพิ่มลงบิล" });
+        await screen.findAllByRole("button", { name: "เพิ่มลงบิล" });
 
-        fireEvent.click(screen.getByRole("button", { name: "เพิ่มลงบิล" }));
+        fireEvent.click(screen.getAllByRole("button", { name: "เพิ่มลงบิล" })[0]);
         fireEvent.click(screen.getByRole("button", { name: "คิดเงิน" }));
         fireEvent.click(await screen.findByRole("button", { name: "ยืนยันการคิดเงิน" }));
 

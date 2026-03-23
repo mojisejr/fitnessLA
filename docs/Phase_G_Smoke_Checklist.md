@@ -139,7 +139,26 @@ Network assertions:
 - [ ] request `POST /api/v1/orders`
 - [ ] payload ของ membership มี `customer_info.name`
 - [ ] status code เป็น 2xx
+- [ ] มีอย่างน้อย 1 รอบที่ทดสอบ membership ด้วย `CASH` เพราะ path นี้แตะ `expected_cash` ของ shift และเคย fail บน production มาก่อน
 - [ ] ถ้าตั้งใจทดสอบ fail path ให้สังเกต error codes เช่น `SHIFT_NOT_OPEN`, `SHIFT_OWNER_MISMATCH`, `INSUFFICIENT_STOCK`, `MEMBERSHIP_CUSTOMER_REQUIRED`, `MEMBERSHIP_SINGLE_QUANTITY`
+
+## Screen 7A: PT Checkout (Cash-Sensitive Path)
+
+Path: `/pos`
+
+- [ ] เพิ่ม PT package ลงตะกร้า
+- [ ] เลือก trainer ที่ active
+- [ ] ใส่ชื่อลูกค้า
+- [ ] รัน checkout ด้วย `CASH` อย่างน้อย 1 ครั้ง
+- [ ] checkout สำเร็จและไม่มี generic 500
+
+Network assertions:
+
+- [ ] request `POST /api/v1/orders`
+- [ ] payload มี `trainer_id`
+- [ ] payload มี `payment_method: CASH`
+- [ ] status code เป็น 2xx
+- [ ] ถ้า fail ให้จด response body และเวลาโดยประมาณเพื่อเทียบกับ Vercel logs
 
 ## Screen 8: Members Page
 
