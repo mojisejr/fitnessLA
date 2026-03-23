@@ -610,6 +610,50 @@ function createMembershipPhone(customerInfo: CreateOrderInput["customer_info"]) 
   return customerInfo?.tax_id?.trim() || "รออัปเดตเบอร์โทร";
 }
 
+const ORDER_CHECKOUT_TRANSACTION_OPTIONS = {
+  maxWait: 5_000,
+  timeout: 15_000,
+} as const;
+
+type CheckoutTimingMark = {
+  phase: "preflight" | "transaction";
+  step: string;
+  elapsedMs: number;
+};
+
+function createCheckoutTimingTrace(input: CreateOrderInput) {
+  const startedAt = Date.now();
+  const marks: CheckoutTimingMark[] = [];
+
+  return {
+    mark(phase: CheckoutTimingMark["phase"], step: string) {
+      marks.push({
+        phase,
+        step,
+        elapsedMs: Date.now() - startedAt,
+      });
+    },
+    flush(outcome: "success" | "error", errorMessage?: string) {
+      if (process.env.NODE_ENV === "test") {
+        return;
+      }
+
+      console.info(
+        "createOrderWithJournal timing",
+        JSON.stringify({
+          outcome,
+          shiftId: input.shift_id,
+          paymentMethod: input.payment_method,
+          itemCount: input.items.length,
+          totalElapsedMs: Date.now() - startedAt,
+          error: errorMessage,
+          marks,
+        }),
+      );
+    },
+  };
+}
+
 function mapProductRecord(product: {
   id: string;
   sku: string;
@@ -919,17 +963,20 @@ function mapEditableSalesItems(
   items: Array<{
     id: string;
     quantity: number;
-    unitPrice: Prisma.Decimal;
-    totalPrice: Prisma.Decimal;
+    unitPrice: Prisma.Decimal | number;
+    totalPrice: Prisma.Decimal | number;
     product: { name: string };
   }>,
 ) {
+  const toFixedNumber = (value: Prisma.Decimal | number) =>
+    Number((typeof value === "number" ? value : Number(value)).toFixed(2));
+
   return items.map((item) => ({
     order_item_id: item.id,
     product_name: item.product.name,
     quantity: item.quantity,
-    unit_price: Number(item.unitPrice.toFixed(2)),
-    line_total: Number(item.totalPrice.toFixed(2)),
+    unit_price: toFixedNumber(item.unitPrice),
+    line_total: toFixedNumber(item.totalPrice),
   }));
 }
 
@@ -2173,6 +2220,7 @@ export async function createOrderWithJournal(
   input: CreateOrderInput,
 ): Promise<CreateOrderResultDto> {
   void staffId;
+  const checkoutTiming = createCheckoutTimingTrace(input);
 
   if (input.items.length === 0) {
     throw new Error("ORDER_ITEMS_REQUIRED");
@@ -2186,42 +2234,42 @@ export async function createOrderWithJournal(
 
   const paymentMethod = assertPaymentMethod(input.payment_method);
 
-  return prisma.$transaction(async (tx) => {
-    const shift = await tx.shift.findUnique({ where: { id: input.shift_id } });
-    if (!shift) {
-      throw new Error("SHIFT_NOT_FOUND");
-    }
+  try {
+    const uniqueProductIds = [...new Set(input.items.map((item) => item.product_id))];
+    const trainerIds = [...new Set(input.items.flatMap((item) => (item.trainer_id ? [item.trainer_id] : [])))];
 
-    if (shift.status !== "OPEN" || shift.endTime !== null) {
-      throw new Error("SHIFT_NOT_OPEN");
-    }
+    const [products, trainers, cashAccount, defaultRevenueAccount] = await Promise.all([
+      prisma.product.findMany({
+        where: {
+          id: { in: uniqueProductIds },
+          isActive: true,
+        },
+      }),
+      trainerIds.length > 0
+        ? prisma.trainer.findMany({
+            where: { id: { in: trainerIds }, isActive: true },
+            select: { id: true },
+          })
+        : Promise.resolve([]),
+      prisma.chartOfAccount.findUnique({ where: { code: "1010" } }),
+      prisma.chartOfAccount.findUnique({ where: { code: "4010" } }),
+    ]);
 
-    const activeShift = await tx.shift.findFirst({
-      where: {
-        status: "OPEN",
-        endTime: null,
-      },
-      orderBy: { startTime: "desc" },
-    });
-
-    if (!activeShift || activeShift.id !== shift.id) {
-      throw new Error("SHIFT_OWNER_MISMATCH");
-    }
-
-    const productIds = input.items.map((item) => item.product_id);
-    const products = await tx.product.findMany({
-      where: {
-        id: { in: productIds },
-        isActive: true,
-      },
-    });
-
-    if (products.length !== productIds.length) {
+    if (products.length !== uniqueProductIds.length) {
       throw new Error("PRODUCT_NOT_FOUND");
     }
 
+    if (trainerIds.length > 0 && trainers.length !== trainerIds.length) {
+      throw new Error("TRAINER_NOT_FOUND");
+    }
+
+    if (!cashAccount || !defaultRevenueAccount) {
+      throw new Error("CHART_OF_ACCOUNT_NOT_FOUND");
+    }
+
+    const productMap = new Map(products.map((product) => [product.id, product]));
     const membershipUnits = input.items.reduce((sum, item) => {
-      const product = products.find((candidate) => candidate.id === item.product_id);
+      const product = productMap.get(item.product_id);
       return sum + (product?.productType === "MEMBERSHIP" ? item.quantity : 0);
     }, 0);
 
@@ -2233,32 +2281,6 @@ export async function createOrderWithJournal(
       throw new Error("MEMBERSHIP_CUSTOMER_REQUIRED");
     }
 
-    // PT / Training validation
-    for (const item of input.items) {
-      const product = products.find((p) => p.id === item.product_id);
-      if (product && product.sku.startsWith("PT-")) {
-        if (!item.trainer_id) {
-          throw new Error("TRAINER_REQUIRED");
-        }
-        if (item.quantity > 1) {
-          throw new Error("TRAINING_SINGLE_QUANTITY");
-        }
-      }
-    }
-
-    // Validate trainers exist and are active
-    const trainerIds = [...new Set(input.items.filter((i) => i.trainer_id).map((i) => i.trainer_id!))];
-    if (trainerIds.length > 0) {
-      const trainers = await tx.trainer.findMany({
-        where: { id: { in: trainerIds }, isActive: true },
-        select: { id: true },
-      });
-      if (trainers.length !== trainerIds.length) {
-        throw new Error("TRAINER_NOT_FOUND");
-      }
-    }
-
-    const productMap = new Map(products.map((product) => [product.id, product]));
     const normalizedItems = input.items.map((item) => {
       const product = productMap.get(item.product_id);
       if (!product) {
@@ -2269,8 +2291,13 @@ export async function createOrderWithJournal(
         throw new Error("MEMBERSHIP_SINGLE_QUANTITY");
       }
 
-      if (product.trackStock && typeof product.stockOnHand === "number" && item.quantity > product.stockOnHand) {
-        throw new Error("INSUFFICIENT_STOCK");
+      if (product.sku.startsWith("PT-")) {
+        if (!item.trainer_id) {
+          throw new Error("TRAINER_REQUIRED");
+        }
+        if (item.quantity > 1) {
+          throw new Error("TRAINING_SINGLE_QUANTITY");
+        }
       }
 
       const unitPrice = product.price;
@@ -2282,13 +2309,14 @@ export async function createOrderWithJournal(
         productName: product.name,
         productType: assertProductType(product.productType),
         trackStock: product.trackStock,
-        stockOnHand: product.stockOnHand,
         membershipPeriod: inferMembershipPeriod(product.sku, product.membershipPeriod),
         membershipDurationDays: product.membershipDurationDays,
         quantity: item.quantity,
         unitPrice,
         totalPrice,
         revenueAccountId: product.revenueAccountId,
+        trainerId: item.trainer_id,
+        serviceStartDate: item.service_start_date,
       };
     });
 
@@ -2297,125 +2325,17 @@ export async function createOrderWithJournal(
       new Prisma.Decimal(0),
     );
 
-    const orderSequence = await reserveDocumentNumber(tx, "ORDER", "ORD");
-    const taxSequence = await reserveDocumentNumber(tx, "INVOICE", "INV");
-
-    const order = await tx.order.create({
-      data: {
-        orderNumber: orderSequence.documentNumber,
-        shiftId: shift.id,
-        paymentMethod,
-        totalAmount,
-        customerName: input.customer_info?.name,
-        customerTaxId: input.customer_info?.tax_id,
-        status: "COMPLETED",
-      },
-    });
-
-    await tx.orderItem.createMany({
-      data: normalizedItems.map((item) => ({
-        orderId: order.id,
-        productId: item.productId,
-        quantity: item.quantity,
-        unitPrice: item.unitPrice,
-        totalPrice: item.totalPrice,
-      })),
-    });
-
-    // Create TrainingServiceEnrollment for PT items
-    const ptInputItems = input.items.filter((i) => {
-      const product = productMap.get(i.product_id);
-      return product && product.sku.startsWith("PT-");
-    });
-
-    if (ptInputItems.length > 0) {
-      const createdOrderItems = await tx.orderItem.findMany({
-        where: { orderId: order.id },
-        select: { id: true, productId: true },
-      });
-
-      for (const ptItem of ptInputItems) {
-        const product = productMap.get(ptItem.product_id)!;
-        const orderItem = createdOrderItems.find((oi) => oi.productId === ptItem.product_id);
-        if (!orderItem) continue;
-
-        const startedAt = ptItem.service_start_date ? new Date(ptItem.service_start_date) : new Date();
-        const durationDays = product.membershipDurationDays ?? deriveTrainingDurationDays(product.sku);
-        const expiresAt = durationDays ? new Date(startedAt.getTime() + durationDays * 86400000) : null;
-        const sessionLimit = deriveTrainingSessionLimit(product.sku);
-
-        await tx.trainingServiceEnrollment.create({
-          data: {
-            orderId: order.id,
-            orderItemId: orderItem.id,
-            trainerId: ptItem.trainer_id ?? null,
-            packageProductId: product.id,
-            customerNameSnapshot: input.customer_info?.name ?? "Walk-in",
-            packageNameSnapshot: product.name,
-            packageSkuSnapshot: product.sku,
-            startedAt,
-            expiresAt,
-            sessionLimit,
-            sessionsRemaining: sessionLimit,
-            priceSnapshot: product.price,
-            status: ptItem.trainer_id ? "ACTIVE" : "UNASSIGNED",
-          },
-        });
-      }
-    }
-
-    for (const item of normalizedItems) {
-      if (!item.trackStock || typeof item.stockOnHand !== "number") {
-        continue;
+    const stockDecrementsByProduct = normalizedItems.reduce((map, item) => {
+      if (!item.trackStock) {
+        return map;
       }
 
-      await tx.product.update({
-        where: { id: item.productId },
-        data: {
-          stockOnHand: Math.max(0, item.stockOnHand - item.quantity),
-        },
-      });
-    }
-
-    await tx.taxDocument.create({
-      data: {
-        orderId: order.id,
-        sequenceId: taxSequence.sequenceId,
-        docType: "INVOICE",
-        docNumber: taxSequence.documentNumber,
-        customerName: input.customer_info?.name,
-        customerTaxId: input.customer_info?.tax_id,
-      },
-    });
+      map.set(item.productId, (map.get(item.productId) ?? 0) + item.quantity);
+      return map;
+    }, new Map<string, number>());
 
     const membershipItem = normalizedItems.find((item) => item.productType === "MEMBERSHIP");
-    if (membershipItem && input.customer_info?.name?.trim()) {
-      const memberSequence = await reserveDocumentNumber(tx, "MEMBER", "MBR");
-      const startedAt = new Date();
-      const durationDays = membershipItem.membershipDurationDays ?? defaultMembershipDurationDays(membershipItem.membershipPeriod) ?? 30;
-
-      await tx.memberSubscription.create({
-        data: {
-          memberCode: memberSequence.documentNumber,
-          fullName: input.customer_info.name.trim(),
-          phone: createMembershipPhone(input.customer_info),
-          membershipProductId: membershipItem.productId,
-          startedAt,
-          expiresAt: calculateMembershipExpiry(startedAt, durationDays),
-          renewalStatus: "ACTIVE",
-        },
-      });
-    }
-
-    if (input.simulate_journal_failure) {
-      throw new Error("SIMULATED_JOURNAL_FAILURE");
-    }
-
-    const cashAccount = await tx.chartOfAccount.findUnique({ where: { code: "1010" } });
-    const defaultRevenueAccount = await tx.chartOfAccount.findUnique({ where: { code: "4010" } });
-    if (!cashAccount || !defaultRevenueAccount) {
-      throw new Error("CHART_OF_ACCOUNT_NOT_FOUND");
-    }
+    const ptItems = normalizedItems.filter((item) => item.productSku.startsWith("PT-"));
 
     const revenueCreditsByAccount = new Map<string, Prisma.Decimal>();
     for (const item of normalizedItems) {
@@ -2424,51 +2344,221 @@ export async function createOrderWithJournal(
       revenueCreditsByAccount.set(accountId, current.add(item.totalPrice));
     }
 
-    const journalEntry = await tx.journalEntry.create({
-      data: {
-        sourceType: "SALE",
-        sourceId: order.id,
-        description: `Order ${order.orderNumber}`,
-      },
-    });
+    checkoutTiming.mark("preflight", "checkout-preload-complete");
 
-    await tx.journalLine.createMany({
-      data: [
-        {
-          journalEntryId: journalEntry.id,
-          chartOfAccountId: cashAccount.id,
-          debit: totalAmount,
-          credit: new Prisma.Decimal(0),
+    const result: CreateOrderResultDto = await prisma.$transaction(async (tx) => {
+      const shift = await tx.shift.findUnique({ where: { id: input.shift_id } });
+      if (!shift) {
+        throw new Error("SHIFT_NOT_FOUND");
+      }
+
+      if (shift.status !== "OPEN" || shift.endTime !== null) {
+        throw new Error("SHIFT_NOT_OPEN");
+      }
+
+      const activeShift = await tx.shift.findFirst({
+        where: {
+          status: "OPEN",
+          endTime: null,
         },
-        ...Array.from(revenueCreditsByAccount.entries())
-          .sort(([left], [right]) => left.localeCompare(right))
-          .map(([accountId, creditAmount]) => ({
-            journalEntryId: journalEntry.id,
-            chartOfAccountId: accountId,
-            debit: new Prisma.Decimal(0),
-            credit: creditAmount,
-          })),
-      ],
-    });
+        orderBy: { startTime: "desc" },
+      });
 
-    if (paymentMethod === "CASH") {
-      const baselineExpected = new Prisma.Decimal(shift.expectedCash ?? shift.startingCash);
-      await tx.shift.update({
-        where: { id: shift.id },
-        data: {
-          expectedCash: baselineExpected.add(totalAmount),
+      if (!activeShift || activeShift.id !== shift.id) {
+        throw new Error("SHIFT_OWNER_MISMATCH");
+      }
+
+      const finalProducts = await tx.product.findMany({
+        where: {
+          id: { in: uniqueProductIds },
+          isActive: true,
         },
       });
-    }
 
-    return {
-      order_id: order.id,
-      order_number: order.orderNumber,
-      total_amount: Number(totalAmount),
-      tax_doc_number: taxSequence.documentNumber,
-      status: "COMPLETED",
-    };
-  });
+      if (finalProducts.length !== uniqueProductIds.length) {
+        throw new Error("PRODUCT_NOT_FOUND");
+      }
+
+      const finalProductMap = new Map(finalProducts.map((product) => [product.id, product]));
+      for (const [productId, quantity] of stockDecrementsByProduct.entries()) {
+        const product = finalProductMap.get(productId);
+        if (!product) {
+          throw new Error("PRODUCT_NOT_FOUND");
+        }
+
+        if (typeof product.stockOnHand === "number" && quantity > product.stockOnHand) {
+          throw new Error("INSUFFICIENT_STOCK");
+        }
+      }
+      checkoutTiming.mark("transaction", "transaction-validated");
+
+      const orderSequence = await reserveDocumentNumber(tx, "ORDER", "ORD");
+      const taxSequence = await reserveDocumentNumber(tx, "INVOICE", "INV");
+
+      const order = await tx.order.create({
+        data: {
+          orderNumber: orderSequence.documentNumber,
+          shiftId: shift.id,
+          paymentMethod,
+          totalAmount,
+          customerName: input.customer_info?.name,
+          customerTaxId: input.customer_info?.tax_id,
+          status: "COMPLETED",
+          items: {
+            create: normalizedItems.map((item) => ({
+              productId: item.productId,
+              quantity: item.quantity,
+              unitPrice: item.unitPrice,
+              totalPrice: item.totalPrice,
+            })),
+          },
+        },
+        select: {
+          id: true,
+          orderNumber: true,
+          items: {
+            select: {
+              id: true,
+              productId: true,
+            },
+          },
+        },
+      });
+      checkoutTiming.mark("transaction", "order-created");
+
+      if (ptItems.length > 0) {
+        for (const ptItem of ptItems) {
+          const orderItem = order.items.find((item) => item.productId === ptItem.productId);
+          if (!orderItem) {
+            continue;
+          }
+
+          const startedAt = ptItem.serviceStartDate ? new Date(ptItem.serviceStartDate) : new Date();
+          const durationDays = ptItem.membershipDurationDays ?? deriveTrainingDurationDays(ptItem.productSku);
+          const expiresAt = durationDays ? new Date(startedAt.getTime() + durationDays * 86400000) : null;
+          const sessionLimit = deriveTrainingSessionLimit(ptItem.productSku);
+
+          await tx.trainingServiceEnrollment.create({
+            data: {
+              orderId: order.id,
+              orderItemId: orderItem.id,
+              trainerId: ptItem.trainerId ?? null,
+              packageProductId: ptItem.productId,
+              customerNameSnapshot: input.customer_info?.name ?? "Walk-in",
+              packageNameSnapshot: ptItem.productName,
+              packageSkuSnapshot: ptItem.productSku,
+              startedAt,
+              expiresAt,
+              sessionLimit,
+              sessionsRemaining: sessionLimit,
+              priceSnapshot: ptItem.unitPrice,
+              status: ptItem.trainerId ? "ACTIVE" : "UNASSIGNED",
+            },
+          });
+        }
+      }
+
+      for (const [productId, quantity] of stockDecrementsByProduct.entries()) {
+        const product = finalProductMap.get(productId);
+        if (!product || typeof product.stockOnHand !== "number") {
+          continue;
+        }
+
+        await tx.product.update({
+          where: { id: productId },
+          data: {
+            stockOnHand: Math.max(0, product.stockOnHand - quantity),
+          },
+        });
+      }
+
+      await tx.taxDocument.create({
+        data: {
+          orderId: order.id,
+          sequenceId: taxSequence.sequenceId,
+          docType: "INVOICE",
+          docNumber: taxSequence.documentNumber,
+          customerName: input.customer_info?.name,
+          customerTaxId: input.customer_info?.tax_id,
+        },
+      });
+
+      if (membershipItem && input.customer_info?.name?.trim()) {
+        const memberSequence = await reserveDocumentNumber(tx, "MEMBER", "MBR");
+        const startedAt = new Date();
+        const durationDays = membershipItem.membershipDurationDays ?? defaultMembershipDurationDays(membershipItem.membershipPeriod) ?? 30;
+
+        await tx.memberSubscription.create({
+          data: {
+            memberCode: memberSequence.documentNumber,
+            fullName: input.customer_info.name.trim(),
+            phone: createMembershipPhone(input.customer_info),
+            membershipProductId: membershipItem.productId,
+            startedAt,
+            expiresAt: calculateMembershipExpiry(startedAt, durationDays),
+            renewalStatus: "ACTIVE",
+          },
+        });
+      }
+
+      if (input.simulate_journal_failure) {
+        throw new Error("SIMULATED_JOURNAL_FAILURE");
+      }
+
+      const journalEntry = await tx.journalEntry.create({
+        data: {
+          sourceType: "SALE",
+          sourceId: order.id,
+          description: `Order ${order.orderNumber}`,
+        },
+      });
+
+      await tx.journalLine.createMany({
+        data: [
+          {
+            journalEntryId: journalEntry.id,
+            chartOfAccountId: cashAccount.id,
+            debit: totalAmount,
+            credit: new Prisma.Decimal(0),
+          },
+          ...Array.from(revenueCreditsByAccount.entries())
+            .sort(([left], [right]) => left.localeCompare(right))
+            .map(([accountId, creditAmount]) => ({
+              journalEntryId: journalEntry.id,
+              chartOfAccountId: accountId,
+              debit: new Prisma.Decimal(0),
+              credit: creditAmount,
+            })),
+        ],
+      });
+      checkoutTiming.mark("transaction", "journal-posted");
+
+      if (paymentMethod === "CASH") {
+        const baselineExpected = new Prisma.Decimal(shift.expectedCash ?? shift.startingCash);
+        await tx.shift.update({
+          where: { id: shift.id },
+          data: {
+            expectedCash: baselineExpected.add(totalAmount),
+          },
+        });
+      }
+      checkoutTiming.mark("transaction", "shift-updated");
+
+      return {
+        order_id: order.id,
+        order_number: order.orderNumber,
+        total_amount: Number(totalAmount),
+        tax_doc_number: taxSequence.documentNumber,
+        status: "COMPLETED",
+      };
+    }, ORDER_CHECKOUT_TRANSACTION_OPTIONS);
+
+    checkoutTiming.flush("success");
+    return result;
+  } catch (error) {
+    checkoutTiming.flush("error", error instanceof Error ? error.message : String(error));
+    throw error;
+  }
 }
 
 export async function updateOrderSale(input: UpdateOrderSaleInputDto): Promise<UpdateOrderSaleResultDto> {

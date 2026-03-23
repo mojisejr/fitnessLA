@@ -125,7 +125,7 @@ describe("AppShell", () => {
         expect(screen.getByText("เงินที่ทำได้")).toBeInTheDocument();
     });
 
-    it("shows POS products navigation for cashier", async () => {
+    it("hides POS products navigation for cashier", async () => {
         mockUseAuth.mockReturnValue({
             session: {
                 user_id: "u2",
@@ -147,8 +147,9 @@ describe("AppShell", () => {
         );
 
         await waitFor(() => {
-            expect(screen.getByRole("link", { name: /สินค้า POS/i })).toBeInTheDocument();
+            expect(screen.getByRole("link", { name: /POS/i })).toBeInTheDocument();
         });
+        expect(screen.queryByRole("link", { name: /สินค้า POS/i })).not.toBeInTheDocument();
         expect(screen.queryByRole("link", { name: /attendance ทีม/i })).not.toBeInTheDocument();
     });
 

@@ -136,8 +136,9 @@ describe("report placeholders", () => {
             expect(screen.queryByText("กำลังโหลดรายงาน...")).not.toBeInTheDocument();
         }, { timeout: 10000 });
 
-        fireEvent.click(screen.getByLabelText(/เลือกบิล POS-20260321-001/i));
-        fireEvent.click(screen.getByLabelText(/เลือกบิล POS-20260321-002/i));
+        const checkboxes = screen.getAllByRole("checkbox", { name: /เลือกบิล /i });
+        fireEvent.click(checkboxes[0]);
+        fireEvent.click(checkboxes[1]);
         fireEvent.click(screen.getByRole("button", { name: "ลบที่เลือก" }));
 
         await waitFor(() => {

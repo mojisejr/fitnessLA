@@ -88,15 +88,16 @@ describe("trainers routes", () => {
     expect(body.code).toBe("UNAUTHENTICATED");
   });
 
-  it("GET /trainers returns empty array when no trainers exist", async () => {
+  it("GET /trainers returns 403 for staff role", async () => {
     mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "STAFF" });
     mockListTrainers.mockResolvedValue([]);
 
     const response = await trainersGET(new Request("http://localhost/api/v1/trainers"));
     const body = await response.json();
 
-    expect(response.status).toBe(200);
-    expect(body).toEqual([]);
+    expect(response.status).toBe(403);
+    expect(body.code).toBe("FORBIDDEN");
+    expect(mockListTrainers).not.toHaveBeenCalled();
   });
 
   it("POST /trainers creates trainer with 201", async () => {

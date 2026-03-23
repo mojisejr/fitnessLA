@@ -134,7 +134,19 @@ async function main() {
 
   if (membership) {
     cases.push({
-      label: "MEMBERSHIP",
+      label: "MEMBERSHIP_CASH",
+      body: {
+        shift_id: shiftId,
+        items: [{ product_id: membership.product_id, quantity: 1 }],
+        payment_method: "CASH",
+        customer_info: {
+          name: `SMOKE PROD MEMBER CASH ${Date.now()}`,
+        },
+      },
+    });
+
+    cases.push({
+      label: "MEMBERSHIP_PROMPTPAY",
       body: {
         shift_id: shiftId,
         items: [{ product_id: membership.product_id, quantity: 1 }],
@@ -148,7 +160,19 @@ async function main() {
 
   if (training && trainer) {
     cases.push({
-      label: "PT",
+      label: "PT_CASH",
+      body: {
+        shift_id: shiftId,
+        items: [{ product_id: training.product_id, quantity: 1, trainer_id: trainer.trainer_id }],
+        payment_method: "CASH",
+        customer_info: {
+          name: `SMOKE PROD TRAINING CASH ${Date.now()}`,
+        },
+      },
+    });
+
+    cases.push({
+      label: "PT_CREDIT_CARD",
       body: {
         shift_id: shiftId,
         items: [{ product_id: training.product_id, quantity: 1, trainer_id: trainer.trainer_id }],

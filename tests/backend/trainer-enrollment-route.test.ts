@@ -57,10 +57,18 @@ describe("trainer enrollment route", () => {
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(mockUpdateTrainingEnrollment).toHaveBeenCalledWith("e1", {
-      sessions_remaining: 6,
-      status: "ACTIVE",
-    });
+    expect(mockUpdateTrainingEnrollment).toHaveBeenCalledWith(
+      "e1",
+      {
+        sessions_remaining: 6,
+        status: "ACTIVE",
+        schedule_entries: undefined,
+      },
+      {
+        actor_role: "OWNER",
+        actor_trainer_id: null,
+      },
+    );
     expect(body.sessions_remaining).toBe(6);
   });
 
