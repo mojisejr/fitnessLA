@@ -1,4 +1,4 @@
-export type Role = "OWNER" | "ADMIN" | "CASHIER";
+export type Role = "OWNER" | "ADMIN" | "CASHIER" | "TRAINER";
 
 export type EntityId = string | number;
 
@@ -23,6 +23,7 @@ export interface UserSession {
   username: string;
   full_name: string;
   role: Role;
+  trainer_id?: EntityId | null;
   active_shift_id: EntityId | null;
   scheduled_start_time?: string | null;
   scheduled_end_time?: string | null;
@@ -69,7 +70,7 @@ export interface DeleteManagedUserResult {
   user_id: EntityId;
   full_name: string;
   username: string;
-  role: Extract<Role, "ADMIN" | "CASHIER">;
+  role: Extract<Role, "ADMIN" | "CASHIER" | "TRAINER">;
 }
 
 export interface BulkDeleteManagedUsersResult {
@@ -454,11 +455,36 @@ export interface MemberTrainingSummary {
 export interface TrainerRecord {
   trainer_id: EntityId;
   trainer_code: string;
+  user_id?: EntityId | null;
+  username?: string | null;
   full_name: string;
   nickname?: string | null;
   phone?: string | null;
   is_active: boolean;
   active_customer_count: number;
+}
+
+export interface RegisteredTrainerUserRecord {
+  user_id: EntityId;
+  username: string;
+  full_name: string;
+  phone?: string | null;
+}
+
+export type TrainingScheduleDay =
+  | "MONDAY"
+  | "TUESDAY"
+  | "WEDNESDAY"
+  | "THURSDAY"
+  | "FRIDAY"
+  | "SATURDAY"
+  | "SUNDAY";
+
+export interface TrainingScheduleEntry {
+  day_of_week: TrainingScheduleDay;
+  start_time: string;
+  end_time: string;
+  note?: string | null;
 }
 
 export interface TrainingEnrollmentRecord {
@@ -475,12 +501,14 @@ export interface TrainingEnrollmentRecord {
   sessions_remaining?: number | null;
   price: number;
   status: "ACTIVE" | "EXPIRED" | "UNASSIGNED" | "CLOSED";
+  schedule_entries: TrainingScheduleEntry[];
   closed_at?: string | null;
   close_reason?: string | null;
   updated_at: string;
 }
 
 export interface CreateTrainerInput {
+  user_id?: EntityId;
   full_name: string;
   nickname?: string;
   phone?: string;
@@ -490,4 +518,5 @@ export interface UpdateTrainingEnrollmentInput {
   sessions_remaining?: number | null;
   status?: "ACTIVE" | "EXPIRED" | "UNASSIGNED" | "CLOSED";
   close_reason?: string | null;
+  schedule_entries?: TrainingScheduleEntry[];
 }

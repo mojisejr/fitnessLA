@@ -5,10 +5,18 @@ import { deleteTrainingEnrollment, updateTrainingEnrollment } from "@/features/o
 import { canManageTrainers } from "@/lib/roles";
 import { resolveSessionFromRequest } from "@/lib/session";
 
+const trainingScheduleEntrySchema = z.object({
+  day_of_week: z.enum(["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"]),
+  start_time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "เวลาเริ่มต้นไม่ถูกต้อง"),
+  end_time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "เวลาสิ้นสุดไม่ถูกต้อง"),
+  note: z.string().trim().max(120).nullable().optional(),
+});
+
 const updateTrainingEnrollmentSchema = z.object({
   sessions_remaining: z.number().int().min(0).nullable().optional(),
   status: z.enum(["ACTIVE", "EXPIRED", "UNASSIGNED", "CLOSED"]).optional(),
   close_reason: z.string().trim().nullable().optional(),
+  schedule_entries: z.array(trainingScheduleEntrySchema).max(14).optional(),
 });
 
 type RouteContext = {
@@ -26,9 +34,16 @@ export async function PATCH(request: Request, context: RouteContext) {
     );
   }
 
-  if (!canManageTrainers(session.role)) {
+  if (!canManageTrainers(session.role) && session.role !== "TRAINER") {
     return NextResponse.json(
       { code: "FORBIDDEN", message: "สิทธิ์ไม่เพียงพอสำหรับแก้ไขลูกเทรน" },
+      { status: 403 },
+    );
+  }
+
+  if (session.role === "TRAINER" && !session.trainer_id) {
+    return NextResponse.json(
+      { code: "TRAINER_PROFILE_REQUIRED", message: "บัญชีเทรนเนอร์นี้ยังไม่ได้ผูกกับโปรไฟล์เทรนเนอร์" },
       { status: 403 },
     );
   }
@@ -49,8 +64,19 @@ export async function PATCH(request: Request, context: RouteContext) {
     );
   }
 
+  const normalizedInput = {
+    ...parseResult.data,
+    schedule_entries: parseResult.data.schedule_entries?.map((entry) => ({
+      ...entry,
+      note: entry.note ?? null,
+    })),
+  };
+
   try {
-    const updated = await updateTrainingEnrollment(enrollmentId, parseResult.data);
+    const updated = await updateTrainingEnrollment(enrollmentId, normalizedInput, {
+      actor_role: session.role,
+      actor_trainer_id: session.trainer_id ? String(session.trainer_id) : null,
+    });
     return NextResponse.json(updated, { status: 200 });
   } catch (error) {
     if (error instanceof Error && error.message === "TRAINING_ENROLLMENT_NOT_FOUND") {
@@ -64,6 +90,37 @@ export async function PATCH(request: Request, context: RouteContext) {
       return NextResponse.json(
         { code: "INVALID_SESSIONS_REMAINING", message: "จำนวนครั้งคงเหลือไม่ถูกต้อง" },
         { status: 400 },
+      );
+    }
+
+    if (
+      error instanceof Error &&
+      (error.message === "INVALID_TRAINING_SCHEDULE" || error.message === "DUPLICATE_TRAINING_SCHEDULE_ENTRY")
+    ) {
+      return NextResponse.json(
+        { code: error.message, message: "ข้อมูลสเกดูลไม่ถูกต้อง หรือมีรายการวันเวลาซ้ำ" },
+        { status: 400 },
+      );
+    }
+
+    if (error instanceof Error && error.message === "TRAINER_PROFILE_REQUIRED") {
+      return NextResponse.json(
+        { code: "TRAINER_PROFILE_REQUIRED", message: "บัญชีเทรนเนอร์นี้ยังไม่ได้ผูกกับโปรไฟล์เทรนเนอร์" },
+        { status: 403 },
+      );
+    }
+
+    if (error instanceof Error && error.message === "TRAINER_CAN_ONLY_UPDATE_SCHEDULE") {
+      return NextResponse.json(
+        { code: "TRAINER_CAN_ONLY_UPDATE_SCHEDULE", message: "เทรนเนอร์แก้ไขได้เฉพาะสเกดูลของลูกเทรนตัวเอง" },
+        { status: 403 },
+      );
+    }
+
+    if (error instanceof Error && error.message === "TRAINER_CANNOT_EDIT_OTHER_ENROLLMENTS") {
+      return NextResponse.json(
+        { code: "TRAINER_CANNOT_EDIT_OTHER_ENROLLMENTS", message: "เทรนเนอร์แก้ไขสเกดูลได้เฉพาะลูกเทรนของตัวเอง" },
+        { status: 403 },
       );
     }
 

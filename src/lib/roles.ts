@@ -1,4 +1,4 @@
-export const APP_ROLES = ["OWNER", "ADMIN", "CASHIER"] as const;
+export const APP_ROLES = ["OWNER", "ADMIN", "CASHIER", "TRAINER"] as const;
 
 export type AppRole = (typeof APP_ROLES)[number];
 
@@ -18,7 +18,7 @@ export function canManageUsers(role: string | null | undefined): boolean {
 
 export function canManageProducts(role: string | null | undefined): boolean {
   const appRole = toAppRole(role);
-  return appRole === "OWNER" || appRole === "ADMIN" || appRole === "CASHIER";
+  return appRole === "OWNER" || appRole === "ADMIN";
 }
 
 export function canManageMembers(role: string | null | undefined): boolean {
@@ -27,4 +27,9 @@ export function canManageMembers(role: string | null | undefined): boolean {
 
 export function canManageTrainers(role: string | null | undefined): boolean {
   return toAppRole(role) === "OWNER";
+}
+
+export function canViewTrainers(role: string | null | undefined): boolean {
+  const appRole = toAppRole(role);
+  return appRole === "OWNER" || appRole === "ADMIN" || appRole === "TRAINER";
 }

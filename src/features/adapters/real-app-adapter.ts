@@ -19,6 +19,7 @@ import type {
   UserSession,
   TrainerRecord,
   TrainingEnrollmentRecord,
+  RegisteredTrainerUserRecord,
 } from "@/lib/contracts";
 import type {
   AppAdapter,
@@ -375,6 +376,10 @@ export const realAppAdapter: AppAdapter = {
         allowed_machine_ip: input.allowed_machine_ip,
       }),
     });
+  },
+
+  async listRegisteredTrainerUsers() {
+    return fetchJson<RegisteredTrainerUserRecord[]>("/api/v1/trainers/registered-users");
   },
 
   async listTrainers() {

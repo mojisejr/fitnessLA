@@ -20,11 +20,11 @@ const navItems: NavItem[] = [
     { href: "/dashboard", label: "ภาพรวม", roles: ["OWNER", "ADMIN", "CASHIER"] },
     { href: "/shift/open", label: "เปิดกะ", roles: ["OWNER", "ADMIN", "CASHIER"] },
     { href: "/pos", label: "POS", roles: ["OWNER", "ADMIN", "CASHIER"] },
-    { href: "/pos/products", label: "สินค้า POS", roles: ["OWNER", "ADMIN", "CASHIER"] },
+    { href: "/pos/products", label: "สินค้า POS", roles: ["OWNER", "ADMIN"] },
     { href: "/expenses", label: "รายจ่าย", roles: ["OWNER", "ADMIN", "CASHIER"] },
     { href: "/shift/close", label: "ปิดกะ", roles: ["OWNER", "ADMIN", "CASHIER"] },
     { href: "/members", label: "สมาชิก", roles: ["OWNER", "ADMIN"] },
-    { href: "/trainers", label: "เทรนเนอร์", roles: ["OWNER", "ADMIN"] },
+    { href: "/trainers", label: "เทรนเนอร์", roles: ["OWNER", "ADMIN", "TRAINER"] },
     { href: "/coa", label: "ผังบัญชี", roles: ["OWNER", "ADMIN"] },
     { href: "/reports/daily-summary", label: "สรุปยอด", roles: ["OWNER", "ADMIN"] },
     { href: "/reports/shift-summary", label: "สรุปกะ", roles: ["OWNER", "ADMIN"] },
@@ -37,12 +37,14 @@ const roleTone: Record<Role, string> = {
     OWNER: "bg-accent text-black",
     ADMIN: "border border-line bg-[#262113] text-[#fff1b0]",
     CASHIER: "bg-warning text-black",
+    TRAINER: "border border-line bg-[#13261f] text-[#b8f3d5]",
 };
 
 const roleLabel: Record<Role, string> = {
     OWNER: "เจ้าของ",
     ADMIN: "แอดมิน",
     CASHIER: "แคชเชียร์",
+    TRAINER: "เทรนเนอร์",
 };
 
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -50,12 +52,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     const adapter = useAppAdapter();
     const { session, activeShift, logout, switchRole, mode } = useAuth();
     const [activeShiftSales, setActiveShiftSales] = useState<number | null>(null);
+    const showShiftStatus = session?.role !== "TRAINER";
 
     useEffect(() => {
         let isActive = true;
 
         async function loadActiveShiftSales() {
-            if (!activeShift) {
+            if (!showShiftStatus || !activeShift) {
                 setActiveShiftSales(null);
                 return;
             }
@@ -84,10 +87,41 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         return () => {
             isActive = false;
         };
-    }, [adapter, activeShift]);
+    }, [adapter, activeShift, showShiftStatus]);
 
     if (!session) {
         return null;
+    }
+
+    if (session.role === "TRAINER" && pathname !== "/trainers") {
+        return (
+            <div className="min-h-screen px-4 py-4 md:px-6 md:py-6">
+                <div className="mx-auto flex min-h-[calc(100vh-2rem)] max-w-3xl items-center">
+                    <div className="w-full rounded-4xl border border-line bg-surface p-8 shadow-(--shadow) backdrop-blur md:p-10">
+                        <p className="text-xs uppercase tracking-[0.16em] text-muted">trainer access</p>
+                        <h1 className="mt-3 text-3xl font-semibold text-foreground">บัญชีเทรนเนอร์เปิดได้เฉพาะหน้าเทรนเนอร์</h1>
+                        <p className="mt-3 text-sm leading-7 text-muted">
+                            ระบบจำกัดสิทธิ์บทบาทนี้ให้ดูเฉพาะข้อมูลลูกเทรนของตัวเอง และไม่เปิดหน้าอื่นในฝั่งปฏิบัติการร้าน
+                        </p>
+                        <div className="mt-6 flex flex-wrap gap-3">
+                            <Link
+                                href="/trainers"
+                                className="rounded-full bg-accent px-5 py-3 text-sm font-semibold text-black transition hover:bg-accent-strong"
+                            >
+                                ไปหน้าเทรนเนอร์
+                            </Link>
+                            <button
+                                type="button"
+                                onClick={logout}
+                                className="rounded-full border border-line px-5 py-3 text-sm font-semibold text-foreground transition hover:border-warning hover:bg-warning-soft"
+                            >
+                                ออกจากระบบ
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
     }
 
     const visibleNav = navItems.filter(
@@ -120,21 +154,23 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                             </span>
                         </div>
 
-                        <div className="mt-4 rounded-2xl bg-accent-soft p-4">
-                            <p className="text-xs font-semibold text-muted">สถานะกะ</p>
-                            <p className="mt-2 text-lg font-semibold text-foreground">
-                                {activeShift ? "มีกะที่เปิดอยู่" : "ยังไม่มีกะที่เปิด"}
-                            </p>
-                            {activeShift ? (
-                                <>
-                                    <p className="mt-1 text-sm text-muted">{formatDateTime(activeShift.opened_at)}</p>
-                                    <p className="mt-2 text-lg font-semibold text-foreground">{formatCurrency(activeShiftSales ?? 0)}</p>
-                                    <p className="text-xs text-muted">เงินที่ทำได้</p>
-                                </>
-                            ) : (
-                                <p className="mt-1 text-sm text-muted">เปิดกะก่อนเข้าใช้งาน POS หรือหน้ารายจ่าย</p>
-                            )}
-                        </div>
+                        {showShiftStatus ? (
+                            <div className="mt-4 rounded-2xl bg-accent-soft p-4">
+                                <p className="text-xs font-semibold text-muted">สถานะกะ</p>
+                                <p className="mt-2 text-lg font-semibold text-foreground">
+                                    {activeShift ? "มีกะที่เปิดอยู่" : "ยังไม่มีกะที่เปิด"}
+                                </p>
+                                {activeShift ? (
+                                    <>
+                                        <p className="mt-1 text-sm text-muted">{formatDateTime(activeShift.opened_at)}</p>
+                                        <p className="mt-2 text-lg font-semibold text-foreground">{formatCurrency(activeShiftSales ?? 0)}</p>
+                                        <p className="text-xs text-muted">เงินที่ทำได้</p>
+                                    </>
+                                ) : (
+                                    <p className="mt-1 text-sm text-muted">เปิดกะก่อนเข้าใช้งาน POS หรือหน้ารายจ่าย</p>
+                                )}
+                            </div>
+                        ) : null}
                     </div>
 
                     <nav className="mt-5 space-y-2">
@@ -164,7 +200,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                             <>
                                 <p className="text-xs uppercase tracking-[0.16em] text-muted">สลับบทบาทในโหมดทดลอง</p>
                                 <div className="mt-3 grid grid-cols-3 gap-2">
-                                    {(["OWNER", "ADMIN", "CASHIER"] as Role[]).map((role) => (
+                                    {(["OWNER", "ADMIN", "CASHIER", "TRAINER"] as Role[]).map((role) => (
                                         <button
                                             key={role}
                                             type="button"

@@ -16,6 +16,7 @@ export const mockUsersByRole: Record<Role, UserSession> = {
     username: "owner",
     full_name: "Lalin Charoen",
     role: "OWNER",
+    trainer_id: null,
     active_shift_id: null,
   },
   ADMIN: {
@@ -23,6 +24,7 @@ export const mockUsersByRole: Record<Role, UserSession> = {
     username: "admin",
     full_name: "Niran Ops Lead",
     role: "ADMIN",
+    trainer_id: null,
     active_shift_id: null,
   },
   CASHIER: {
@@ -30,6 +32,15 @@ export const mockUsersByRole: Record<Role, UserSession> = {
     username: "cashier",
     full_name: "Pim Counter",
     role: "CASHIER",
+    trainer_id: null,
+    active_shift_id: null,
+  },
+  TRAINER: {
+    user_id: 4,
+    username: "trainer",
+    full_name: "Nok Trainer",
+    role: "TRAINER",
+    trainer_id: null,
     active_shift_id: null,
   },
 };

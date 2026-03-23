@@ -147,4 +147,28 @@ describe("POS inventory management", () => {
         expect(recipeSection).not.toBeNull();
         expect(within(recipeSection as HTMLElement).getAllByText(/฿13.50/).length).toBeGreaterThan(0);
     }, 30000);
+
+    it("blocks cashier from opening POS product management", () => {
+        clearMockSession();
+        seedMockSession({
+            session: {
+                user_id: 4,
+                username: "cashier",
+                full_name: "Cashier User",
+                role: "CASHIER",
+                active_shift_id: 701,
+            },
+            activeShift: {
+                shift_id: 701,
+                opened_at: new Date().toISOString(),
+                starting_cash: 500,
+            },
+            lastClosedShift: null,
+        });
+
+        renderWithProviders(<PosProductsPage />);
+
+        expect(screen.getByText("บทบาทของคุณยังเข้าใช้งานหน้านี้ไม่ได้")).toBeInTheDocument();
+        expect(screen.queryByText("ย้ายการจัดการสินค้าไปหน้าใหม่แบบตารางแยกหมวด")).not.toBeInTheDocument();
+    });
 });

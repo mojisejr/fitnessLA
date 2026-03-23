@@ -6,6 +6,7 @@ import type {
   EntityId,
   IngredientRecord,
   ManagedStaffUserRecord,
+  RegisteredTrainerUserRecord,
   CreateOrderRequest,
   DailySummary,
   MemberSubscriptionRecord,
@@ -41,7 +42,7 @@ export type CreateAdminUserInput = {
   phone: string;
   username: string;
   password: string;
-  role: "OWNER" | "ADMIN" | "CASHIER";
+  role: "OWNER" | "ADMIN" | "CASHIER" | "TRAINER";
   scheduled_start_time?: string;
   scheduled_end_time?: string;
   allowed_machine_ip?: string;
@@ -209,6 +210,7 @@ export interface AppAdapter {
   listManagedUsers?: () => Promise<ManagedStaffUserRecord[]>;
   updateManagedUser?: (userId: EntityId, input: UpdateManagedUserInput) => Promise<ManagedStaffUserRecord>;
   getAttendanceStatus?: () => Promise<AttendanceStatusRecord>;
+  listRegisteredTrainerUsers: () => Promise<RegisteredTrainerUserRecord[]>;
   listTrainers: () => Promise<Array<TrainerRecord & { assignments: TrainingEnrollmentRecord[] }>>;
   createTrainer: (input: CreateTrainerInput) => Promise<TrainerRecord>;
   deleteTrainer: (trainerId: EntityId) => Promise<DeleteTrainerResult>;

@@ -37,7 +37,7 @@ type CreateManagedUserInput = {
   full_name: string;
   phone: string;
   password: string;
-  role: "OWNER" | "ADMIN" | "CASHIER";
+  role: "OWNER" | "ADMIN" | "CASHIER" | "TRAINER";
   scheduled_start_time?: string | null;
   scheduled_end_time?: string | null;
   allowed_machine_ip?: string | null;
@@ -166,7 +166,7 @@ function mapAttendanceDeviceRecord(record: AttendanceDeviceRow): AttendanceDevic
 
 function isManagedUserRole(role: string) {
   const appRole = toAppRole(role);
-  return appRole === "ADMIN" || appRole === "CASHIER";
+  return appRole === "ADMIN" || appRole === "CASHIER" || appRole === "TRAINER";
 }
 
 function mapDeletedManagedUserRecord(user: {
@@ -176,7 +176,7 @@ function mapDeletedManagedUserRecord(user: {
   role: string;
 }): DeleteManagedUserResult {
   const role = toAppRole(user.role);
-  if (role !== "ADMIN" && role !== "CASHIER") {
+  if (role !== "ADMIN" && role !== "CASHIER" && role !== "TRAINER") {
     throw new Error("MANAGED_USER_DELETE_FORBIDDEN");
   }
 
@@ -336,7 +336,7 @@ export async function createManagedUser(input: CreateManagedUserInput) {
 export async function listManagedUsers(): Promise<ManagedStaffUserRecord[]> {
   const users = await prisma.user.findMany({
     where: {
-      role: { in: ["ADMIN", "CASHIER"] },
+      role: { in: ["ADMIN", "CASHIER", "TRAINER"] },
     },
     orderBy: [{ role: "asc" }, { name: "asc" }],
     include: {

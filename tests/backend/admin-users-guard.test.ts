@@ -20,10 +20,10 @@ describe("admin users role guard", () => {
     expect(toAppRole("cashier")).toBe("CASHIER");
   });
 
-  it("allows cashier to manage POS products", () => {
+  it("only allows owner and admin to manage POS products", () => {
     expect(canManageProducts("OWNER")).toBe(true);
     expect(canManageProducts("ADMIN")).toBe(true);
-    expect(canManageProducts("CASHIER")).toBe(true);
+    expect(canManageProducts("CASHIER")).toBe(false);
     expect(canManageProducts("staff")).toBe(false);
   });
 });

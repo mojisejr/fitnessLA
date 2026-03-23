@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 
+import { RoleGuard } from "@/components/guards/role-guard";
 import { useAppAdapter } from "@/features/adapters/adapter-provider";
 import { useAuth } from "@/features/auth/auth-provider";
 import type { ChartOfAccountRecord, IngredientRecord, Product, ProductRecipeRecord, ProductStockAdjustmentRecord } from "@/lib/contracts";
@@ -761,264 +762,74 @@ export default function PosProductsPage() {
     }
 
     return (
-        <div className="grid gap-6 xl:grid-cols-[minmax(0,1.3fr)_420px]">
-            <section className="space-y-6 rounded-[28px] border border-line bg-surface-strong p-6 md:p-8">
-                <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-                    <div>
-                        <p className="text-xs uppercase tracking-[0.18em] text-muted">สินค้า POS และคลังหน้าเคาน์เตอร์</p>
-                        <h1 className="mt-3 text-3xl font-semibold text-foreground">ย้ายการจัดการสินค้าไปหน้าใหม่แบบตารางแยกหมวด</h1>
-                        <p className="mt-3 max-w-3xl text-sm leading-7 text-muted">
-                            ดูสินค้าเป็นหมวดชัด ๆ, แก้ชื่อและราคาได้ในแผงเดียว, เติมสต็อกจากยอดคงเหลือจริง และมีประวัติการเติมให้ย้อนดูได้ทันที
-                        </p>
+        <RoleGuard allowedRoles={["OWNER", "ADMIN"]}>
+            <div className="grid gap-6 xl:grid-cols-[minmax(0,1.3fr)_420px]">
+                <section className="space-y-6 rounded-[28px] border border-line bg-surface-strong p-6 md:p-8">
+                    <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                        <div>
+                            <p className="text-xs uppercase tracking-[0.18em] text-muted">สินค้า POS และคลังหน้าเคาน์เตอร์</p>
+                            <h1 className="mt-3 text-3xl font-semibold text-foreground">ย้ายการจัดการสินค้าไปหน้าใหม่แบบตารางแยกหมวด</h1>
+                            <p className="mt-3 max-w-3xl text-sm leading-7 text-muted">
+                                ดูสินค้าเป็นหมวดชัด ๆ, แก้ชื่อและราคาได้ในแผงเดียว, เติมสต็อกจากยอดคงเหลือจริง และมีประวัติการเติมให้ย้อนดูได้ทันที
+                            </p>
+                        </div>
+
+                        <div className="flex flex-wrap gap-3">
+                            <button
+                                type="button"
+                                onClick={() => void refreshProducts()}
+                                className="rounded-full border border-line px-5 py-3 text-sm font-semibold text-foreground transition hover:border-accent hover:bg-accent-soft"
+                            >
+                                รีเฟรชรายการสินค้า
+                            </button>
+                            <Link
+                                href="/pos"
+                                className="inline-flex rounded-full bg-accent px-5 py-3 text-sm font-semibold text-black transition hover:bg-accent-strong"
+                            >
+                                กลับไปหน้า POS
+                            </Link>
+                        </div>
                     </div>
 
-                    <div className="flex flex-wrap gap-3">
-                        <button
-                            type="button"
-                            onClick={() => void refreshProducts()}
-                            className="rounded-full border border-line px-5 py-3 text-sm font-semibold text-foreground transition hover:border-accent hover:bg-accent-soft"
+                    <div className="grid gap-3 md:grid-cols-3">
+                        <div className="rounded-[22px] border border-line bg-background/70 p-4">
+                            <p className="text-xs font-semibold text-muted">สินค้าทั้งหมด</p>
+                            <p className="mt-2 text-3xl font-semibold text-foreground">{products.length}</p>
+                        </div>
+                        <div className="rounded-[22px] border border-line bg-background/70 p-4">
+                            <p className="text-xs font-semibold text-muted">สินค้าที่ติดตาม stock</p>
+                            <p className="mt-2 text-3xl font-semibold text-foreground">{trackedProducts.length}</p>
+                        </div>
+                        <div className="rounded-[22px] border border-line bg-background/70 p-4">
+                            <p className="text-xs font-semibold text-muted">ใกล้หมด</p>
+                            <p className="mt-2 text-3xl font-semibold text-foreground">{lowStockProducts.length}</p>
+                        </div>
+                        <div className="rounded-[22px] border border-line bg-background/70 p-4">
+                            <p className="text-xs font-semibold text-muted">วัตถุดิบในคลังสูตร</p>
+                            <p className="mt-2 text-3xl font-semibold text-foreground">{ingredients.length}</p>
+                        </div>
+                    </div>
+
+                    <div className="grid gap-3 lg:grid-cols-[minmax(0,1.2fr)_260px_auto]">
+                        <input
+                            aria-label="ค้นหาสินค้า"
+                            value={query}
+                            onChange={(event) => setQuery(event.target.value)}
+                            placeholder="ค้นหาจากชื่อสินค้า, SKU, คำโปรย หรือหมวด"
+                            className="w-full rounded-[20px] border border-line bg-[#fff8de] px-4 py-3 text-[#17130a] placeholder:text-[#8a7840] outline-none transition focus:border-accent"
+                        />
+                        <select
+                            aria-label="กรองหมวดสินค้า"
+                            value={selectedCategory}
+                            onChange={(event) => setSelectedCategory(event.target.value as SellCategory)}
+                            className="w-full rounded-[20px] border border-line bg-[#fff8de] px-4 py-3 text-[#17130a] outline-none transition focus:border-accent"
                         >
-                            รีเฟรชรายการสินค้า
-                        </button>
-                        <Link
-                            href="/pos"
-                            className="inline-flex rounded-full bg-accent px-5 py-3 text-sm font-semibold text-black transition hover:bg-accent-strong"
-                        >
-                            กลับไปหน้า POS
-                        </Link>
-                    </div>
-                </div>
-
-                <div className="grid gap-3 md:grid-cols-3">
-                    <div className="rounded-[22px] border border-line bg-background/70 p-4">
-                        <p className="text-xs font-semibold text-muted">สินค้าทั้งหมด</p>
-                        <p className="mt-2 text-3xl font-semibold text-foreground">{products.length}</p>
-                    </div>
-                    <div className="rounded-[22px] border border-line bg-background/70 p-4">
-                        <p className="text-xs font-semibold text-muted">สินค้าที่ติดตาม stock</p>
-                        <p className="mt-2 text-3xl font-semibold text-foreground">{trackedProducts.length}</p>
-                    </div>
-                    <div className="rounded-[22px] border border-line bg-background/70 p-4">
-                        <p className="text-xs font-semibold text-muted">ใกล้หมด</p>
-                        <p className="mt-2 text-3xl font-semibold text-foreground">{lowStockProducts.length}</p>
-                    </div>
-                    <div className="rounded-[22px] border border-line bg-background/70 p-4">
-                        <p className="text-xs font-semibold text-muted">วัตถุดิบในคลังสูตร</p>
-                        <p className="mt-2 text-3xl font-semibold text-foreground">{ingredients.length}</p>
-                    </div>
-                </div>
-
-                <div className="grid gap-3 lg:grid-cols-[minmax(0,1.2fr)_260px_auto]">
-                    <input
-                        aria-label="ค้นหาสินค้า"
-                        value={query}
-                        onChange={(event) => setQuery(event.target.value)}
-                        placeholder="ค้นหาจากชื่อสินค้า, SKU, คำโปรย หรือหมวด"
-                        className="w-full rounded-[20px] border border-line bg-[#fff8de] px-4 py-3 text-[#17130a] placeholder:text-[#8a7840] outline-none transition focus:border-accent"
-                    />
-                    <select
-                        aria-label="กรองหมวดสินค้า"
-                        value={selectedCategory}
-                        onChange={(event) => setSelectedCategory(event.target.value as SellCategory)}
-                        className="w-full rounded-[20px] border border-line bg-[#fff8de] px-4 py-3 text-[#17130a] outline-none transition focus:border-accent"
-                    >
-                        {(Object.keys(sellCategoryLabel) as SellCategory[]).map((category) => (
-                            <option key={category} value={category}>
-                                {sellCategoryLabel[category]}
-                            </option>
-                        ))}
-                    </select>
-                    <button
-                        type="button"
-                        onClick={openCreateMode}
-                        className="rounded-full bg-accent px-5 py-3 text-sm font-semibold text-black transition hover:bg-accent-strong"
-                    >
-                        เพิ่มสินค้าใหม่
-                    </button>
-                </div>
-
-                {productsLoading ? (
-                    <div className="rounded-3xl border border-dashed border-line bg-background p-6 text-sm text-muted">
-                        กำลังโหลดรายการสินค้า...
-                    </div>
-                ) : productsError ? (
-                    <div className="rounded-3xl border border-warning bg-warning-soft p-6 text-sm text-foreground">
-                        {productsError}
-                    </div>
-                ) : categorySections.length > 0 ? (
-                    <div className="space-y-5">
-                        {categorySections.map((section) => (
-                            <section key={section.category} className="rounded-3xl border border-line bg-background/70 p-4 md:p-5">
-                                <div className="flex items-center justify-between gap-3">
-                                    <div>
-                                        <p className="text-xs font-semibold text-muted">หมวดสินค้า</p>
-                                        <h2 className="mt-1 text-xl font-semibold text-foreground">{POS_CATEGORY_LABEL[section.category]}</h2>
-                                    </div>
-                                    <p className="text-sm text-muted">{section.products.length} รายการ</p>
-                                </div>
-
-                                <div className="mt-4 overflow-x-auto">
-                                    <table className="min-w-230 divide-y divide-line text-sm">
-                                        <thead className="bg-[#14130f]">
-                                            <tr>
-                                                <th className="px-4 py-3 text-left font-semibold text-muted">สินค้า</th>
-                                                <th className="px-4 py-3 text-left font-semibold text-muted">SKU</th>
-                                                <th className="px-4 py-3 text-left font-semibold text-muted">ประเภท</th>
-                                                <th className="px-4 py-3 text-left font-semibold text-muted">ราคา</th>
-                                                <th className="px-4 py-3 text-left font-semibold text-muted">คงเหลือ</th>
-                                                <th className="px-4 py-3 text-left font-semibold text-muted">บัญชีรายได้</th>
-                                                <th className="px-4 py-3 text-left font-semibold text-muted">ต้นทุนสูตร</th>
-                                                <th className="px-4 py-3 text-left font-semibold text-muted">ปักหมุด</th>
-                                                <th className="px-4 py-3 text-right font-semibold text-muted">จัดการ</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-line">
-                                            {section.products.map((product) => {
-                                                const productId = String(product.product_id);
-                                                const isSelected = String(product.product_id) === selectedProductId && !isCreateMode;
-                                                const isInlineRestockOpen = activeRestockProductId === productId;
-                                                const restockDraft = inlineRestockDrafts[productId] ?? { quantity: "", note: "" };
-                                                const restockFeedback = inlineRestockFeedback[productId] ?? null;
-                                                const parsedDraftQuantity = Number(restockDraft.quantity);
-                                                const projectedStock = !Number.isInteger(parsedDraftQuantity) || parsedDraftQuantity <= 0
-                                                    ? product.stock_on_hand ?? 0
-                                                    : (product.stock_on_hand ?? 0) + parsedDraftQuantity;
-                                                const revenueAccount = chartOfAccounts.find(
-                                                    (account) => String(account.account_id) === String(product.revenue_account_id),
-                                                );
-
-                                                return (
-                                                    <Fragment key={product.product_id}>
-                                                        <tr
-                                                            className={isSelected ? "bg-accent-soft/10" : "bg-transparent"}
-                                                            aria-label={`Product row ${product.name}`}
-                                                        >
-                                                            <td className="px-4 py-4 align-top">
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() => openEditMode(productId)}
-                                                                    className="text-left"
-                                                                >
-                                                                    <p className="font-semibold text-[#f3e8ba] transition hover:text-accent">{product.name}</p>
-                                                                    <p className="mt-1 max-w-70 text-xs leading-6 text-muted">{product.tagline?.trim() || "ไม่มีคำโปรยสินค้า"}</p>
-                                                                </button>
-                                                            </td>
-                                                            <td className="px-4 py-4 align-top text-[#f3e8ba]">{product.sku}</td>
-                                                            <td className="px-4 py-4 align-top text-[#f3e8ba]">{product.product_type}</td>
-                                                            <td className="px-4 py-4 align-top text-[#f3e8ba]">{formatCurrency(product.price)}</td>
-                                                            <td className="px-4 py-4 align-top text-[#f3e8ba]">
-                                                                {product.track_stock ? (
-                                                                    <div className="space-y-2">
-                                                                        <p className="font-semibold">{product.stock_on_hand ?? 0}</p>
-                                                                        <button
-                                                                            type="button"
-                                                                            aria-label={`เติมสินค้า ${product.name}`}
-                                                                            onClick={() => toggleInlineRestock(productId)}
-                                                                            className="rounded-full border border-line px-3 py-1 text-[11px] font-semibold text-foreground transition hover:border-accent hover:bg-accent-soft"
-                                                                        >
-                                                                            {isInlineRestockOpen ? "ซ่อนช่องเติม" : "+ เติมสินค้า"}
-                                                                        </button>
-                                                                    </div>
-                                                                ) : "บริการ"}
-                                                            </td>
-                                                            <td className="px-4 py-4 align-top text-xs text-muted">
-                                                                {revenueAccount ? `${revenueAccount.account_code} · ${revenueAccount.account_name}` : "ใช้บัญชีหลักของระบบ"}
-                                                            </td>
-                                                            <td className="px-4 py-4 align-top text-xs text-muted">
-                                                                {typeof product.recipe_total_cost === "number" ? `${formatCurrency(product.recipe_total_cost)} · ${product.recipe_item_count ?? 0} รายการ` : "ยังไม่ตั้งสูตร"}
-                                                            </td>
-                                                            <td className="px-4 py-4 align-top text-[#f3e8ba]">{product.featured_slot ? `ช่อง ${product.featured_slot}` : "-"}</td>
-                                                            <td className="px-4 py-4 align-top text-right">
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() => openEditMode(productId)}
-                                                                    className="rounded-full border border-line px-4 py-2 text-xs font-semibold text-foreground transition hover:border-accent hover:bg-accent-soft"
-                                                                >
-                                                                    จัดการ
-                                                                </button>
-                                                            </td>
-                                                        </tr>
-                                                        {product.track_stock && isInlineRestockOpen ? (
-                                                            <tr aria-label={`Restock row ${product.name}`}>
-                                                                <td colSpan={9} className="px-4 pb-4 pt-0">
-                                                                    <div className="rounded-[22px] border border-line bg-[#161510] p-4">
-                                                                        <div className="grid gap-3 lg:grid-cols-[180px_180px_minmax(0,1fr)_auto] lg:items-end">
-                                                                            <div className="rounded-[18px] border border-line bg-background/70 px-4 py-3 text-sm text-foreground">
-                                                                                <p className="text-xs text-muted">ของเดิม</p>
-                                                                                <p className="mt-2 text-2xl font-semibold">{product.stock_on_hand ?? 0}</p>
-                                                                            </div>
-                                                                            <label className="block">
-                                                                                <span className="text-sm font-medium text-foreground">เติมเพิ่ม</span>
-                                                                                <input
-                                                                                    aria-label={`เติมเพิ่ม ${product.name}`}
-                                                                                    inputMode="numeric"
-                                                                                    value={restockDraft.quantity}
-                                                                                    onChange={(event) => updateInlineRestockDraft(productId, { quantity: event.target.value })}
-                                                                                    className="mt-2 w-full rounded-[18px] border border-line bg-[#fff8de] px-4 py-3 text-[#17130a] outline-none transition focus:border-accent"
-                                                                                />
-                                                                            </label>
-                                                                            <label className="block">
-                                                                                <span className="text-sm font-medium text-foreground">หมายเหตุการเติมสินค้า</span>
-                                                                                <input
-                                                                                    aria-label={`หมายเหตุการเติมสินค้า ${product.name}`}
-                                                                                    value={restockDraft.note}
-                                                                                    onChange={(event) => updateInlineRestockDraft(productId, { note: event.target.value })}
-                                                                                    placeholder="เช่น รับของเข้ารอบเช้า"
-                                                                                    className="mt-2 w-full rounded-[18px] border border-line bg-[#fff8de] px-4 py-3 text-[#17130a] outline-none transition focus:border-accent"
-                                                                                />
-                                                                            </label>
-                                                                            <div className="rounded-[18px] border border-line bg-background/70 px-4 py-3 text-sm text-foreground">
-                                                                                <p className="text-xs text-muted">ยอดหลังเติม</p>
-                                                                                <p className="mt-2 text-2xl font-semibold">{projectedStock}</p>
-                                                                            </div>
-                                                                        </div>
-
-                                                                        {restockFeedback ? (
-                                                                            <div className={`mt-3 rounded-[18px] px-4 py-3 text-sm ${restockFeedback.tone === "error" ? "border border-warning bg-warning-soft text-foreground" : "border border-accent bg-accent-soft text-foreground"}`}>
-                                                                                {restockFeedback.message}
-                                                                            </div>
-                                                                        ) : null}
-
-                                                                        <div className="mt-4 flex flex-wrap gap-3">
-                                                                            <button
-                                                                                type="button"
-                                                                                onClick={() => void handleInlineRestock(product)}
-                                                                                disabled={restockingProductId === productId}
-                                                                                className="rounded-full bg-accent px-5 py-3 text-sm font-semibold text-black transition hover:bg-accent-strong disabled:cursor-not-allowed disabled:opacity-60"
-                                                                            >
-                                                                                {restockingProductId === productId ? "กำลังบันทึก..." : "บันทึกการเติมสินค้า"}
-                                                                            </button>
-                                                                            <button
-                                                                                type="button"
-                                                                                onClick={() => setActiveRestockProductId("")}
-                                                                                className="rounded-full border border-line px-5 py-3 text-sm font-semibold text-foreground transition hover:border-accent hover:bg-accent-soft"
-                                                                            >
-                                                                                ปิดช่องเติม
-                                                                            </button>
-                                                                        </div>
-                                                                    </div>
-                                                                </td>
-                                                            </tr>
-                                                        ) : null}
-                                                    </Fragment>
-                                                );
-                                            })}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </section>
-                        ))}
-                    </div>
-                ) : (
-                    <div className="rounded-3xl border border-dashed border-line bg-background p-6 text-sm text-muted">
-                        ไม่พบสินค้าที่ตรงกับคำค้นหรือหมวดที่เลือก
-                    </div>
-                )}
-            </section>
-
-            <aside className="space-y-6 rounded-[28px] border border-line bg-surface-strong p-6 md:p-8">
-                <section className="rounded-3xl border border-line bg-background/70 p-5">
-                    <div className="flex flex-wrap gap-3">
+                            {(Object.keys(sellCategoryLabel) as SellCategory[]).map((category) => (
+                                <option key={category} value={category}>
+                                    {sellCategoryLabel[category]}
+                                </option>
+                            ))}
+                        </select>
                         <button
                             type="button"
                             onClick={openCreateMode}
@@ -1026,502 +837,696 @@ export default function PosProductsPage() {
                         >
                             เพิ่มสินค้าใหม่
                         </button>
-                        <button
-                            type="button"
-                            onClick={() => openEditMode()}
-                            disabled={!selectedProduct}
-                            className="rounded-full border border-line px-5 py-3 text-sm font-semibold text-foreground transition hover:border-accent hover:bg-accent-soft disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                            แก้ไขสินค้าที่เลือก
-                        </button>
                     </div>
 
-                    <div className="mt-5 space-y-4">
-                        <label className="block">
-                            <span className="text-sm font-medium text-foreground">{isCreateMode ? "ประเภทสินค้าใหม่" : "สินค้า"}</span>
-                            {isCreateMode ? (
-                                <select
-                                    aria-label="ประเภทสินค้าใหม่"
-                                    value={newProductType}
-                                    onChange={(event) => {
-                                        const nextProductType = event.target.value as EditableProductType;
-                                        setNewProductType(nextProductType);
-                                        setEditPosCategory(getDefaultPosCategory(nextProductType, editSku));
-                                        setEditStockOnHand(nextProductType === "GOODS" ? editStockOnHand || "0" : "");
-                                    }}
-                                    className="mt-2 w-full rounded-[18px] border border-line bg-[#fff8de] px-4 py-3 text-[#17130a] outline-none transition focus:border-accent"
-                                >
-                                    <option value="GOODS">สินค้า</option>
-                                    <option value="SERVICE">บริการ</option>
-                                </select>
-                            ) : (
-                                <div className="mt-2 rounded-[18px] border border-line bg-[#161510] px-4 py-3 text-sm text-foreground">
-                                    {selectedProduct ? selectedProduct.name : "เลือกสินค้าจากตารางด้านซ้าย"}
-                                </div>
-                            )}
-                        </label>
-
-                        <div className="grid gap-4 sm:grid-cols-2">
-                            <label className="block">
-                                <span className="text-sm font-medium text-foreground">SKU</span>
-                                <input
-                                    aria-label="SKU"
-                                    value={editSku}
-                                    onChange={(event) => setEditSku(event.target.value)}
-                                    className="mt-2 w-full rounded-[18px] border border-line bg-[#fff8de] px-4 py-3 text-[#17130a] outline-none transition focus:border-accent"
-                                />
-                            </label>
-                            <label className="block">
-                                <span className="text-sm font-medium text-foreground">ราคา</span>
-                                <input
-                                    aria-label="ราคา"
-                                    inputMode="decimal"
-                                    value={editPrice}
-                                    onChange={(event) => setEditPrice(event.target.value)}
-                                    className="mt-2 w-full rounded-[18px] border border-line bg-[#fff8de] px-4 py-3 text-[#17130a] outline-none transition focus:border-accent"
-                                />
-                            </label>
+                    {productsLoading ? (
+                        <div className="rounded-3xl border border-dashed border-line bg-background p-6 text-sm text-muted">
+                            กำลังโหลดรายการสินค้า...
                         </div>
-
-                        <label className="block">
-                            <span className="text-sm font-medium text-foreground">ชื่อสินค้า</span>
-                            <input
-                                aria-label="ชื่อสินค้า"
-                                value={editName}
-                                onChange={(event) => setEditName(event.target.value)}
-                                className="mt-2 w-full rounded-[18px] border border-line bg-[#fff8de] px-4 py-3 text-[#17130a] outline-none transition focus:border-accent"
-                            />
-                        </label>
-
-                        <div className="grid gap-4 sm:grid-cols-2">
-                            <label className="block">
-                                <span className="text-sm font-medium text-foreground">{isCreateMode ? "สต็อกคงเหลือ" : "สต็อกปัจจุบัน"}</span>
-                                <input
-                                    aria-label="สต็อกคงเหลือ"
-                                    inputMode="numeric"
-                                    value={editStockOnHand}
-                                    onChange={(event) => setEditStockOnHand(event.target.value)}
-                                    readOnly={!isCreateMode}
-                                    disabled={isCreateMode ? newProductType !== "GOODS" : true}
-                                    className="mt-2 w-full rounded-[18px] border border-line bg-[#fff8de] px-4 py-3 text-[#17130a] outline-none transition focus:border-accent disabled:opacity-50"
-                                />
-                                {!isCreateMode && selectedProduct?.track_stock ? (
-                                    <p className="mt-2 text-xs leading-6 text-muted">ถ้าต้องการเพิ่ม stock ให้ใช้ปุ่ม + เติมสินค้า ในคอลัมน์คงเหลือของตารางด้านซ้าย</p>
-                                ) : null}
-                            </label>
-                            <label className="block">
-                                <span className="text-sm font-medium text-foreground">ปักหมุดขายดี</span>
-                                <select
-                                    aria-label="ปักหมุดขายดี"
-                                    value={editFeaturedSlot}
-                                    onChange={(event) => setEditFeaturedSlot(event.target.value as "" | `${FeaturedSlot}`)}
-                                    className="mt-2 w-full rounded-[18px] border border-line bg-[#fff8de] px-4 py-3 text-[#17130a] outline-none transition focus:border-accent"
-                                >
-                                    {featuredSlotChoices.map((choice) => (
-                                        <option key={choice.label} value={choice.value}>
-                                            {choice.label}
-                                        </option>
-                                    ))}
-                                </select>
-                            </label>
+                    ) : productsError ? (
+                        <div className="rounded-3xl border border-warning bg-warning-soft p-6 text-sm text-foreground">
+                            {productsError}
                         </div>
-
-                        <div className="grid gap-4 sm:grid-cols-2">
-                            <label className="block">
-                                <span className="text-sm font-medium text-foreground">คำโปรยสินค้า</span>
-                                <input
-                                    aria-label="คำโปรยสินค้า"
-                                    value={editTagline}
-                                    onChange={(event) => setEditTagline(event.target.value)}
-                                    placeholder="เช่น วางขายหน้าเคาน์เตอร์หรือแพ็กเกจขายดี"
-                                    className="mt-2 w-full rounded-[18px] border border-line bg-[#fff8de] px-4 py-3 text-[#17130a] outline-none transition focus:border-accent"
-                                />
-                            </label>
-                            <label className="block">
-                                <span className="text-sm font-medium text-foreground">หมวดขาย POS</span>
-                                <select
-                                    aria-label="หมวดขาย POS"
-                                    value={editPosCategory}
-                                    onChange={(event) => setEditPosCategory(event.target.value as PosEditorCategory)}
-                                    className="mt-2 w-full rounded-[18px] border border-line bg-[#fff8de] px-4 py-3 text-[#17130a] outline-none transition focus:border-accent"
-                                >
-                                    {(Object.keys(POS_CATEGORY_LABEL) as PosEditorCategory[]).map((category) => (
-                                        <option key={category} value={category}>
-                                            {POS_CATEGORY_LABEL[category]}
-                                        </option>
-                                    ))}
-                                </select>
-                            </label>
-                        </div>
-
-                        <div className="rounded-3xl border border-line bg-background/70 p-4">
-                            <div className="flex flex-col gap-2">
-                                <p className="text-sm font-medium text-foreground">บัญชีรายได้</p>
-                                <p className="text-sm leading-6 text-muted">ผูกสินค้าเข้ากับบัญชีรายได้ที่ต้องการให้ระบบลงบันทึกแยกตามสินค้า</p>
-                                {selectedRevenueAccount ? (
-                                    <div className="rounded-[18px] bg-accent-soft px-4 py-3 text-sm text-foreground">
-                                        {selectedRevenueAccount.account_code} · {selectedRevenueAccount.account_name}
+                    ) : categorySections.length > 0 ? (
+                        <div className="space-y-5">
+                            {categorySections.map((section) => (
+                                <section key={section.category} className="rounded-3xl border border-line bg-background/70 p-4 md:p-5">
+                                    <div className="flex items-center justify-between gap-3">
+                                        <div>
+                                            <p className="text-xs font-semibold text-muted">หมวดสินค้า</p>
+                                            <h2 className="mt-1 text-xl font-semibold text-foreground">{POS_CATEGORY_LABEL[section.category]}</h2>
+                                        </div>
+                                        <p className="text-sm text-muted">{section.products.length} รายการ</p>
                                     </div>
-                                ) : null}
-                            </div>
 
-                            <label className="mt-4 block">
-                                <span className="text-sm font-medium text-foreground">เลือกบัญชีรายได้</span>
-                                <select
-                                    aria-label="เลือกบัญชีรายได้"
-                                    value={selectedRevenueAccountId}
-                                    onChange={(event) => setSelectedRevenueAccountId(event.target.value)}
-                                    disabled={revenueAccountsLoading}
-                                    className="mt-2 w-full rounded-[18px] border border-line bg-[#fff8de] px-4 py-3 text-[#17130a] outline-none transition focus:border-accent disabled:opacity-60"
-                                >
-                                    <option value="">ใช้บัญชีรายได้หลักของระบบ</option>
-                                    {revenueAccounts.map((account) => (
-                                        <option key={account.account_id} value={String(account.account_id)}>
-                                            {account.account_code} · {account.account_name}
-                                        </option>
-                                    ))}
-                                </select>
-                            </label>
+                                    <div className="mt-4 overflow-x-auto">
+                                        <table className="min-w-230 divide-y divide-line text-sm">
+                                            <thead className="bg-[#14130f]">
+                                                <tr>
+                                                    <th className="px-4 py-3 text-left font-semibold text-muted">สินค้า</th>
+                                                    <th className="px-4 py-3 text-left font-semibold text-muted">SKU</th>
+                                                    <th className="px-4 py-3 text-left font-semibold text-muted">ประเภท</th>
+                                                    <th className="px-4 py-3 text-left font-semibold text-muted">ราคา</th>
+                                                    <th className="px-4 py-3 text-left font-semibold text-muted">คงเหลือ</th>
+                                                    <th className="px-4 py-3 text-left font-semibold text-muted">บัญชีรายได้</th>
+                                                    <th className="px-4 py-3 text-left font-semibold text-muted">ต้นทุนสูตร</th>
+                                                    <th className="px-4 py-3 text-left font-semibold text-muted">ปักหมุด</th>
+                                                    <th className="px-4 py-3 text-right font-semibold text-muted">จัดการ</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-line">
+                                                {section.products.map((product) => {
+                                                    const productId = String(product.product_id);
+                                                    const isSelected = String(product.product_id) === selectedProductId && !isCreateMode;
+                                                    const isInlineRestockOpen = activeRestockProductId === productId;
+                                                    const restockDraft = inlineRestockDrafts[productId] ?? { quantity: "", note: "" };
+                                                    const restockFeedback = inlineRestockFeedback[productId] ?? null;
+                                                    const parsedDraftQuantity = Number(restockDraft.quantity);
+                                                    const projectedStock = !Number.isInteger(parsedDraftQuantity) || parsedDraftQuantity <= 0
+                                                        ? product.stock_on_hand ?? 0
+                                                        : (product.stock_on_hand ?? 0) + parsedDraftQuantity;
+                                                    const revenueAccount = chartOfAccounts.find(
+                                                        (account) => String(account.account_id) === String(product.revenue_account_id),
+                                                    );
 
-                            {revenueAccountsLoading ? <div className="mt-4 text-sm text-muted">กำลังโหลดตัวเลือกบัญชีรายได้...</div> : null}
-                            {revenueAccountsError ? <div className="mt-4 text-sm text-warning">{revenueAccountsError}</div> : null}
-                            {!isCreateMode && mappedRevenueAccount && !mappedRevenueAccount.is_active ? (
-                                <div className="mt-4 rounded-[18px] border border-warning bg-warning-soft px-4 py-3 text-sm text-foreground">
-                                    บัญชี {mappedRevenueAccount.account_code} · {mappedRevenueAccount.account_name} ถูกปิดใช้งานแล้ว กรุณาเลือกบัญชีใหม่ก่อนบันทึก
-                                </div>
-                            ) : null}
+                                                    return (
+                                                        <Fragment key={product.product_id}>
+                                                            <tr
+                                                                className={isSelected ? "bg-accent-soft/10" : "bg-transparent"}
+                                                                aria-label={`Product row ${product.name}`}
+                                                            >
+                                                                <td className="px-4 py-4 align-top">
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => openEditMode(productId)}
+                                                                        className="text-left"
+                                                                    >
+                                                                        <p className="font-semibold text-[#f3e8ba] transition hover:text-accent">{product.name}</p>
+                                                                        <p className="mt-1 max-w-70 text-xs leading-6 text-muted">{product.tagline?.trim() || "ไม่มีคำโปรยสินค้า"}</p>
+                                                                    </button>
+                                                                </td>
+                                                                <td className="px-4 py-4 align-top text-[#f3e8ba]">{product.sku}</td>
+                                                                <td className="px-4 py-4 align-top text-[#f3e8ba]">{product.product_type}</td>
+                                                                <td className="px-4 py-4 align-top text-[#f3e8ba]">{formatCurrency(product.price)}</td>
+                                                                <td className="px-4 py-4 align-top text-[#f3e8ba]">
+                                                                    {product.track_stock ? (
+                                                                        <div className="space-y-2">
+                                                                            <p className="font-semibold">{product.stock_on_hand ?? 0}</p>
+                                                                            <button
+                                                                                type="button"
+                                                                                aria-label={`เติมสินค้า ${product.name}`}
+                                                                                onClick={() => toggleInlineRestock(productId)}
+                                                                                className="rounded-full border border-line px-3 py-1 text-[11px] font-semibold text-foreground transition hover:border-accent hover:bg-accent-soft"
+                                                                            >
+                                                                                {isInlineRestockOpen ? "ซ่อนช่องเติม" : "+ เติมสินค้า"}
+                                                                            </button>
+                                                                        </div>
+                                                                    ) : "บริการ"}
+                                                                </td>
+                                                                <td className="px-4 py-4 align-top text-xs text-muted">
+                                                                    {revenueAccount ? `${revenueAccount.account_code} · ${revenueAccount.account_name}` : "ใช้บัญชีหลักของระบบ"}
+                                                                </td>
+                                                                <td className="px-4 py-4 align-top text-xs text-muted">
+                                                                    {typeof product.recipe_total_cost === "number" ? `${formatCurrency(product.recipe_total_cost)} · ${product.recipe_item_count ?? 0} รายการ` : "ยังไม่ตั้งสูตร"}
+                                                                </td>
+                                                                <td className="px-4 py-4 align-top text-[#f3e8ba]">{product.featured_slot ? `ช่อง ${product.featured_slot}` : "-"}</td>
+                                                                <td className="px-4 py-4 align-top text-right">
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => openEditMode(productId)}
+                                                                        className="rounded-full border border-line px-4 py-2 text-xs font-semibold text-foreground transition hover:border-accent hover:bg-accent-soft"
+                                                                    >
+                                                                        จัดการ
+                                                                    </button>
+                                                                </td>
+                                                            </tr>
+                                                            {product.track_stock && isInlineRestockOpen ? (
+                                                                <tr aria-label={`Restock row ${product.name}`}>
+                                                                    <td colSpan={9} className="px-4 pb-4 pt-0">
+                                                                        <div className="rounded-[22px] border border-line bg-[#161510] p-4">
+                                                                            <div className="grid gap-3 lg:grid-cols-[180px_180px_minmax(0,1fr)_auto] lg:items-end">
+                                                                                <div className="rounded-[18px] border border-line bg-background/70 px-4 py-3 text-sm text-foreground">
+                                                                                    <p className="text-xs text-muted">ของเดิม</p>
+                                                                                    <p className="mt-2 text-2xl font-semibold">{product.stock_on_hand ?? 0}</p>
+                                                                                </div>
+                                                                                <label className="block">
+                                                                                    <span className="text-sm font-medium text-foreground">เติมเพิ่ม</span>
+                                                                                    <input
+                                                                                        aria-label={`เติมเพิ่ม ${product.name}`}
+                                                                                        inputMode="numeric"
+                                                                                        value={restockDraft.quantity}
+                                                                                        onChange={(event) => updateInlineRestockDraft(productId, { quantity: event.target.value })}
+                                                                                        className="mt-2 w-full rounded-[18px] border border-line bg-[#fff8de] px-4 py-3 text-[#17130a] outline-none transition focus:border-accent"
+                                                                                    />
+                                                                                </label>
+                                                                                <label className="block">
+                                                                                    <span className="text-sm font-medium text-foreground">หมายเหตุการเติมสินค้า</span>
+                                                                                    <input
+                                                                                        aria-label={`หมายเหตุการเติมสินค้า ${product.name}`}
+                                                                                        value={restockDraft.note}
+                                                                                        onChange={(event) => updateInlineRestockDraft(productId, { note: event.target.value })}
+                                                                                        placeholder="เช่น รับของเข้ารอบเช้า"
+                                                                                        className="mt-2 w-full rounded-[18px] border border-line bg-[#fff8de] px-4 py-3 text-[#17130a] outline-none transition focus:border-accent"
+                                                                                    />
+                                                                                </label>
+                                                                                <div className="rounded-[18px] border border-line bg-background/70 px-4 py-3 text-sm text-foreground">
+                                                                                    <p className="text-xs text-muted">ยอดหลังเติม</p>
+                                                                                    <p className="mt-2 text-2xl font-semibold">{projectedStock}</p>
+                                                                                </div>
+                                                                            </div>
+
+                                                                            {restockFeedback ? (
+                                                                                <div className={`mt-3 rounded-[18px] px-4 py-3 text-sm ${restockFeedback.tone === "error" ? "border border-warning bg-warning-soft text-foreground" : "border border-accent bg-accent-soft text-foreground"}`}>
+                                                                                    {restockFeedback.message}
+                                                                                </div>
+                                                                            ) : null}
+
+                                                                            <div className="mt-4 flex flex-wrap gap-3">
+                                                                                <button
+                                                                                    type="button"
+                                                                                    onClick={() => void handleInlineRestock(product)}
+                                                                                    disabled={restockingProductId === productId}
+                                                                                    className="rounded-full bg-accent px-5 py-3 text-sm font-semibold text-black transition hover:bg-accent-strong disabled:cursor-not-allowed disabled:opacity-60"
+                                                                                >
+                                                                                    {restockingProductId === productId ? "กำลังบันทึก..." : "บันทึกการเติมสินค้า"}
+                                                                                </button>
+                                                                                <button
+                                                                                    type="button"
+                                                                                    onClick={() => setActiveRestockProductId("")}
+                                                                                    className="rounded-full border border-line px-5 py-3 text-sm font-semibold text-foreground transition hover:border-accent hover:bg-accent-soft"
+                                                                                >
+                                                                                    ปิดช่องเติม
+                                                                                </button>
+                                                                            </div>
+                                                                        </div>
+                                                                    </td>
+                                                                </tr>
+                                                            ) : null}
+                                                        </Fragment>
+                                                    );
+                                                })}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </section>
+                            ))}
                         </div>
+                    ) : (
+                        <div className="rounded-3xl border border-dashed border-line bg-background p-6 text-sm text-muted">
+                            ไม่พบสินค้าที่ตรงกับคำค้นหรือหมวดที่เลือก
+                        </div>
+                    )}
+                </section>
 
-                        {editorError ? <div className="rounded-[20px] border border-warning bg-warning-soft px-4 py-3 text-sm text-foreground">{editorError}</div> : null}
-                        {editorMessage ? <div className="rounded-[20px] border border-accent bg-accent-soft px-4 py-3 text-sm text-foreground">{editorMessage}</div> : null}
-
+                <aside className="space-y-6 rounded-[28px] border border-line bg-surface-strong p-6 md:p-8">
+                    <section className="rounded-3xl border border-line bg-background/70 p-5">
                         <div className="flex flex-wrap gap-3">
                             <button
                                 type="button"
-                                onClick={() => void handleSaveProduct()}
-                                disabled={(!selectedProduct && !isCreateMode) || isSavingProduct}
-                                className="rounded-full bg-accent px-5 py-3 text-sm font-semibold text-black transition hover:bg-accent-strong disabled:cursor-not-allowed disabled:opacity-60"
+                                onClick={openCreateMode}
+                                className="rounded-full bg-accent px-5 py-3 text-sm font-semibold text-black transition hover:bg-accent-strong"
                             >
-                                {isSavingProduct ? "กำลังบันทึก..." : isCreateMode ? "สร้างสินค้าใหม่" : "บันทึกสินค้า"}
+                                เพิ่มสินค้าใหม่
                             </button>
                             <button
                                 type="button"
-                                onClick={() => {
-                                    if (isCreateMode) {
-                                        openCreateMode();
-                                    } else if (selectedProduct) {
-                                        openEditMode(String(selectedProduct.product_id));
-                                    }
-                                }}
-                                className="rounded-full border border-line px-5 py-3 text-sm font-semibold text-foreground transition hover:border-accent hover:bg-accent-soft"
+                                onClick={() => openEditMode()}
+                                disabled={!selectedProduct}
+                                className="rounded-full border border-line px-5 py-3 text-sm font-semibold text-foreground transition hover:border-accent hover:bg-accent-soft disabled:cursor-not-allowed disabled:opacity-50"
                             >
-                                รีเซ็ตฟอร์ม
+                                แก้ไขสินค้าที่เลือก
                             </button>
                         </div>
-                    </div>
-                </section>
 
-                <section className="rounded-3xl border border-line bg-background/70 p-5">
-                    <div className="flex items-start justify-between gap-3">
-                        <div>
-                            <p className="text-xs font-semibold text-muted">จัดการ stock แบบ inline</p>
-                            <h2 className="mt-2 text-xl font-semibold text-foreground">เติมจากแถวสินค้าทันที แล้วค่อย update ฐานข้อมูลจากยอดเดิม</h2>
-                        </div>
-                        {selectedProduct?.track_stock ? (
-                            <div className="rounded-full border border-line px-3 py-1 text-xs font-semibold text-foreground">
-                                คงเหลือ {selectedProduct.stock_on_hand ?? 0}
+                        <div className="mt-5 space-y-4">
+                            <label className="block">
+                                <span className="text-sm font-medium text-foreground">{isCreateMode ? "ประเภทสินค้าใหม่" : "สินค้า"}</span>
+                                {isCreateMode ? (
+                                    <select
+                                        aria-label="ประเภทสินค้าใหม่"
+                                        value={newProductType}
+                                        onChange={(event) => {
+                                            const nextProductType = event.target.value as EditableProductType;
+                                            setNewProductType(nextProductType);
+                                            setEditPosCategory(getDefaultPosCategory(nextProductType, editSku));
+                                            setEditStockOnHand(nextProductType === "GOODS" ? editStockOnHand || "0" : "");
+                                        }}
+                                        className="mt-2 w-full rounded-[18px] border border-line bg-[#fff8de] px-4 py-3 text-[#17130a] outline-none transition focus:border-accent"
+                                    >
+                                        <option value="GOODS">สินค้า</option>
+                                        <option value="SERVICE">บริการ</option>
+                                    </select>
+                                ) : (
+                                    <div className="mt-2 rounded-[18px] border border-line bg-[#161510] px-4 py-3 text-sm text-foreground">
+                                        {selectedProduct ? selectedProduct.name : "เลือกสินค้าจากตารางด้านซ้าย"}
+                                    </div>
+                                )}
+                            </label>
+
+                            <div className="grid gap-4 sm:grid-cols-2">
+                                <label className="block">
+                                    <span className="text-sm font-medium text-foreground">SKU</span>
+                                    <input
+                                        aria-label="SKU"
+                                        value={editSku}
+                                        onChange={(event) => setEditSku(event.target.value)}
+                                        className="mt-2 w-full rounded-[18px] border border-line bg-[#fff8de] px-4 py-3 text-[#17130a] outline-none transition focus:border-accent"
+                                    />
+                                </label>
+                                <label className="block">
+                                    <span className="text-sm font-medium text-foreground">ราคา</span>
+                                    <input
+                                        aria-label="ราคา"
+                                        inputMode="decimal"
+                                        value={editPrice}
+                                        onChange={(event) => setEditPrice(event.target.value)}
+                                        className="mt-2 w-full rounded-[18px] border border-line bg-[#fff8de] px-4 py-3 text-[#17130a] outline-none transition focus:border-accent"
+                                    />
+                                </label>
                             </div>
-                        ) : null}
-                    </div>
 
-                    {selectedProduct?.track_stock ? (
-                        <div className="mt-4 space-y-3 rounded-[22px] border border-line bg-[#161510] p-4 text-sm text-foreground">
-                            <p className="leading-7 text-muted">
-                                สินค้าที่ติดตาม stock จะเติมจากปุ่ม + เติมสินค้า ในแถวของรายการนั้นโดยตรง เพื่อให้ยอดใหม่ถูกคำนวณจากของเดิมแล้วบันทึกเข้า database พร้อมประวัติการเติมทุกครั้ง
-                            </p>
-                            {inlineRestockFeedback[String(selectedProduct.product_id)] ? (
-                                <div className={`rounded-[18px] px-4 py-3 ${inlineRestockFeedback[String(selectedProduct.product_id)]?.tone === "error" ? "border border-warning bg-warning-soft text-foreground" : "border border-accent bg-accent-soft text-foreground"}`}>
-                                    {inlineRestockFeedback[String(selectedProduct.product_id)]?.message}
+                            <label className="block">
+                                <span className="text-sm font-medium text-foreground">ชื่อสินค้า</span>
+                                <input
+                                    aria-label="ชื่อสินค้า"
+                                    value={editName}
+                                    onChange={(event) => setEditName(event.target.value)}
+                                    className="mt-2 w-full rounded-[18px] border border-line bg-[#fff8de] px-4 py-3 text-[#17130a] outline-none transition focus:border-accent"
+                                />
+                            </label>
+
+                            <div className="grid gap-4 sm:grid-cols-2">
+                                <label className="block">
+                                    <span className="text-sm font-medium text-foreground">{isCreateMode ? "สต็อกคงเหลือ" : "สต็อกปัจจุบัน"}</span>
+                                    <input
+                                        aria-label="สต็อกคงเหลือ"
+                                        inputMode="numeric"
+                                        value={editStockOnHand}
+                                        onChange={(event) => setEditStockOnHand(event.target.value)}
+                                        readOnly={!isCreateMode}
+                                        disabled={isCreateMode ? newProductType !== "GOODS" : true}
+                                        className="mt-2 w-full rounded-[18px] border border-line bg-[#fff8de] px-4 py-3 text-[#17130a] outline-none transition focus:border-accent disabled:opacity-50"
+                                    />
+                                    {!isCreateMode && selectedProduct?.track_stock ? (
+                                        <p className="mt-2 text-xs leading-6 text-muted">ถ้าต้องการเพิ่ม stock ให้ใช้ปุ่ม + เติมสินค้า ในคอลัมน์คงเหลือของตารางด้านซ้าย</p>
+                                    ) : null}
+                                </label>
+                                <label className="block">
+                                    <span className="text-sm font-medium text-foreground">ปักหมุดขายดี</span>
+                                    <select
+                                        aria-label="ปักหมุดขายดี"
+                                        value={editFeaturedSlot}
+                                        onChange={(event) => setEditFeaturedSlot(event.target.value as "" | `${FeaturedSlot}`)}
+                                        className="mt-2 w-full rounded-[18px] border border-line bg-[#fff8de] px-4 py-3 text-[#17130a] outline-none transition focus:border-accent"
+                                    >
+                                        {featuredSlotChoices.map((choice) => (
+                                            <option key={choice.label} value={choice.value}>
+                                                {choice.label}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </label>
+                            </div>
+
+                            <div className="grid gap-4 sm:grid-cols-2">
+                                <label className="block">
+                                    <span className="text-sm font-medium text-foreground">คำโปรยสินค้า</span>
+                                    <input
+                                        aria-label="คำโปรยสินค้า"
+                                        value={editTagline}
+                                        onChange={(event) => setEditTagline(event.target.value)}
+                                        placeholder="เช่น วางขายหน้าเคาน์เตอร์หรือแพ็กเกจขายดี"
+                                        className="mt-2 w-full rounded-[18px] border border-line bg-[#fff8de] px-4 py-3 text-[#17130a] outline-none transition focus:border-accent"
+                                    />
+                                </label>
+                                <label className="block">
+                                    <span className="text-sm font-medium text-foreground">หมวดขาย POS</span>
+                                    <select
+                                        aria-label="หมวดขาย POS"
+                                        value={editPosCategory}
+                                        onChange={(event) => setEditPosCategory(event.target.value as PosEditorCategory)}
+                                        className="mt-2 w-full rounded-[18px] border border-line bg-[#fff8de] px-4 py-3 text-[#17130a] outline-none transition focus:border-accent"
+                                    >
+                                        {(Object.keys(POS_CATEGORY_LABEL) as PosEditorCategory[]).map((category) => (
+                                            <option key={category} value={category}>
+                                                {POS_CATEGORY_LABEL[category]}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </label>
+                            </div>
+
+                            <div className="rounded-3xl border border-line bg-background/70 p-4">
+                                <div className="flex flex-col gap-2">
+                                    <p className="text-sm font-medium text-foreground">บัญชีรายได้</p>
+                                    <p className="text-sm leading-6 text-muted">ผูกสินค้าเข้ากับบัญชีรายได้ที่ต้องการให้ระบบลงบันทึกแยกตามสินค้า</p>
+                                    {selectedRevenueAccount ? (
+                                        <div className="rounded-[18px] bg-accent-soft px-4 py-3 text-sm text-foreground">
+                                            {selectedRevenueAccount.account_code} · {selectedRevenueAccount.account_name}
+                                        </div>
+                                    ) : null}
+                                </div>
+
+                                <label className="mt-4 block">
+                                    <span className="text-sm font-medium text-foreground">เลือกบัญชีรายได้</span>
+                                    <select
+                                        aria-label="เลือกบัญชีรายได้"
+                                        value={selectedRevenueAccountId}
+                                        onChange={(event) => setSelectedRevenueAccountId(event.target.value)}
+                                        disabled={revenueAccountsLoading}
+                                        className="mt-2 w-full rounded-[18px] border border-line bg-[#fff8de] px-4 py-3 text-[#17130a] outline-none transition focus:border-accent disabled:opacity-60"
+                                    >
+                                        <option value="">ใช้บัญชีรายได้หลักของระบบ</option>
+                                        {revenueAccounts.map((account) => (
+                                            <option key={account.account_id} value={String(account.account_id)}>
+                                                {account.account_code} · {account.account_name}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </label>
+
+                                {revenueAccountsLoading ? <div className="mt-4 text-sm text-muted">กำลังโหลดตัวเลือกบัญชีรายได้...</div> : null}
+                                {revenueAccountsError ? <div className="mt-4 text-sm text-warning">{revenueAccountsError}</div> : null}
+                                {!isCreateMode && mappedRevenueAccount && !mappedRevenueAccount.is_active ? (
+                                    <div className="mt-4 rounded-[18px] border border-warning bg-warning-soft px-4 py-3 text-sm text-foreground">
+                                        บัญชี {mappedRevenueAccount.account_code} · {mappedRevenueAccount.account_name} ถูกปิดใช้งานแล้ว กรุณาเลือกบัญชีใหม่ก่อนบันทึก
+                                    </div>
+                                ) : null}
+                            </div>
+
+                            {editorError ? <div className="rounded-[20px] border border-warning bg-warning-soft px-4 py-3 text-sm text-foreground">{editorError}</div> : null}
+                            {editorMessage ? <div className="rounded-[20px] border border-accent bg-accent-soft px-4 py-3 text-sm text-foreground">{editorMessage}</div> : null}
+
+                            <div className="flex flex-wrap gap-3">
+                                <button
+                                    type="button"
+                                    onClick={() => void handleSaveProduct()}
+                                    disabled={(!selectedProduct && !isCreateMode) || isSavingProduct}
+                                    className="rounded-full bg-accent px-5 py-3 text-sm font-semibold text-black transition hover:bg-accent-strong disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                    {isSavingProduct ? "กำลังบันทึก..." : isCreateMode ? "สร้างสินค้าใหม่" : "บันทึกสินค้า"}
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        if (isCreateMode) {
+                                            openCreateMode();
+                                        } else if (selectedProduct) {
+                                            openEditMode(String(selectedProduct.product_id));
+                                        }
+                                    }}
+                                    className="rounded-full border border-line px-5 py-3 text-sm font-semibold text-foreground transition hover:border-accent hover:bg-accent-soft"
+                                >
+                                    รีเซ็ตฟอร์ม
+                                </button>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section className="rounded-3xl border border-line bg-background/70 p-5">
+                        <div className="flex items-start justify-between gap-3">
+                            <div>
+                                <p className="text-xs font-semibold text-muted">จัดการ stock แบบ inline</p>
+                                <h2 className="mt-2 text-xl font-semibold text-foreground">เติมจากแถวสินค้าทันที แล้วค่อย update ฐานข้อมูลจากยอดเดิม</h2>
+                            </div>
+                            {selectedProduct?.track_stock ? (
+                                <div className="rounded-full border border-line px-3 py-1 text-xs font-semibold text-foreground">
+                                    คงเหลือ {selectedProduct.stock_on_hand ?? 0}
                                 </div>
                             ) : null}
                         </div>
-                    ) : (
-                        <div className="mt-4 rounded-[20px] border border-dashed border-line bg-[#161510] px-4 py-4 text-sm leading-7 text-muted">
-                            เลือกสินค้าที่ติดตาม stock จากตารางด้านซ้ายก่อน ถ้าสินค้าเป็นบริการหรือสมาชิก ระบบจะไม่เปิดช่องเติมสินค้า
-                        </div>
-                    )}
-                </section>
 
-                <section className="rounded-3xl border border-line bg-background/70 p-5">
-                    <div className="flex items-center justify-between gap-3">
-                        <div>
-                            <p className="text-xs font-semibold text-muted">ประวัติการเติมล่าสุด</p>
-                            <h2 className="mt-2 text-xl font-semibold text-foreground">ดูย้อนหลังว่าเติมเมื่อไร เพิ่มเท่าไร และจบที่กี่ชิ้น</h2>
-                        </div>
-                        {selectedProduct ? <p className="text-sm text-muted">{selectedProduct.name}</p> : null}
-                    </div>
-
-                    {adjustmentsError ? <div className="mt-4 rounded-[20px] border border-warning bg-warning-soft px-4 py-3 text-sm text-foreground">{adjustmentsError}</div> : null}
-
-                    {adjustmentsLoading ? (
-                        <div className="mt-4 rounded-3xl border border-dashed border-line bg-[#161510] p-4 text-sm text-muted">
-                            กำลังโหลดประวัติการเติมสินค้า...
-                        </div>
-                    ) : adjustments.length > 0 ? (
-                        <div className="mt-4 space-y-3">
-                            {adjustments.map((adjustment) => (
-                                <article key={adjustment.adjustment_id} className="rounded-[20px] border border-line bg-[#161510] px-4 py-4 text-sm text-foreground">
-                                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                                        <div>
-                                            <p className="font-semibold text-[#f3e8ba]">{adjustment.product_name}</p>
-                                            <p className="mt-1 text-xs text-muted">{adjustment.product_sku} · โดย {adjustment.created_by_name}</p>
-                                        </div>
-                                        <p className="text-xs text-muted">{formatDateTime(adjustment.created_at)}</p>
+                        {selectedProduct?.track_stock ? (
+                            <div className="mt-4 space-y-3 rounded-[22px] border border-line bg-[#161510] p-4 text-sm text-foreground">
+                                <p className="leading-7 text-muted">
+                                    สินค้าที่ติดตาม stock จะเติมจากปุ่ม + เติมสินค้า ในแถวของรายการนั้นโดยตรง เพื่อให้ยอดใหม่ถูกคำนวณจากของเดิมแล้วบันทึกเข้า database พร้อมประวัติการเติมทุกครั้ง
+                                </p>
+                                {inlineRestockFeedback[String(selectedProduct.product_id)] ? (
+                                    <div className={`rounded-[18px] px-4 py-3 ${inlineRestockFeedback[String(selectedProduct.product_id)]?.tone === "error" ? "border border-warning bg-warning-soft text-foreground" : "border border-accent bg-accent-soft text-foreground"}`}>
+                                        {inlineRestockFeedback[String(selectedProduct.product_id)]?.message}
                                     </div>
-                                    <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold">
-                                        <span className="rounded-full bg-accent-soft px-3 py-1 text-foreground">เดิม {adjustment.previous_stock}</span>
-                                        <span className="rounded-full border border-line px-3 py-1 text-foreground">เติม +{adjustment.added_quantity}</span>
-                                        <span className="rounded-full border border-line px-3 py-1 text-foreground">รวม {adjustment.new_stock}</span>
-                                    </div>
-                                    {adjustment.note ? <p className="mt-3 text-sm leading-6 text-muted">{adjustment.note}</p> : null}
-                                </article>
-                            ))}
-                        </div>
-                    ) : (
-                        <div className="mt-4 rounded-3xl border border-dashed border-line bg-[#161510] p-4 text-sm text-muted">
-                            ยังไม่มีประวัติการเติมสินค้าสำหรับรายการที่เลือก
-                        </div>
-                    )}
-                </section>
-
-                <section className="rounded-3xl border border-line bg-background/70 p-5">
-                    <div className="flex items-start justify-between gap-3">
-                        <div>
-                            <p className="text-xs font-semibold text-muted">สูตรต้นทุนต่อหน่วยขาย</p>
-                            <h2 className="mt-2 text-xl font-semibold text-foreground">ผูกวัตถุดิบต่อสินค้าเพื่อคำนวณต้นทุนต่อแก้วหรือจาน</h2>
-                        </div>
-                        {recipe ? <p className="text-sm text-muted">{recipe.product_name}</p> : null}
-                    </div>
-
-                    {isCreateMode || !selectedProduct ? (
-                        <div className="mt-4 rounded-3xl border border-dashed border-line bg-[#161510] p-4 text-sm text-muted">
-                            สร้างหรือเลือกสินค้าจากตารางก่อน แล้วค่อยผูกวัตถุดิบเป็นสูตรของสินค้านั้น
-                        </div>
-                    ) : (
-                        <>
-                            <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                                <div className="rounded-[20px] border border-line bg-[#161510] px-4 py-4">
-                                    <p className="text-xs text-muted">ต้นทุนรวมต่อหน่วยขาย</p>
-                                    <p className="mt-2 text-2xl font-semibold text-[#f3e8ba]">{formatCurrency(recipePreview.totalCost)}</p>
-                                </div>
-                                <div className="rounded-[20px] border border-line bg-[#161510] px-4 py-4">
-                                    <p className="text-xs text-muted">ส่วนต่างจากราคาขาย</p>
-                                    <p className="mt-2 text-2xl font-semibold text-[#f3e8ba]">{formatCurrency((selectedProduct.price ?? 0) - recipePreview.totalCost)}</p>
-                                </div>
+                                ) : null}
                             </div>
+                        ) : (
+                            <div className="mt-4 rounded-[20px] border border-dashed border-line bg-[#161510] px-4 py-4 text-sm leading-7 text-muted">
+                                เลือกสินค้าที่ติดตาม stock จากตารางด้านซ้ายก่อน ถ้าสินค้าเป็นบริการหรือสมาชิก ระบบจะไม่เปิดช่องเติมสินค้า
+                            </div>
+                        )}
+                    </section>
 
-                            {recipeLoading ? <div className="mt-4 text-sm text-muted">กำลังโหลดสูตรสินค้า...</div> : null}
-                            {recipeError ? <div className="mt-4 rounded-[20px] border border-warning bg-warning-soft px-4 py-3 text-sm text-foreground">{recipeError}</div> : null}
-                            {recipeMessage ? <div className="mt-4 rounded-[20px] border border-accent bg-accent-soft px-4 py-3 text-sm text-foreground">{recipeMessage}</div> : null}
+                    <section className="rounded-3xl border border-line bg-background/70 p-5">
+                        <div className="flex items-center justify-between gap-3">
+                            <div>
+                                <p className="text-xs font-semibold text-muted">ประวัติการเติมล่าสุด</p>
+                                <h2 className="mt-2 text-xl font-semibold text-foreground">ดูย้อนหลังว่าเติมเมื่อไร เพิ่มเท่าไร และจบที่กี่ชิ้น</h2>
+                            </div>
+                            {selectedProduct ? <p className="text-sm text-muted">{selectedProduct.name}</p> : null}
+                        </div>
 
+                        {adjustmentsError ? <div className="mt-4 rounded-[20px] border border-warning bg-warning-soft px-4 py-3 text-sm text-foreground">{adjustmentsError}</div> : null}
+
+                        {adjustmentsLoading ? (
+                            <div className="mt-4 rounded-3xl border border-dashed border-line bg-[#161510] p-4 text-sm text-muted">
+                                กำลังโหลดประวัติการเติมสินค้า...
+                            </div>
+                        ) : adjustments.length > 0 ? (
                             <div className="mt-4 space-y-3">
-                                {recipeRows.length > 0 ? recipeRows.map((row, index) => {
-                                    const ingredient = ingredients.find((candidate) => String(candidate.ingredient_id) === row.ingredientId) ?? null;
-                                    const quantity = Number(row.quantity);
-                                    const lineCost = ingredient && Number.isFinite(quantity) && quantity > 0
-                                        ? Number((ingredient.cost_per_unit * quantity).toFixed(6))
-                                        : 0;
-
-                                    return (
-                                        <div key={row.key} className="rounded-[20px] border border-line bg-[#161510] p-4">
-                                            <div className="grid gap-3 lg:grid-cols-[minmax(0,1.1fr)_140px_140px_auto] lg:items-end">
-                                                <label className="block">
-                                                    <span className="text-sm font-medium text-foreground">วัตถุดิบ #{index + 1}</span>
-                                                    <select
-                                                        aria-label={`วัตถุดิบสูตร ${index + 1}`}
-                                                        value={row.ingredientId}
-                                                        onChange={(event) => updateRecipeRow(row.key, { ingredientId: event.target.value })}
-                                                        className="mt-2 w-full rounded-[18px] border border-line bg-[#fff8de] px-4 py-3 text-[#17130a] outline-none transition focus:border-accent"
-                                                    >
-                                                        <option value="">เลือกวัตถุดิบ</option>
-                                                        {ingredients.map((candidate) => (
-                                                            <option key={candidate.ingredient_id} value={String(candidate.ingredient_id)}>
-                                                                {candidate.name} · {ingredientUnitLabel[candidate.unit]} · {formatCurrency(candidate.cost_per_unit)}/{ingredientUnitLabel[candidate.unit]}
-                                                            </option>
-                                                        ))}
-                                                    </select>
-                                                </label>
-                                                <label className="block">
-                                                    <span className="text-sm font-medium text-foreground">ปริมาณต่อหน่วยขาย</span>
-                                                    <input
-                                                        aria-label={`ปริมาณสูตร ${index + 1}`}
-                                                        inputMode="decimal"
-                                                        value={row.quantity}
-                                                        onChange={(event) => updateRecipeRow(row.key, { quantity: event.target.value })}
-                                                        className="mt-2 w-full rounded-[18px] border border-line bg-[#fff8de] px-4 py-3 text-[#17130a] outline-none transition focus:border-accent"
-                                                    />
-                                                </label>
-                                                <div className="rounded-[18px] border border-line bg-background/70 px-4 py-3 text-sm text-foreground">
-                                                    <p className="text-xs text-muted">ต้นทุนบรรทัดนี้</p>
-                                                    <p className="mt-2 text-lg font-semibold">{formatCurrency(lineCost)}</p>
-                                                </div>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => removeRecipeRow(row.key)}
-                                                    className="rounded-full border border-line px-4 py-3 text-sm font-semibold text-foreground transition hover:border-accent hover:bg-accent-soft"
-                                                >
-                                                    ลบบรรทัด
-                                                </button>
+                                {adjustments.map((adjustment) => (
+                                    <article key={adjustment.adjustment_id} className="rounded-[20px] border border-line bg-[#161510] px-4 py-4 text-sm text-foreground">
+                                        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                                            <div>
+                                                <p className="font-semibold text-[#f3e8ba]">{adjustment.product_name}</p>
+                                                <p className="mt-1 text-xs text-muted">{adjustment.product_sku} · โดย {adjustment.created_by_name}</p>
                                             </div>
-                                            {ingredient ? (
-                                                <p className="mt-3 text-xs text-muted">{ingredient.name} ใช้หน่วย {ingredientUnitLabel[ingredient.unit]} และมีต้นทุน {formatCurrency(ingredient.cost_per_unit)} ต่อ {ingredientUnitLabel[ingredient.unit]}</p>
-                                            ) : null}
+                                            <p className="text-xs text-muted">{formatDateTime(adjustment.created_at)}</p>
                                         </div>
-                                    );
-                                }) : (
-                                    <div className="rounded-[20px] border border-dashed border-line bg-[#161510] px-4 py-4 text-sm text-muted">
-                                        ยังไม่มีวัตถุดิบในสูตรนี้ กดเพิ่มบรรทัดเพื่อเริ่มผูกต้นทุนต่อหน่วยขาย
-                                    </div>
-                                )}
-                            </div>
-
-                            <div className="mt-4 flex flex-wrap gap-3">
-                                <button
-                                    type="button"
-                                    onClick={addRecipeRow}
-                                    className="rounded-full border border-line px-5 py-3 text-sm font-semibold text-foreground transition hover:border-accent hover:bg-accent-soft"
-                                >
-                                    เพิ่มวัตถุดิบในสูตร
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => void handleSaveRecipe()}
-                                    disabled={isSavingRecipe}
-                                    className="rounded-full bg-accent px-5 py-3 text-sm font-semibold text-black transition hover:bg-accent-strong disabled:cursor-not-allowed disabled:opacity-60"
-                                >
-                                    {isSavingRecipe ? "กำลังบันทึกสูตร..." : "บันทึกสูตรสินค้า"}
-                                </button>
-                            </div>
-                        </>
-                    )}
-                </section>
-
-                <section className="rounded-3xl border border-line bg-background/70 p-5">
-                    <div className="flex items-start justify-between gap-3">
-                        <div>
-                            <p className="text-xs font-semibold text-muted">คลังวัตถุดิบ</p>
-                            <h2 className="mt-2 text-xl font-semibold text-foreground">เพิ่มและแก้ไขวัตถุดิบที่ใช้เป็นต้นทุนเมนู</h2>
-                        </div>
-                        <button
-                            type="button"
-                            onClick={resetIngredientEditor}
-                            className="rounded-full border border-line px-4 py-2 text-xs font-semibold text-foreground transition hover:border-accent hover:bg-accent-soft"
-                        >
-                            เพิ่มวัตถุดิบใหม่
-                        </button>
-                    </div>
-
-                    <div className="mt-4 grid gap-4 sm:grid-cols-2">
-                        <label className="block">
-                            <span className="text-sm font-medium text-foreground">ชื่อวัตถุดิบ</span>
-                            <input
-                                aria-label="ชื่อวัตถุดิบ"
-                                value={ingredientName}
-                                onChange={(event) => setIngredientName(event.target.value)}
-                                className="mt-2 w-full rounded-[18px] border border-line bg-[#fff8de] px-4 py-3 text-[#17130a] outline-none transition focus:border-accent"
-                            />
-                        </label>
-                        <label className="block">
-                            <span className="text-sm font-medium text-foreground">หน่วย</span>
-                            <select
-                                aria-label="หน่วยวัตถุดิบ"
-                                value={ingredientUnit}
-                                onChange={(event) => setIngredientUnit(event.target.value as IngredientRecord["unit"])}
-                                className="mt-2 w-full rounded-[18px] border border-line bg-[#fff8de] px-4 py-3 text-[#17130a] outline-none transition focus:border-accent"
-                            >
-                                {Object.entries(ingredientUnitLabel).map(([value, label]) => (
-                                    <option key={value} value={value}>{label}</option>
+                                        <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold">
+                                            <span className="rounded-full bg-accent-soft px-3 py-1 text-foreground">เดิม {adjustment.previous_stock}</span>
+                                            <span className="rounded-full border border-line px-3 py-1 text-foreground">เติม +{adjustment.added_quantity}</span>
+                                            <span className="rounded-full border border-line px-3 py-1 text-foreground">รวม {adjustment.new_stock}</span>
+                                        </div>
+                                        {adjustment.note ? <p className="mt-3 text-sm leading-6 text-muted">{adjustment.note}</p> : null}
+                                    </article>
                                 ))}
-                            </select>
-                        </label>
-                        <label className="block">
-                            <span className="text-sm font-medium text-foreground">ปริมาณที่ซื้อ</span>
-                            <input
-                                aria-label="ปริมาณที่ซื้อ"
-                                inputMode="decimal"
-                                value={ingredientPurchaseQuantity}
-                                onChange={(event) => setIngredientPurchaseQuantity(event.target.value)}
-                                className="mt-2 w-full rounded-[18px] border border-line bg-[#fff8de] px-4 py-3 text-[#17130a] outline-none transition focus:border-accent"
-                            />
-                        </label>
-                        <label className="block">
-                            <span className="text-sm font-medium text-foreground">ราคาซื้อรวม</span>
-                            <input
-                                aria-label="ราคาซื้อรวม"
-                                inputMode="decimal"
-                                value={ingredientPurchasePrice}
-                                onChange={(event) => setIngredientPurchasePrice(event.target.value)}
-                                className="mt-2 w-full rounded-[18px] border border-line bg-[#fff8de] px-4 py-3 text-[#17130a] outline-none transition focus:border-accent"
-                            />
-                        </label>
-                    </div>
+                            </div>
+                        ) : (
+                            <div className="mt-4 rounded-3xl border border-dashed border-line bg-[#161510] p-4 text-sm text-muted">
+                                ยังไม่มีประวัติการเติมสินค้าสำหรับรายการที่เลือก
+                            </div>
+                        )}
+                    </section>
 
-                    <label className="mt-4 block">
-                        <span className="text-sm font-medium text-foreground">หมายเหตุ</span>
-                        <input
-                            aria-label="หมายเหตุวัตถุดิบ"
-                            value={ingredientNotes}
-                            onChange={(event) => setIngredientNotes(event.target.value)}
-                            className="mt-2 w-full rounded-[18px] border border-line bg-[#fff8de] px-4 py-3 text-[#17130a] outline-none transition focus:border-accent"
-                        />
-                    </label>
-
-                    {ingredientEditorError ? <div className="mt-4 rounded-[20px] border border-warning bg-warning-soft px-4 py-3 text-sm text-foreground">{ingredientEditorError}</div> : null}
-                    {ingredientEditorMessage ? <div className="mt-4 rounded-[20px] border border-accent bg-accent-soft px-4 py-3 text-sm text-foreground">{ingredientEditorMessage}</div> : null}
-                    {ingredientsError ? <div className="mt-4 rounded-[20px] border border-warning bg-warning-soft px-4 py-3 text-sm text-foreground">{ingredientsError}</div> : null}
-
-                    <div className="mt-4 flex flex-wrap gap-3">
-                        <button
-                            type="button"
-                            onClick={() => void handleSaveIngredient()}
-                            disabled={isSavingIngredient}
-                            className="rounded-full bg-accent px-5 py-3 text-sm font-semibold text-black transition hover:bg-accent-strong disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                            {isSavingIngredient ? "กำลังบันทึกวัตถุดิบ..." : ingredientEditorMode === "edit" ? "บันทึกวัตถุดิบ" : "เพิ่มวัตถุดิบ"}
-                        </button>
-                    </div>
-
-                    {ingredientsLoading ? (
-                        <div className="mt-4 rounded-3xl border border-dashed border-line bg-[#161510] p-4 text-sm text-muted">
-                            กำลังโหลดวัตถุดิบ...
+                    <section className="rounded-3xl border border-line bg-background/70 p-5">
+                        <div className="flex items-start justify-between gap-3">
+                            <div>
+                                <p className="text-xs font-semibold text-muted">สูตรต้นทุนต่อหน่วยขาย</p>
+                                <h2 className="mt-2 text-xl font-semibold text-foreground">ผูกวัตถุดิบต่อสินค้าเพื่อคำนวณต้นทุนต่อแก้วหรือจาน</h2>
+                            </div>
+                            {recipe ? <p className="text-sm text-muted">{recipe.product_name}</p> : null}
                         </div>
-                    ) : ingredients.length > 0 ? (
-                        <div className="mt-4 space-y-3">
-                            {ingredients.map((ingredient) => (
-                                <button
-                                    key={ingredient.ingredient_id}
-                                    type="button"
-                                    onClick={() => editIngredient(ingredient)}
-                                    className="w-full rounded-[20px] border border-line bg-[#161510] px-4 py-4 text-left text-sm text-foreground transition hover:border-accent"
-                                >
-                                    <div className="flex items-start justify-between gap-3">
-                                        <div>
-                                            <p className="font-semibold text-[#f3e8ba]">{ingredient.name}</p>
-                                            <p className="mt-1 text-xs text-muted">{ingredient.purchase_quantity} {ingredientUnitLabel[ingredient.unit]} · ต้นทุน {formatCurrency(ingredient.cost_per_unit)}/{ingredientUnitLabel[ingredient.unit]}</p>
-                                        </div>
-                                        <p className="text-xs text-muted">ซื้อ {formatCurrency(ingredient.purchase_price)}</p>
+
+                        {isCreateMode || !selectedProduct ? (
+                            <div className="mt-4 rounded-3xl border border-dashed border-line bg-[#161510] p-4 text-sm text-muted">
+                                สร้างหรือเลือกสินค้าจากตารางก่อน แล้วค่อยผูกวัตถุดิบเป็นสูตรของสินค้านั้น
+                            </div>
+                        ) : (
+                            <>
+                                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                                    <div className="rounded-[20px] border border-line bg-[#161510] px-4 py-4">
+                                        <p className="text-xs text-muted">ต้นทุนรวมต่อหน่วยขาย</p>
+                                        <p className="mt-2 text-2xl font-semibold text-[#f3e8ba]">{formatCurrency(recipePreview.totalCost)}</p>
                                     </div>
-                                    {ingredient.notes ? <p className="mt-3 text-sm leading-6 text-muted">{ingredient.notes}</p> : null}
-                                </button>
-                            ))}
+                                    <div className="rounded-[20px] border border-line bg-[#161510] px-4 py-4">
+                                        <p className="text-xs text-muted">ส่วนต่างจากราคาขาย</p>
+                                        <p className="mt-2 text-2xl font-semibold text-[#f3e8ba]">{formatCurrency((selectedProduct.price ?? 0) - recipePreview.totalCost)}</p>
+                                    </div>
+                                </div>
+
+                                {recipeLoading ? <div className="mt-4 text-sm text-muted">กำลังโหลดสูตรสินค้า...</div> : null}
+                                {recipeError ? <div className="mt-4 rounded-[20px] border border-warning bg-warning-soft px-4 py-3 text-sm text-foreground">{recipeError}</div> : null}
+                                {recipeMessage ? <div className="mt-4 rounded-[20px] border border-accent bg-accent-soft px-4 py-3 text-sm text-foreground">{recipeMessage}</div> : null}
+
+                                <div className="mt-4 space-y-3">
+                                    {recipeRows.length > 0 ? recipeRows.map((row, index) => {
+                                        const ingredient = ingredients.find((candidate) => String(candidate.ingredient_id) === row.ingredientId) ?? null;
+                                        const quantity = Number(row.quantity);
+                                        const lineCost = ingredient && Number.isFinite(quantity) && quantity > 0
+                                            ? Number((ingredient.cost_per_unit * quantity).toFixed(6))
+                                            : 0;
+
+                                        return (
+                                            <div key={row.key} className="rounded-[20px] border border-line bg-[#161510] p-4">
+                                                <div className="flex flex-col gap-3 xl:grid xl:grid-cols-[minmax(0,1.1fr)_140px_140px_auto] xl:items-end">
+                                                    <label className="block min-w-0">
+                                                        <span className="text-sm font-medium text-foreground">วัตถุดิบ #{index + 1}</span>
+                                                        <select
+                                                            aria-label={`วัตถุดิบสูตร ${index + 1}`}
+                                                            value={row.ingredientId}
+                                                            onChange={(event) => updateRecipeRow(row.key, { ingredientId: event.target.value })}
+                                                            className="mt-2 w-full rounded-[18px] border border-line bg-[#fff8de] px-4 py-3 text-[#17130a] outline-none transition focus:border-accent"
+                                                        >
+                                                            <option value="">เลือกวัตถุดิบ</option>
+                                                            {ingredients.map((candidate) => (
+                                                                <option key={candidate.ingredient_id} value={String(candidate.ingredient_id)}>
+                                                                    {candidate.name} · {ingredientUnitLabel[candidate.unit]} · {formatCurrency(candidate.cost_per_unit)}/{ingredientUnitLabel[candidate.unit]}
+                                                                </option>
+                                                            ))}
+                                                        </select>
+                                                    </label>
+                                                    <div className="flex min-w-0 flex-col gap-3 xl:contents">
+                                                        <label className="block min-w-0">
+                                                            <span className="text-sm font-medium text-foreground">ปริมาณต่อหน่วยขาย</span>
+                                                            <input
+                                                                aria-label={`ปริมาณสูตร ${index + 1}`}
+                                                                inputMode="decimal"
+                                                                value={row.quantity}
+                                                                onChange={(event) => updateRecipeRow(row.key, { quantity: event.target.value })}
+                                                                className="mt-2 w-full rounded-[18px] border border-line bg-[#fff8de] px-4 py-3 text-[#17130a] outline-none transition focus:border-accent"
+                                                            />
+                                                        </label>
+                                                        <div className="min-w-0 rounded-[18px] border border-line bg-background/70 px-4 py-3 text-sm text-foreground xl:self-end">
+                                                            <p className="text-xs text-muted">ต้นทุนบรรทัดนี้</p>
+                                                            <p className="mt-2 text-lg font-semibold">{formatCurrency(lineCost)}</p>
+                                                        </div>
+                                                    </div>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => removeRecipeRow(row.key)}
+                                                        className="w-full rounded-full border border-line px-4 py-3 text-sm font-semibold text-foreground transition hover:border-accent hover:bg-accent-soft xl:w-auto xl:justify-self-auto"
+                                                    >
+                                                        ลบบรรทัด
+                                                    </button>
+                                                </div>
+                                                {ingredient ? (
+                                                    <p className="mt-3 text-xs text-muted">{ingredient.name} ใช้หน่วย {ingredientUnitLabel[ingredient.unit]} และมีต้นทุน {formatCurrency(ingredient.cost_per_unit)} ต่อ {ingredientUnitLabel[ingredient.unit]}</p>
+                                                ) : null}
+                                            </div>
+                                        );
+                                    }) : (
+                                        <div className="rounded-[20px] border border-dashed border-line bg-[#161510] px-4 py-4 text-sm text-muted">
+                                            ยังไม่มีวัตถุดิบในสูตรนี้ กดเพิ่มบรรทัดเพื่อเริ่มผูกต้นทุนต่อหน่วยขาย
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div className="mt-4 flex flex-wrap gap-3">
+                                    <button
+                                        type="button"
+                                        onClick={addRecipeRow}
+                                        className="rounded-full border border-line px-5 py-3 text-sm font-semibold text-foreground transition hover:border-accent hover:bg-accent-soft"
+                                    >
+                                        เพิ่มวัตถุดิบในสูตร
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => void handleSaveRecipe()}
+                                        disabled={isSavingRecipe}
+                                        className="rounded-full bg-accent px-5 py-3 text-sm font-semibold text-black transition hover:bg-accent-strong disabled:cursor-not-allowed disabled:opacity-60"
+                                    >
+                                        {isSavingRecipe ? "กำลังบันทึกสูตร..." : "บันทึกสูตรสินค้า"}
+                                    </button>
+                                </div>
+                            </>
+                        )}
+                    </section>
+
+                    <section className="rounded-3xl border border-line bg-background/70 p-5">
+                        <div className="flex items-start justify-between gap-3">
+                            <div>
+                                <p className="text-xs font-semibold text-muted">คลังวัตถุดิบ</p>
+                                <h2 className="mt-2 text-xl font-semibold text-foreground">เพิ่มและแก้ไขวัตถุดิบที่ใช้เป็นต้นทุนเมนู</h2>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={resetIngredientEditor}
+                                className="rounded-full border border-line px-4 py-2 text-xs font-semibold text-foreground transition hover:border-accent hover:bg-accent-soft"
+                            >
+                                เพิ่มวัตถุดิบใหม่
+                            </button>
                         </div>
-                    ) : (
-                        <div className="mt-4 rounded-3xl border border-dashed border-line bg-[#161510] p-4 text-sm text-muted">
-                            ยังไม่มีวัตถุดิบในระบบ เริ่มจากเพิ่มเมล็ดกาแฟ, นม, น้ำผึ้ง หรือมัทฉะก่อน
+
+                        <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                            <label className="block">
+                                <span className="text-sm font-medium text-foreground">ชื่อวัตถุดิบ</span>
+                                <input
+                                    aria-label="ชื่อวัตถุดิบ"
+                                    value={ingredientName}
+                                    onChange={(event) => setIngredientName(event.target.value)}
+                                    className="mt-2 w-full rounded-[18px] border border-line bg-[#fff8de] px-4 py-3 text-[#17130a] outline-none transition focus:border-accent"
+                                />
+                            </label>
+                            <label className="block">
+                                <span className="text-sm font-medium text-foreground">หน่วย</span>
+                                <select
+                                    aria-label="หน่วยวัตถุดิบ"
+                                    value={ingredientUnit}
+                                    onChange={(event) => setIngredientUnit(event.target.value as IngredientRecord["unit"])}
+                                    className="mt-2 w-full rounded-[18px] border border-line bg-[#fff8de] px-4 py-3 text-[#17130a] outline-none transition focus:border-accent"
+                                >
+                                    {Object.entries(ingredientUnitLabel).map(([value, label]) => (
+                                        <option key={value} value={value}>{label}</option>
+                                    ))}
+                                </select>
+                            </label>
+                            <label className="block">
+                                <span className="text-sm font-medium text-foreground">ปริมาณที่ซื้อ</span>
+                                <input
+                                    aria-label="ปริมาณที่ซื้อ"
+                                    inputMode="decimal"
+                                    value={ingredientPurchaseQuantity}
+                                    onChange={(event) => setIngredientPurchaseQuantity(event.target.value)}
+                                    className="mt-2 w-full rounded-[18px] border border-line bg-[#fff8de] px-4 py-3 text-[#17130a] outline-none transition focus:border-accent"
+                                />
+                            </label>
+                            <label className="block">
+                                <span className="text-sm font-medium text-foreground">ราคาซื้อรวม</span>
+                                <input
+                                    aria-label="ราคาซื้อรวม"
+                                    inputMode="decimal"
+                                    value={ingredientPurchasePrice}
+                                    onChange={(event) => setIngredientPurchasePrice(event.target.value)}
+                                    className="mt-2 w-full rounded-[18px] border border-line bg-[#fff8de] px-4 py-3 text-[#17130a] outline-none transition focus:border-accent"
+                                />
+                            </label>
                         </div>
-                    )}
-                </section>
-            </aside>
-        </div>
+
+                        <label className="mt-4 block">
+                            <span className="text-sm font-medium text-foreground">หมายเหตุ</span>
+                            <input
+                                aria-label="หมายเหตุวัตถุดิบ"
+                                value={ingredientNotes}
+                                onChange={(event) => setIngredientNotes(event.target.value)}
+                                className="mt-2 w-full rounded-[18px] border border-line bg-[#fff8de] px-4 py-3 text-[#17130a] outline-none transition focus:border-accent"
+                            />
+                        </label>
+
+                        {ingredientEditorError ? <div className="mt-4 rounded-[20px] border border-warning bg-warning-soft px-4 py-3 text-sm text-foreground">{ingredientEditorError}</div> : null}
+                        {ingredientEditorMessage ? <div className="mt-4 rounded-[20px] border border-accent bg-accent-soft px-4 py-3 text-sm text-foreground">{ingredientEditorMessage}</div> : null}
+                        {ingredientsError ? <div className="mt-4 rounded-[20px] border border-warning bg-warning-soft px-4 py-3 text-sm text-foreground">{ingredientsError}</div> : null}
+
+                        <div className="mt-4 flex flex-wrap gap-3">
+                            <button
+                                type="button"
+                                onClick={() => void handleSaveIngredient()}
+                                disabled={isSavingIngredient}
+                                className="rounded-full bg-accent px-5 py-3 text-sm font-semibold text-black transition hover:bg-accent-strong disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                                {isSavingIngredient ? "กำลังบันทึกวัตถุดิบ..." : ingredientEditorMode === "edit" ? "บันทึกวัตถุดิบ" : "เพิ่มวัตถุดิบ"}
+                            </button>
+                        </div>
+
+                        {ingredientsLoading ? (
+                            <div className="mt-4 rounded-3xl border border-dashed border-line bg-[#161510] p-4 text-sm text-muted">
+                                กำลังโหลดวัตถุดิบ...
+                            </div>
+                        ) : ingredients.length > 0 ? (
+                            <div className="mt-4 space-y-3">
+                                {ingredients.map((ingredient) => (
+                                    <button
+                                        key={ingredient.ingredient_id}
+                                        type="button"
+                                        onClick={() => editIngredient(ingredient)}
+                                        className="w-full rounded-[20px] border border-line bg-[#161510] px-4 py-4 text-left text-sm text-foreground transition hover:border-accent"
+                                    >
+                                        <div className="flex items-start justify-between gap-3">
+                                            <div>
+                                                <p className="font-semibold text-[#f3e8ba]">{ingredient.name}</p>
+                                                <p className="mt-1 text-xs text-muted">{ingredient.purchase_quantity} {ingredientUnitLabel[ingredient.unit]} · ต้นทุน {formatCurrency(ingredient.cost_per_unit)}/{ingredientUnitLabel[ingredient.unit]}</p>
+                                            </div>
+                                            <p className="text-xs text-muted">ซื้อ {formatCurrency(ingredient.purchase_price)}</p>
+                                        </div>
+                                        {ingredient.notes ? <p className="mt-3 text-sm leading-6 text-muted">{ingredient.notes}</p> : null}
+                                    </button>
+                                ))}
+                            </div>
+                        ) : (
+                            <div className="mt-4 rounded-3xl border border-dashed border-line bg-[#161510] p-4 text-sm text-muted">
+                                ยังไม่มีวัตถุดิบในระบบ เริ่มจากเพิ่มเมล็ดกาแฟ, นม, น้ำผึ้ง หรือมัทฉะก่อน
+                            </div>
+                        )}
+                    </section>
+                </aside>
+            </div>
+        </RoleGuard>
     );
 }

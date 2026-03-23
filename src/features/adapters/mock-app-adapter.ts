@@ -22,7 +22,7 @@ import type {
   TrainerRecord,
   UpdateTrainingEnrollmentInput,
   UserSession,
-  RenewalMethod,
+  RegisteredTrainerUserRecord,
 } from "@/lib/contracts";
 import {
   demoPassword,
@@ -50,6 +50,10 @@ import { prependMemberRegistry, readMemberRegistry, writeMemberRegistry } from "
 
 type MockTrainerWithAssignments = TrainerRecord & { assignments: TrainingEnrollmentRecord[] };
 type MockManagedUser = AdminUserRecord & { password: string };
+
+function findTrainerByUserId(userId: EntityId) {
+  return trainersState.find((trainer) => String(trainer.user_id) === String(userId));
+}
 
 function removeTrainingEnrollmentsFromState(enrollmentIds: EntityId[]) {
   const normalizedIds = new Set(enrollmentIds.map((id) => String(id)));
@@ -572,6 +576,7 @@ export const mockAppAdapter: AppAdapter = {
         username: managedUser.username,
         full_name: managedUser.full_name,
         role: managedUser.role,
+        trainer_id: managedUser.role === "TRAINER" ? findTrainerByUserId(managedUser.user_id)?.trainer_id ?? null : null,
         active_shift_id: null,
       } satisfies UserSession;
     }
@@ -1487,6 +1492,18 @@ export const mockAppAdapter: AppAdapter = {
     return cloneManagedUser(nextUser);
   },
 
+  async listRegisteredTrainerUsers() {
+    await sleep(120);
+    return managedUsersState
+      .filter((user) => user.role === "TRAINER" && !findTrainerByUserId(user.user_id))
+      .map<RegisteredTrainerUserRecord>((user) => ({
+        user_id: user.user_id,
+        username: user.username,
+        full_name: user.full_name,
+        phone: user.phone ?? null,
+      }));
+  },
+
   async listTrainers() {
     await sleep(120);
     return trainersState.map((trainer) => ({
@@ -1498,12 +1515,32 @@ export const mockAppAdapter: AppAdapter = {
   async createTrainer(input: CreateTrainerInput) {
     await sleep(120);
     const nextNumber = trainersState.length + 1;
+
+    const linkedUserId = input.user_id ? String(input.user_id) : null;
+    const linkedUser = linkedUserId
+      ? managedUsersState.find((user) => String(user.user_id) === linkedUserId)
+      : null;
+
+    if (linkedUserId && !linkedUser) {
+      throw createError("TRAINER_USER_NOT_FOUND", "ไม่พบผู้ใช้เทรนเนอร์ที่เลือก");
+    }
+
+    if (linkedUser && linkedUser.role !== "TRAINER") {
+      throw createError("TRAINER_ROLE_REQUIRED", "ผู้ใช้ที่เลือกต้องเป็น role เทรนเนอร์");
+    }
+
+    if (linkedUser && findTrainerByUserId(linkedUser.user_id)) {
+      throw createError("TRAINER_USER_ALREADY_LINKED", "ผู้ใช้เทรนเนอร์นี้ถูกผูกในระบบแล้ว");
+    }
+
     const nextTrainer: MockTrainerWithAssignments = {
       trainer_id: `mock-trainer-${nextNumber}`,
       trainer_code: `TR${String(nextNumber).padStart(3, "0")}`,
-      full_name: input.full_name.trim(),
+      user_id: linkedUser?.user_id ?? null,
+      username: linkedUser?.username ?? null,
+      full_name: linkedUser?.full_name ?? input.full_name.trim(),
       nickname: input.nickname?.trim() || null,
-      phone: input.phone?.trim() || null,
+      phone: linkedUser?.phone ?? (input.phone?.trim() || null),
       is_active: true,
       active_customer_count: 0,
       assignments: [],
@@ -1646,6 +1683,10 @@ export const mockAppAdapter: AppAdapter = {
           sessions_remaining:
             input.sessions_remaining === undefined ? assignment.sessions_remaining : input.sessions_remaining,
           status: input.status ?? assignment.status,
+          schedule_entries:
+            input.schedule_entries === undefined
+              ? assignment.schedule_entries
+              : input.schedule_entries.map((entry) => ({ ...entry, note: entry.note ?? null })),
           close_reason:
             input.close_reason === undefined ? assignment.close_reason : input.close_reason,
           closed_at: closedAt,

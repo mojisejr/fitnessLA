@@ -3529,7 +3529,7 @@ export async function getShiftSummaryByDate(
 
 export async function getShiftInventorySummaryByShiftId(
   requesterId: string,
-  requesterRole: "OWNER" | "ADMIN" | "CASHIER",
+  requesterRole: "OWNER" | "ADMIN" | "CASHIER" | "TRAINER",
   shiftId: string,
 ): Promise<ShiftInventorySummaryRowDto[]> {
   const normalizedShiftId = shiftId.trim();
@@ -3762,11 +3762,27 @@ export async function toggleChartOfAccount(accountId: string): Promise<ChartOfAc
 export type TrainerRecordDto = {
   trainer_id: string;
   trainer_code: string;
+  user_id: string | null;
+  username: string | null;
   full_name: string;
   nickname: string | null;
   phone: string | null;
   is_active: boolean;
   active_customer_count: number;
+};
+
+export type RegisteredTrainerUserDto = {
+  user_id: string;
+  username: string;
+  full_name: string;
+  phone: string | null;
+};
+
+export type TrainingScheduleEntryDto = {
+  day_of_week: "MONDAY" | "TUESDAY" | "WEDNESDAY" | "THURSDAY" | "FRIDAY" | "SATURDAY" | "SUNDAY";
+  start_time: string;
+  end_time: string;
+  note: string | null;
 };
 
 export type TrainingEnrollmentDto = {
@@ -3783,13 +3799,15 @@ export type TrainingEnrollmentDto = {
   sessions_remaining: number | null;
   price: number;
   status: "ACTIVE" | "EXPIRED" | "UNASSIGNED" | "CLOSED";
+  schedule_entries: TrainingScheduleEntryDto[];
   closed_at: string | null;
   close_reason: string | null;
   updated_at: string;
 };
 
 export type CreateTrainerInputDto = {
-  full_name: string;
+  user_id?: string;
+  full_name?: string;
   nickname?: string;
   phone?: string;
 };
@@ -3798,7 +3816,18 @@ export type UpdateTrainingEnrollmentInputDto = {
   sessions_remaining?: number | null;
   status?: "ACTIVE" | "EXPIRED" | "UNASSIGNED" | "CLOSED";
   close_reason?: string | null;
+  schedule_entries?: TrainingScheduleEntryDto[];
 };
+
+const trainingScheduleDayOrder = {
+  MONDAY: 1,
+  TUESDAY: 2,
+  WEDNESDAY: 3,
+  THURSDAY: 4,
+  FRIDAY: 5,
+  SATURDAY: 6,
+  SUNDAY: 7,
+} as const;
 
 export type DeleteTrainingEnrollmentResultDto = {
   enrollment_id: string;
@@ -3814,6 +3843,99 @@ export type BulkDeleteTrainingEnrollmentsResultDto = {
 function normalizeOptionalText(value?: string | null) {
   const trimmed = value?.trim();
   return trimmed ? trimmed : null;
+}
+
+function normalizeTrainingScheduleEntries(value: unknown): TrainingScheduleEntryDto[] {
+  if (value == null) {
+    return [];
+  }
+
+  if (!Array.isArray(value)) {
+    throw new Error("INVALID_TRAINING_SCHEDULE");
+  }
+
+  const seen = new Set<string>();
+  const normalized = value.map((entry) => {
+    if (!entry || typeof entry !== "object") {
+      throw new Error("INVALID_TRAINING_SCHEDULE");
+    }
+
+    const rawDay = "day_of_week" in entry ? entry.day_of_week : undefined;
+    const rawStart = "start_time" in entry ? entry.start_time : undefined;
+    const rawEnd = "end_time" in entry ? entry.end_time : undefined;
+    const rawNote = "note" in entry ? entry.note : undefined;
+
+    if (
+      rawDay !== "MONDAY" &&
+      rawDay !== "TUESDAY" &&
+      rawDay !== "WEDNESDAY" &&
+      rawDay !== "THURSDAY" &&
+      rawDay !== "FRIDAY" &&
+      rawDay !== "SATURDAY" &&
+      rawDay !== "SUNDAY"
+    ) {
+      throw new Error("INVALID_TRAINING_SCHEDULE");
+    }
+
+    if (typeof rawStart !== "string" || typeof rawEnd !== "string") {
+      throw new Error("INVALID_TRAINING_SCHEDULE");
+    }
+
+    const startTime = rawStart.trim();
+    const endTime = rawEnd.trim();
+    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(startTime) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(endTime)) {
+      throw new Error("INVALID_TRAINING_SCHEDULE");
+    }
+
+    if (startTime >= endTime) {
+      throw new Error("INVALID_TRAINING_SCHEDULE");
+    }
+
+    const note = typeof rawNote === "string" ? normalizeOptionalText(rawNote) : rawNote == null ? null : null;
+    const key = `${rawDay}:${startTime}:${endTime}:${note ?? ""}`;
+    if (seen.has(key)) {
+      throw new Error("DUPLICATE_TRAINING_SCHEDULE_ENTRY");
+    }
+
+    seen.add(key);
+
+    return {
+      day_of_week: rawDay as TrainingScheduleEntryDto["day_of_week"],
+      start_time: startTime,
+      end_time: endTime,
+      note,
+    } satisfies TrainingScheduleEntryDto;
+  });
+
+  if (normalized.length > 14) {
+    throw new Error("INVALID_TRAINING_SCHEDULE");
+  }
+
+  return normalized.sort((left, right) => {
+    const dayDiff = trainingScheduleDayOrder[left.day_of_week] - trainingScheduleDayOrder[right.day_of_week];
+    if (dayDiff !== 0) {
+      return dayDiff;
+    }
+
+    if (left.start_time !== right.start_time) {
+      return left.start_time.localeCompare(right.start_time);
+    }
+
+    if (left.end_time !== right.end_time) {
+      return left.end_time.localeCompare(right.end_time);
+    }
+
+    return (left.note ?? "").localeCompare(right.note ?? "");
+  });
+}
+
+function toTrainingScheduleJson(entries: TrainingScheduleEntryDto[]): Prisma.JsonArray {
+  return entries.map((entry) => ({
+    day_of_week: entry.day_of_week,
+    start_time: entry.start_time,
+    end_time: entry.end_time,
+    note: entry.note,
+  })) as Prisma.JsonArray;
 }
 
 function deriveTrainingSessionLimit(packageSku: string) {
@@ -3873,6 +3995,7 @@ function mapTrainingEnrollmentDto(
     sessionsRemaining: number | null;
     priceSnapshot: Prisma.Decimal | number;
     status: string;
+    scheduleEntries?: Prisma.JsonValue | null;
     closedAt: Date | null;
     closeReason: string | null;
     updatedAt: Date;
@@ -3894,6 +4017,7 @@ function mapTrainingEnrollmentDto(
     sessions_remaining: enrollment.sessionsRemaining ?? enrollment.sessionLimit ?? null,
     price: Number(enrollment.priceSnapshot),
     status: resolveTrainingEnrollmentStatus(enrollment, now),
+    schedule_entries: normalizeTrainingScheduleEntries(enrollment.scheduleEntries),
     closed_at: enrollment.closedAt?.toISOString() ?? null,
     close_reason: enrollment.closeReason,
     updated_at: enrollment.updatedAt.toISOString(),
@@ -3914,10 +4038,73 @@ function toNextTrainerCode(existingCodes: string[]) {
   return `TR${String(maxCode + 1).padStart(3, "0")}`;
 }
 
-export async function listTrainers(): Promise<Array<TrainerRecordDto & { assignments: TrainingEnrollmentDto[] }>> {
+function mapTrainerRecordDto(trainer: {
+  id: string;
+  trainerCode: string;
+  userId: string | null;
+  fullName: string;
+  nickname: string | null;
+  phone: string | null;
+  isActive: boolean;
+  user?: { username: string; name: string; phone: string | null } | null;
+}) {
+  return {
+    trainer_id: trainer.id,
+    trainer_code: trainer.trainerCode,
+    user_id: trainer.userId,
+    username: trainer.user?.username ?? null,
+    full_name: trainer.user?.name ?? trainer.fullName,
+    nickname: trainer.nickname,
+    phone: trainer.user?.phone ?? trainer.phone,
+    is_active: trainer.isActive,
+  };
+}
+
+export async function listRegisteredTrainerUsers(): Promise<RegisteredTrainerUserDto[]> {
+  const users = await prisma.user.findMany({
+    where: {
+      role: "TRAINER",
+      isActive: true,
+      trainerProfile: {
+        is: null,
+      },
+    },
+    orderBy: [{ name: "asc" }, { username: "asc" }],
+    select: {
+      id: true,
+      username: true,
+      name: true,
+      phone: true,
+    },
+  });
+
+  return users.map((user) => ({
+    user_id: user.id,
+    username: user.username,
+    full_name: user.name,
+    phone: user.phone,
+  }));
+}
+
+export async function listTrainers(options?: {
+  linked_user_id?: string | null;
+}): Promise<Array<TrainerRecordDto & { assignments: TrainingEnrollmentDto[] }>> {
+  const linkedUserId = options?.linked_user_id?.trim();
   const trainers = await prisma.trainer.findMany({
+    where: linkedUserId
+      ? {
+          userId: linkedUserId,
+        }
+      : undefined,
     orderBy: [{ isActive: "desc" }, { createdAt: "asc" }],
     include: {
+      user: {
+        select: {
+          username: true,
+          name: true,
+          phone: true,
+        },
+      },
       enrollments: {
         orderBy: { createdAt: "desc" },
         include: {
@@ -3930,15 +4117,13 @@ export async function listTrainers(): Promise<Array<TrainerRecordDto & { assignm
 
   return trainers.map((trainer) => {
     const now = new Date();
-    const assignments = trainer.enrollments.map((enrollment) => mapTrainingEnrollmentDto(enrollment, trainer.fullName, now));
+    const trainerRecord = mapTrainerRecordDto(trainer);
+    const assignments = trainer.enrollments.map((enrollment) =>
+      mapTrainingEnrollmentDto(enrollment, trainerRecord.full_name, now),
+    );
 
     return {
-      trainer_id: trainer.id,
-      trainer_code: trainer.trainerCode,
-      full_name: trainer.fullName,
-      nickname: trainer.nickname,
-      phone: trainer.phone,
-      is_active: trainer.isActive,
+      ...trainerRecord,
       active_customer_count: assignments.filter((a) => a.status === "ACTIVE").length,
       assignments,
     };
@@ -3946,15 +4131,72 @@ export async function listTrainers(): Promise<Array<TrainerRecordDto & { assignm
 }
 
 export async function createTrainer(input: CreateTrainerInputDto): Promise<TrainerRecordDto> {
-  const fullName = input.full_name.trim();
-  if (!fullName) {
-    throw new Error("TRAINER_NAME_REQUIRED");
-  }
+  const linkedUserId = input.user_id?.trim();
 
   const existingCodes = await prisma.trainer.findMany({
     select: { trainerCode: true },
     orderBy: { createdAt: "asc" },
   });
+
+  if (linkedUserId) {
+    const user = await prisma.user.findUnique({
+      where: { id: linkedUserId },
+      select: {
+        id: true,
+        username: true,
+        name: true,
+        phone: true,
+        role: true,
+        trainerProfile: {
+          select: {
+            id: true,
+          },
+        },
+      },
+    });
+
+    if (!user) {
+      throw new Error("TRAINER_USER_NOT_FOUND");
+    }
+
+    if (user.role !== "TRAINER") {
+      throw new Error("TRAINER_ROLE_REQUIRED");
+    }
+
+    if (user.trainerProfile) {
+      throw new Error("TRAINER_USER_ALREADY_LINKED");
+    }
+
+    const trainer = await prisma.trainer.create({
+      data: {
+        trainerCode: toNextTrainerCode(existingCodes.map((item) => item.trainerCode)),
+        userId: user.id,
+        fullName: user.name.trim(),
+        nickname: normalizeOptionalText(input.nickname),
+        phone: normalizeOptionalText(user.phone),
+        isActive: true,
+      },
+      include: {
+        user: {
+          select: {
+            username: true,
+            name: true,
+            phone: true,
+          },
+        },
+      },
+    });
+
+    return {
+      ...mapTrainerRecordDto(trainer),
+      active_customer_count: 0,
+    };
+  }
+
+  const fullName = input.full_name?.trim() ?? "";
+  if (!fullName) {
+    throw new Error("TRAINER_NAME_REQUIRED");
+  }
 
   const trainer = await prisma.trainer.create({
     data: {
@@ -3967,12 +4209,10 @@ export async function createTrainer(input: CreateTrainerInputDto): Promise<Train
   });
 
   return {
-    trainer_id: trainer.id,
-    trainer_code: trainer.trainerCode,
-    full_name: trainer.fullName,
-    nickname: trainer.nickname,
-    phone: trainer.phone,
-    is_active: trainer.isActive,
+    ...mapTrainerRecordDto({
+      ...trainer,
+      user: null,
+    }),
     active_customer_count: 0,
   };
 }
@@ -4014,15 +4254,19 @@ export async function toggleTrainerActive(trainerId: string): Promise<TrainerRec
     data: {
       isActive: !trainer.isActive,
     },
+    include: {
+      user: {
+        select: {
+          username: true,
+          name: true,
+          phone: true,
+        },
+      },
+    },
   });
 
   return {
-    trainer_id: updated.id,
-    trainer_code: updated.trainerCode,
-    full_name: updated.fullName,
-    nickname: updated.nickname,
-    phone: updated.phone,
-    is_active: updated.isActive,
+    ...mapTrainerRecordDto(updated),
     active_customer_count: activeCustomerCount,
   };
 }
@@ -4051,6 +4295,7 @@ export async function deleteTrainer(trainerId: string): Promise<DeleteTrainerRes
       data: {
         trainerId: null,
         status: "UNASSIGNED",
+        scheduleEntries: Prisma.JsonNull,
       },
     });
 
@@ -4068,6 +4313,10 @@ export async function deleteTrainer(trainerId: string): Promise<DeleteTrainerRes
 export async function updateTrainingEnrollment(
   enrollmentId: string,
   input: UpdateTrainingEnrollmentInputDto,
+  options?: {
+    actor_role?: string | null;
+    actor_trainer_id?: string | null;
+  },
 ): Promise<TrainingEnrollmentDto> {
   const enrollment = await prisma.trainingServiceEnrollment.findUnique({
     where: { id: enrollmentId },
@@ -4079,6 +4328,31 @@ export async function updateTrainingEnrollment(
 
   if (!enrollment) {
     throw new Error("TRAINING_ENROLLMENT_NOT_FOUND");
+  }
+
+  const actorRole = options?.actor_role?.trim() ?? null;
+  const actorTrainerId = options?.actor_trainer_id?.trim() ?? null;
+  const nextScheduleEntries =
+    input.schedule_entries === undefined
+      ? normalizeTrainingScheduleEntries(enrollment.scheduleEntries)
+      : normalizeTrainingScheduleEntries(input.schedule_entries);
+
+  if (actorRole === "TRAINER") {
+    if (!actorTrainerId) {
+      throw new Error("TRAINER_PROFILE_REQUIRED");
+    }
+
+    if (enrollment.trainerId !== actorTrainerId) {
+      throw new Error("TRAINER_CANNOT_EDIT_OTHER_ENROLLMENTS");
+    }
+
+    if (
+      input.sessions_remaining !== undefined ||
+      input.status !== undefined ||
+      input.close_reason !== undefined
+    ) {
+      throw new Error("TRAINER_CAN_ONLY_UPDATE_SCHEDULE");
+    }
   }
 
   if (
@@ -4114,6 +4388,7 @@ export async function updateTrainingEnrollment(
     data: {
       sessionsRemaining: nextSessionsRemaining,
       status: nextStatus,
+      scheduleEntries: nextScheduleEntries.length > 0 ? toTrainingScheduleJson(nextScheduleEntries) : Prisma.JsonNull,
       closeReason: nextStatus === "CLOSED" ? normalizeOptionalText(input.close_reason) : null,
       closedAt: nextStatus === "CLOSED" ? enrollment.closedAt ?? new Date() : null,
     },

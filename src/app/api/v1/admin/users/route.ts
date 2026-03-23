@@ -1,4 +1,3 @@
-import { Prisma } from "@prisma/client";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -16,7 +15,7 @@ const createUserSchema = z.object({
   full_name: z.string().min(1).max(120).trim(),
   phone: z.string().trim().min(8).max(30),
   password: z.string().min(8).max(128),
-  role: z.enum(["OWNER", "ADMIN", "CASHIER"]).default("CASHIER"),
+  role: z.enum(["OWNER", "ADMIN", "CASHIER", "TRAINER"]).default("CASHIER"),
   scheduled_start_time: z.string().trim().regex(/^\d{2}:\d{2}$/).optional(),
   scheduled_end_time: z.string().trim().regex(/^\d{2}:\d{2}$/).optional(),
   allowed_machine_ip: z.string().trim().min(3).max(64).optional(),

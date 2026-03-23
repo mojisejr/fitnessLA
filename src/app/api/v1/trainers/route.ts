@@ -2,13 +2,17 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { createTrainer, listTrainers } from "@/features/operations/services";
-import { canManageTrainers } from "@/lib/roles";
+import { canManageTrainers, canViewTrainers } from "@/lib/roles";
 import { resolveSessionFromRequest } from "@/lib/session";
 
 const createTrainerSchema = z.object({
-  full_name: z.string().trim().min(1),
+  user_id: z.string().trim().min(1).optional(),
+  full_name: z.string().trim().optional().or(z.literal("")),
   nickname: z.string().trim().optional().or(z.literal("")),
   phone: z.string().trim().optional().or(z.literal("")),
+}).refine((value) => Boolean(value.user_id || value.full_name?.trim()), {
+  message: "กรุณาเลือกผู้ใช้เทรนเนอร์หรือตั้งชื่อเทรนเนอร์",
+  path: ["user_id"],
 });
 
 export async function GET(request: Request) {
@@ -21,7 +25,20 @@ export async function GET(request: Request) {
       );
     }
 
-    const trainers = await listTrainers();
+    if (!canViewTrainers(session.role)) {
+      return NextResponse.json(
+        { code: "FORBIDDEN", message: "สิทธิ์ไม่เพียงพอสำหรับดูข้อมูลเทรนเนอร์" },
+        { status: 403 },
+      );
+    }
+
+    const trainers = await listTrainers(
+      session.role === "TRAINER"
+        ? {
+            linked_user_id: session.user_id,
+          }
+        : undefined,
+    );
     return NextResponse.json(trainers, { status: 200 });
   } catch (error) {
     console.error("GET /api/v1/trainers failed", error);
@@ -64,6 +81,27 @@ export async function POST(request: Request) {
       return NextResponse.json(
         { code: "TRAINER_NAME_REQUIRED", message: "กรุณาระบุชื่อเทรนเนอร์" },
         { status: 400 },
+      );
+    }
+
+    if (error instanceof Error && error.message === "TRAINER_USER_NOT_FOUND") {
+      return NextResponse.json(
+        { code: "TRAINER_USER_NOT_FOUND", message: "ไม่พบผู้ใช้เทรนเนอร์ที่เลือก" },
+        { status: 404 },
+      );
+    }
+
+    if (error instanceof Error && error.message === "TRAINER_ROLE_REQUIRED") {
+      return NextResponse.json(
+        { code: "TRAINER_ROLE_REQUIRED", message: "ผู้ใช้ที่เลือกต้องเป็น role เทรนเนอร์" },
+        { status: 409 },
+      );
+    }
+
+    if (error instanceof Error && error.message === "TRAINER_USER_ALREADY_LINKED") {
+      return NextResponse.json(
+        { code: "TRAINER_USER_ALREADY_LINKED", message: "ผู้ใช้เทรนเนอร์นี้ถูกผูกในระบบแล้ว" },
+        { status: 409 },
       );
     }
 

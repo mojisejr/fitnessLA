@@ -15,6 +15,14 @@ async function loginAs(page: Parameters<typeof test>[0]["page"], username: strin
     try {
       await expect(page).toHaveURL(/\/dashboard$/, { timeout: 10_000 });
       await expect(page.getByText(`@${username}`)).toBeVisible({ timeout: 10_000 });
+      await expect
+        .poll(async () => {
+          return page.evaluate(async () => {
+            const response = await fetch("/api/auth/session");
+            return response.status;
+          });
+        })
+        .toBe(200);
       return;
     } catch {
       lastBodyText = await page.locator("body").innerText();
@@ -38,11 +46,11 @@ test.describe("owner creates user and login smoke", () => {
 
     await loginAs(page, "owner", ownerPassword);
 
-  await page.getByRole("link", { name: "สร้างผู้ใช้ เปิด", exact: true }).click();
-  await expect(page).toHaveURL(/\/admin\/users$/);
-  await expect(page.getByRole("heading", { name: "จัดการผู้ใช้และเวลาเข้างาน" })).toBeVisible();
+    await page.locator('a[href="/admin/users"]').first().click();
+    await expect(page).toHaveURL(/\/admin\/users$/);
+    await expect(page.getByRole("heading", { name: "จัดการผู้ใช้และเวลาเข้างาน" })).toBeVisible();
 
-    await page.getByPlaceholder("ชื่อ").fill(fullName);
+    await page.getByRole("textbox", { name: "ชื่อ", exact: true }).fill(fullName);
     await page.getByPlaceholder("เบอร์โทร").fill(phone);
     await page.getByPlaceholder("username").fill(username);
     await page.getByPlaceholder("password").fill(password);

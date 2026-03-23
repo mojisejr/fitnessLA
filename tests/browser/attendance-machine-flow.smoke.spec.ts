@@ -97,8 +97,8 @@ test.describe("attendance and machine flow smoke", () => {
     await loginAs(page, "owner", ownerPassword);
     await ensureNoOpenShift(page);
 
-  await page.getByRole("link", { name: "สร้างผู้ใช้ เปิด", exact: true }).click();
-  await expect(page).toHaveURL(/\/admin\/users$/);
+    await page.getByRole("link", { name: /สร้างผู้ใช้ เปิด/i }).click();
+    await expect(page).toHaveURL(/\/admin\/users$/);
     await expect(page.getByRole("heading", { name: "จัดการผู้ใช้และเวลาเข้างาน" })).toBeVisible();
 
     await page.getByPlaceholder("ชื่อเครื่อง เช่น Front Desk Counter").fill(`Attendance Device ${suffix}`);
@@ -124,7 +124,12 @@ test.describe("attendance and machine flow smoke", () => {
     await expect(page.getByRole("heading", { name: `สวัสดี ${fullName}` })).toBeVisible();
 
     await page.getByRole("button", { name: "ลงชื่อเข้างาน" }).click();
-    await expect(page.getByText(/ลงชื่อเข้างานเรียบร้อยแล้ว|มาสาย/)).toBeVisible({ timeout: 10_000 });
+    await expect
+      .poll(async () => {
+        const attendanceStatus = await apiJson<{ today?: { checked_in_at?: string | null } }>(page, "/api/v1/attendance/status");
+        return attendanceStatus.body?.today?.checked_in_at ?? null;
+      }, { timeout: 10_000 })
+      .not.toBeNull();
 
     await page.getByRole("link", { name: "เปิดกะ เปิด", exact: true }).click();
     await expect(page).toHaveURL(/\/shift\/open$/);

@@ -123,7 +123,7 @@ function pickProduct(products: Array<Record<string, unknown>>, preferredSkus: st
 test.describe("POS checkout smoke", () => {
   test("owner can create a mixed POS sale and see the member record", async ({ page }) => {
     await loginAsOwner(page);
-    await expect(page.getByRole("link", { name: "POS เปิด" })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole("link", { name: "POS เปิด", exact: true })).toBeVisible({ timeout: 15_000 });
 
     await expect.poll(async () => {
       const sessionResponse = await apiJson(page, "/api/auth/session");
@@ -204,7 +204,7 @@ test.describe("POS checkout smoke", () => {
     const searchInput = page.getByPlaceholder("ค้นหาจากชื่อเมนู รหัสสินค้า หรือหมวดขาย");
     await searchInput.fill("Membership");
 
-    const productTitle = page.getByRole("button", { name: /Monthly Membership|สมาชิก 1 เดือน/ });
+    const productTitle = page.getByRole("button", { name: /Monthly Membership|สมาชิก 1 เดือน/ }).first();
     await expect(productTitle).toBeVisible({ timeout: 15_000 });
     const productCard = page.locator("article").filter({ has: productTitle }).first();
     await productCard.getByRole("button", { name: "เพิ่มลงบิล" }).click();
