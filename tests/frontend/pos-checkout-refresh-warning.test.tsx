@@ -52,7 +52,7 @@ describe("POS checkout refresh warning", () => {
                 username: "owner",
                 full_name: "Owner FitnessLA",
                 role: "OWNER",
-                active_shift_id: "shift-open-1",
+                active_shift_id: "shift-stale-closed",
             },
             activeShift: {
                 shift_id: "shift-open-1",
@@ -104,6 +104,8 @@ describe("POS checkout refresh warning", () => {
                 customer_info: undefined,
             });
         });
+
+        expect(mockAdapter.getShiftInventorySummary).toHaveBeenCalledWith("shift-open-1");
 
         await waitFor(() => {
             expect(screen.getByText("คิดเงินสำเร็จ")).toBeInTheDocument();

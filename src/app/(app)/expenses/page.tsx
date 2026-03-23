@@ -10,270 +10,271 @@ import type { ChartOfAccountRecord } from "@/lib/contracts";
 import { getErrorCode, getErrorMessage } from "@/lib/utils";
 
 export default function ExpensesPage() {
-  const adapter = useAppAdapter();
-  const { session } = useAuth();
-  const [amount, setAmount] = useState("120");
-  const [description, setDescription] = useState("");
-  const [expenseAccounts, setExpenseAccounts] = useState<ChartOfAccountRecord[]>([]);
-  const [accountId, setAccountId] = useState("");
-  const [receiptFile, setReceiptFile] = useState<File | null>(null);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
-  const [availabilityMessage, setAvailabilityMessage] = useState<string | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+    const adapter = useAppAdapter();
+    const { activeShift, session } = useAuth();
+    const [amount, setAmount] = useState("120");
+    const [description, setDescription] = useState("");
+    const [expenseAccounts, setExpenseAccounts] = useState<ChartOfAccountRecord[]>([]);
+    const [accountId, setAccountId] = useState("");
+    const [receiptFile, setReceiptFile] = useState<File | null>(null);
+    const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+    const [errorMessage, setErrorMessage] = useState<string | null>(null);
+    const [successMessage, setSuccessMessage] = useState<string | null>(null);
+    const [availabilityMessage, setAvailabilityMessage] = useState<string | null>(null);
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
-  useEffect(() => {
-    let isActive = true;
+    useEffect(() => {
+        let isActive = true;
 
-    async function loadAccounts() {
-      setAvailabilityMessage(null);
-      setErrorMessage(null);
+        async function loadAccounts() {
+            setAvailabilityMessage(null);
+            setErrorMessage(null);
 
-      try {
-        const accounts = await adapter.listChartOfAccounts();
-        const expenseOnly = accounts.filter((account) => account.account_type === "EXPENSE" && account.is_active);
-        if (isActive) {
-          setExpenseAccounts(expenseOnly);
-          setAccountId(String(expenseOnly[0]?.account_id ?? ""));
+            try {
+                const accounts = await adapter.listChartOfAccounts();
+                const expenseOnly = accounts.filter((account) => account.account_type === "EXPENSE" && account.is_active);
+                if (isActive) {
+                    setExpenseAccounts(expenseOnly);
+                    setAccountId(String(expenseOnly[0]?.account_id ?? ""));
+                }
+            } catch (error) {
+                if (isActive) {
+                    setExpenseAccounts([]);
+                    setAccountId("");
+                    setErrorMessage(getErrorMessage(error, "ไม่สามารถโหลดบัญชีรายจ่ายได้"));
+                }
+            }
         }
-      } catch (error) {
-        if (isActive) {
-          setExpenseAccounts([]);
-          setAccountId("");
-          setErrorMessage(getErrorMessage(error, "ไม่สามารถโหลดบัญชีรายจ่ายได้"));
+
+        void loadAccounts();
+
+        return () => {
+            isActive = false;
+        };
+    }, [adapter]);
+
+    useEffect(() => {
+        if (!receiptFile) {
+            setPreviewUrl(null);
+            return;
         }
-      }
+
+        const nextUrl = URL.createObjectURL(receiptFile);
+        setPreviewUrl(nextUrl);
+
+        return () => {
+            URL.revokeObjectURL(nextUrl);
+        };
+    }, [receiptFile]);
+
+    const selectedAccount = useMemo(
+        () => expenseAccounts.find((account) => String(account.account_id) === accountId),
+        [accountId, expenseAccounts],
+    );
+    const activeShiftId = activeShift?.shift_id ?? session?.active_shift_id ?? null;
+
+    const isSubmissionBlocked = expenseAccounts.length === 0;
+
+    function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
+        const file = event.target.files?.[0] ?? null;
+        setErrorMessage(null);
+
+        const validationMessage = validateReceiptFile(file);
+        if (validationMessage) {
+            setReceiptFile(null);
+            setErrorMessage(validationMessage);
+            return;
+        }
+
+        setReceiptFile(file);
     }
 
-    void loadAccounts();
+    async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+        event.preventDefault();
+        setErrorMessage(null);
+        setSuccessMessage(null);
 
-    return () => {
-      isActive = false;
-    };
-  }, [adapter]);
+        const parsedAmount = Number(amount);
 
-  useEffect(() => {
-    if (!receiptFile) {
-      setPreviewUrl(null);
-      return;
+        if (!activeShiftId) {
+            setErrorMessage("กรุณาเปิดกะก่อนบันทึกรายจ่าย");
+            return;
+        }
+
+        if (Number.isNaN(parsedAmount) || parsedAmount <= 0) {
+            setErrorMessage("จำนวนเงินต้องมากกว่า 0");
+            return;
+        }
+
+        if (!accountId) {
+            setErrorMessage("ยังไม่มีบัญชีรายจ่ายให้เลือก");
+            return;
+        }
+
+        const validationMessage = validateReceiptFile(receiptFile);
+        if (validationMessage) {
+            setErrorMessage(validationMessage);
+            return;
+        }
+
+        if (!receiptFile) {
+            setErrorMessage("ต้องแนบรูปใบเสร็จ");
+            return;
+        }
+
+        const currentReceiptFile = receiptFile;
+
+        setIsSubmitting(true);
+
+        try {
+            const result = await adapter.createExpense({
+                shift_id: activeShiftId,
+                account_id: accountId,
+                amount: parsedAmount,
+                description,
+                receiptName: currentReceiptFile.name,
+                receiptFile: currentReceiptFile,
+            });
+
+            setSuccessMessage(`บันทึกรายจ่าย #${result.expense_id} สำเร็จแล้ว`);
+            setDescription("");
+            setAmount("120");
+            setReceiptFile(null);
+        } catch (error) {
+            setErrorMessage(getErrorMessage(error, "ไม่สามารถบันทึกรายจ่ายได้"));
+        } finally {
+            setIsSubmitting(false);
+        }
     }
 
-    const nextUrl = URL.createObjectURL(receiptFile);
-    setPreviewUrl(nextUrl);
+    return (
+        <ShiftGuard>
+            <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
+                <section className="rounded-[28px] border border-line bg-surface-strong p-6 md:p-8">
+                    <p className="text-xs uppercase tracking-[0.28em] text-muted">ขั้นตอนรายจ่ายพร้อมใบเสร็จ</p>
+                    <h1 className="mt-3 text-3xl font-semibold text-foreground">รายจ่าย</h1>
+                    <p className="mt-3 text-sm leading-7 text-muted">
+                        หน้านี้ใช้สำหรับบันทึกรายจ่ายที่เกิดขึ้นระหว่างกะ เช่น ของใช้หน้าร้าน วัสดุสิ้นเปลือง ค่าน้ำดื่ม หรือค่าใช้จ่ายย่อยที่ต้องมีใบเสร็จอ้างอิง
+                    </p>
+                    <p className="mt-2 text-sm leading-7 text-muted">
+                        ฟอร์มนี้ยึดตามกฎหลักของงานบัญชี: ต้องมีกะ, ต้องเลือกบัญชีรายจ่าย, ใส่รายละเอียด และต้องแนบใบเสร็จก่อนบันทึก
+                    </p>
 
-    return () => {
-      URL.revokeObjectURL(nextUrl);
-    };
-  }, [receiptFile]);
+                    {availabilityMessage ? (
+                        <div className="mt-5 rounded-[20px] border border-warning bg-warning-soft px-4 py-3 text-sm text-foreground">
+                            {availabilityMessage}
+                        </div>
+                    ) : null}
 
-  const selectedAccount = useMemo(
-    () => expenseAccounts.find((account) => String(account.account_id) === accountId),
-    [accountId, expenseAccounts],
-  );
+                    {!availabilityMessage && expenseAccounts.length === 0 ? (
+                        <div className="mt-5 rounded-[20px] border border-warning bg-warning-soft px-4 py-3 text-sm text-foreground">
+                            ยังไม่มีบัญชีรายจ่ายที่เปิดใช้งานอยู่ จึงยังบันทึกรายจ่ายไม่ได้จนกว่าจะมีบัญชีให้เลือก
+                        </div>
+                    ) : null}
 
-  const isSubmissionBlocked = expenseAccounts.length === 0;
+                    <form className="mt-6 space-y-5" onSubmit={handleSubmit}>
+                        <div className="grid gap-5 md:grid-cols-2">
+                            <label className="block">
+                                <span className="text-sm font-medium text-foreground">จำนวนเงิน</span>
+                                <input
+                                    inputMode="decimal"
+                                    value={amount}
+                                    onChange={(event) => setAmount(event.target.value)}
+                                    className="mt-2 w-full rounded-[20px] border border-line bg-[#fff8de] px-4 py-3 text-[#17130a] placeholder:text-[#8a7840] outline-none transition focus:border-accent"
+                                />
+                            </label>
 
-  function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0] ?? null;
-    setErrorMessage(null);
+                            <label className="block">
+                                <span className="text-sm font-medium text-foreground">บัญชีรายจ่าย</span>
+                                <select
+                                    value={accountId}
+                                    onChange={(event) => setAccountId(event.target.value)}
+                                    disabled={isSubmissionBlocked}
+                                    className="mt-2 w-full rounded-[20px] border border-line bg-[#fff8de] px-4 py-3 text-[#17130a] outline-none transition focus:border-accent"
+                                >
+                                    {expenseAccounts.length === 0 ? <option value="">ยังไม่มีบัญชีรายจ่ายให้เลือก</option> : null}
+                                    {expenseAccounts.map((account) => (
+                                        <option key={account.account_id} value={account.account_id}>
+                                            {account.account_code} · {account.account_name}
+                                        </option>
+                                    ))}
+                                </select>
+                            </label>
+                        </div>
 
-    const validationMessage = validateReceiptFile(file);
-    if (validationMessage) {
-      setReceiptFile(null);
-      setErrorMessage(validationMessage);
-      return;
-    }
+                        <label className="block">
+                            <span className="text-sm font-medium text-foreground">รายละเอียด</span>
+                            <textarea
+                                rows={4}
+                                value={description}
+                                onChange={(event) => setDescription(event.target.value)}
+                                placeholder="อธิบายวัตถุประสงค์ของรายจ่ายนี้"
+                                className="mt-2 w-full rounded-[20px] border border-line bg-[#fff8de] px-4 py-3 text-[#17130a] placeholder:text-[#8a7840] outline-none transition focus:border-accent"
+                            />
+                        </label>
 
-    setReceiptFile(file);
-  }
+                        <label className="block">
+                            <span className="text-sm font-medium text-foreground">รูปใบเสร็จ</span>
+                            <input
+                                type="file"
+                                accept="image/png,image/jpeg"
+                                onChange={handleFileChange}
+                                className="mt-2 block w-full rounded-[20px] border border-line bg-[#fff8de] px-4 py-3 text-sm text-[#17130a] file:mr-4 file:rounded-full file:border-0 file:bg-accent file:px-4 file:py-2 file:font-semibold file:text-black"
+                            />
+                        </label>
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setErrorMessage(null);
-    setSuccessMessage(null);
+                        {errorMessage ? (
+                            <div className="rounded-[20px] border border-warning bg-warning-soft px-4 py-3 text-sm text-foreground">
+                                {errorMessage}
+                            </div>
+                        ) : null}
 
-    const parsedAmount = Number(amount);
+                        {successMessage ? (
+                            <div className="rounded-[20px] border border-accent bg-accent-soft px-4 py-3 text-sm text-foreground">
+                                {successMessage}
+                            </div>
+                        ) : null}
 
-    if (!session?.active_shift_id) {
-      setErrorMessage("กรุณาเปิดกะก่อนบันทึกรายจ่าย");
-      return;
-    }
+                        <button
+                            type="submit"
+                            disabled={isSubmitting || isSubmissionBlocked}
+                            className="rounded-full bg-accent px-5 py-3 text-sm font-semibold text-black transition hover:bg-accent-strong disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                            {isSubmitting ? "กำลังบันทึกรายจ่าย..." : "บันทึกรายจ่าย"}
+                        </button>
+                    </form>
+                </section>
 
-    if (Number.isNaN(parsedAmount) || parsedAmount <= 0) {
-      setErrorMessage("จำนวนเงินต้องมากกว่า 0");
-      return;
-    }
+                <section className="rounded-[28px] border border-line bg-surface-strong p-6 md:p-8">
+                    <p className="text-xs uppercase tracking-[0.28em] text-muted">ตัวอย่างการตรวจสอบข้อมูล</p>
+                    <div className="mt-4 rounded-3xl border border-line bg-background p-5">
+                        <p className="text-sm text-muted">บัญชีที่เลือก</p>
+                        <p className="mt-2 text-lg font-semibold text-foreground">
+                            {selectedAccount ? `${selectedAccount.account_code} · ${selectedAccount.account_name}` : "ยังไม่ได้เลือกบัญชี"}
+                        </p>
+                        <p className="mt-4 text-sm text-muted">ไฟล์ที่รับ: JPG, PNG ขนาดไม่เกิน 5MB</p>
+                    </div>
 
-    if (!accountId) {
-      setErrorMessage("ยังไม่มีบัญชีรายจ่ายให้เลือก");
-      return;
-    }
-
-    const validationMessage = validateReceiptFile(receiptFile);
-    if (validationMessage) {
-      setErrorMessage(validationMessage);
-      return;
-    }
-
-    if (!receiptFile) {
-      setErrorMessage("ต้องแนบรูปใบเสร็จ");
-      return;
-    }
-
-    const currentReceiptFile = receiptFile;
-
-    setIsSubmitting(true);
-
-    try {
-      const result = await adapter.createExpense({
-        shift_id: session.active_shift_id,
-        account_id: accountId,
-        amount: parsedAmount,
-        description,
-        receiptName: currentReceiptFile.name,
-        receiptFile: currentReceiptFile,
-      });
-
-      setSuccessMessage(`บันทึกรายจ่าย #${result.expense_id} สำเร็จแล้ว`);
-      setDescription("");
-      setAmount("120");
-      setReceiptFile(null);
-    } catch (error) {
-      setErrorMessage(getErrorMessage(error, "ไม่สามารถบันทึกรายจ่ายได้"));
-    } finally {
-      setIsSubmitting(false);
-    }
-  }
-
-  return (
-    <ShiftGuard>
-      <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
-        <section className="rounded-[28px] border border-line bg-surface-strong p-6 md:p-8">
-          <p className="text-xs uppercase tracking-[0.28em] text-muted">ขั้นตอนรายจ่ายพร้อมใบเสร็จ</p>
-          <h1 className="mt-3 text-3xl font-semibold text-foreground">รายจ่าย</h1>
-          <p className="mt-3 text-sm leading-7 text-muted">
-            หน้านี้ใช้สำหรับบันทึกรายจ่ายที่เกิดขึ้นระหว่างกะ เช่น ของใช้หน้าร้าน วัสดุสิ้นเปลือง ค่าน้ำดื่ม หรือค่าใช้จ่ายย่อยที่ต้องมีใบเสร็จอ้างอิง
-          </p>
-          <p className="mt-2 text-sm leading-7 text-muted">
-            ฟอร์มนี้ยึดตามกฎหลักของงานบัญชี: ต้องมีกะ, ต้องเลือกบัญชีรายจ่าย, ใส่รายละเอียด และต้องแนบใบเสร็จก่อนบันทึก
-          </p>
-
-          {availabilityMessage ? (
-            <div className="mt-5 rounded-[20px] border border-warning bg-warning-soft px-4 py-3 text-sm text-foreground">
-              {availabilityMessage}
+                    <div className="mt-5 rounded-3xl border border-line bg-background p-5">
+                        <p className="text-sm text-muted">ตัวอย่างใบเสร็จ</p>
+                        {previewUrl ? (
+                            <div className="relative mt-4 h-72 overflow-hidden rounded-[20px]">
+                                <Image
+                                    src={previewUrl}
+                                    alt="ตัวอย่างใบเสร็จ"
+                                    fill
+                                    unoptimized
+                                    className="object-cover"
+                                />
+                            </div>
+                        ) : (
+                            <div className="mt-4 rounded-[20px] border border-dashed border-line px-4 py-16 text-center text-sm text-muted">
+                                อัปโหลดใบเสร็จเพื่อดูตัวอย่างที่นี่
+                            </div>
+                        )}
+                    </div>
+                </section>
             </div>
-          ) : null}
-
-          {!availabilityMessage && expenseAccounts.length === 0 ? (
-            <div className="mt-5 rounded-[20px] border border-warning bg-warning-soft px-4 py-3 text-sm text-foreground">
-              ยังไม่มีบัญชีรายจ่ายที่เปิดใช้งานอยู่ จึงยังบันทึกรายจ่ายไม่ได้จนกว่าจะมีบัญชีให้เลือก
-            </div>
-          ) : null}
-
-          <form className="mt-6 space-y-5" onSubmit={handleSubmit}>
-            <div className="grid gap-5 md:grid-cols-2">
-              <label className="block">
-                <span className="text-sm font-medium text-foreground">จำนวนเงิน</span>
-                <input
-                  inputMode="decimal"
-                  value={amount}
-                  onChange={(event) => setAmount(event.target.value)}
-                  className="mt-2 w-full rounded-[20px] border border-line bg-[#fff8de] px-4 py-3 text-[#17130a] placeholder:text-[#8a7840] outline-none transition focus:border-accent"
-                />
-              </label>
-
-              <label className="block">
-                <span className="text-sm font-medium text-foreground">บัญชีรายจ่าย</span>
-                <select
-                  value={accountId}
-                  onChange={(event) => setAccountId(event.target.value)}
-                  disabled={isSubmissionBlocked}
-                  className="mt-2 w-full rounded-[20px] border border-line bg-[#fff8de] px-4 py-3 text-[#17130a] outline-none transition focus:border-accent"
-                >
-                  {expenseAccounts.length === 0 ? <option value="">ยังไม่มีบัญชีรายจ่ายให้เลือก</option> : null}
-                  {expenseAccounts.map((account) => (
-                    <option key={account.account_id} value={account.account_id}>
-                      {account.account_code} · {account.account_name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-
-            <label className="block">
-              <span className="text-sm font-medium text-foreground">รายละเอียด</span>
-              <textarea
-                rows={4}
-                value={description}
-                onChange={(event) => setDescription(event.target.value)}
-                placeholder="อธิบายวัตถุประสงค์ของรายจ่ายนี้"
-                className="mt-2 w-full rounded-[20px] border border-line bg-[#fff8de] px-4 py-3 text-[#17130a] placeholder:text-[#8a7840] outline-none transition focus:border-accent"
-              />
-            </label>
-
-            <label className="block">
-              <span className="text-sm font-medium text-foreground">รูปใบเสร็จ</span>
-              <input
-                type="file"
-                accept="image/png,image/jpeg"
-                onChange={handleFileChange}
-                className="mt-2 block w-full rounded-[20px] border border-line bg-[#fff8de] px-4 py-3 text-sm text-[#17130a] file:mr-4 file:rounded-full file:border-0 file:bg-accent file:px-4 file:py-2 file:font-semibold file:text-black"
-              />
-            </label>
-
-            {errorMessage ? (
-              <div className="rounded-[20px] border border-warning bg-warning-soft px-4 py-3 text-sm text-foreground">
-                {errorMessage}
-              </div>
-            ) : null}
-
-            {successMessage ? (
-              <div className="rounded-[20px] border border-accent bg-accent-soft px-4 py-3 text-sm text-foreground">
-                {successMessage}
-              </div>
-            ) : null}
-
-            <button
-              type="submit"
-              disabled={isSubmitting || isSubmissionBlocked}
-              className="rounded-full bg-accent px-5 py-3 text-sm font-semibold text-black transition hover:bg-accent-strong disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {isSubmitting ? "กำลังบันทึกรายจ่าย..." : "บันทึกรายจ่าย"}
-            </button>
-          </form>
-        </section>
-
-        <section className="rounded-[28px] border border-line bg-surface-strong p-6 md:p-8">
-          <p className="text-xs uppercase tracking-[0.28em] text-muted">ตัวอย่างการตรวจสอบข้อมูล</p>
-          <div className="mt-4 rounded-3xl border border-line bg-background p-5">
-            <p className="text-sm text-muted">บัญชีที่เลือก</p>
-            <p className="mt-2 text-lg font-semibold text-foreground">
-              {selectedAccount ? `${selectedAccount.account_code} · ${selectedAccount.account_name}` : "ยังไม่ได้เลือกบัญชี"}
-            </p>
-            <p className="mt-4 text-sm text-muted">ไฟล์ที่รับ: JPG, PNG ขนาดไม่เกิน 5MB</p>
-          </div>
-
-          <div className="mt-5 rounded-3xl border border-line bg-background p-5">
-            <p className="text-sm text-muted">ตัวอย่างใบเสร็จ</p>
-            {previewUrl ? (
-              <div className="relative mt-4 h-72 overflow-hidden rounded-[20px]">
-                <Image
-                  src={previewUrl}
-                  alt="ตัวอย่างใบเสร็จ"
-                  fill
-                  unoptimized
-                  className="object-cover"
-                />
-              </div>
-            ) : (
-              <div className="mt-4 rounded-[20px] border border-dashed border-line px-4 py-16 text-center text-sm text-muted">
-                อัปโหลดใบเสร็จเพื่อดูตัวอย่างที่นี่
-              </div>
-            )}
-          </div>
-        </section>
-      </div>
-    </ShiftGuard>
-  );
+        </ShiftGuard>
+    );
 }

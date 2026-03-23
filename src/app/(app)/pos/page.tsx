@@ -155,7 +155,7 @@ function buildProductSearchIndex(product: Product) {
 
 export default function PosPage() {
     const adapter = useAppAdapter();
-    const { session } = useAuth();
+    const { activeShift, session } = useAuth();
     const cartLines = useAtomValue(cartLinesAtom);
     const cartSubtotal = useAtomValue(cartSubtotalAtom);
     const cartCount = useAtomValue(cartCountAtom);
@@ -250,6 +250,7 @@ export default function PosPage() {
         }),
         [cartLines, cartSubtotal],
     );
+    const activeShiftId = activeShift?.shift_id ?? session?.active_shift_id ?? null;
 
     async function refreshProducts() {
         setProductsLoading(true);
@@ -263,7 +264,7 @@ export default function PosPage() {
     }
 
     const refreshShiftInventory = useCallback(async () => {
-        if (!session?.active_shift_id) {
+        if (!activeShiftId) {
             setInventorySummary([]);
             setInventoryLoading(false);
             return;
@@ -272,7 +273,7 @@ export default function PosPage() {
         setInventoryLoading(true);
 
         try {
-            const result = await adapter.getShiftInventorySummary(session.active_shift_id);
+            const result = await adapter.getShiftInventorySummary(activeShiftId);
             setInventorySummary(result);
             setInventoryError(null);
         } catch (error) {
@@ -281,7 +282,7 @@ export default function PosPage() {
         } finally {
             setInventoryLoading(false);
         }
-    }, [adapter, session?.active_shift_id]);
+    }, [activeShiftId, adapter]);
 
     useEffect(() => {
         let isActive = true;
@@ -677,7 +678,7 @@ export default function PosPage() {
     }
 
     function getCheckoutValidationError() {
-        if (!session?.active_shift_id) {
+        if (!activeShiftId) {
             return "กรุณาเปิดกะก่อนคิดเงิน";
         }
 
@@ -734,8 +735,6 @@ export default function PosPage() {
             setErrorMessage(validationError);
             return;
         }
-
-        const activeShiftId = session?.active_shift_id;
 
         if (activeShiftId == null) {
             setIsCheckoutConfirmOpen(false);

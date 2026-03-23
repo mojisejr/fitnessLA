@@ -136,7 +136,7 @@ export default function CloseShiftPage() {
         }
     }
 
-    const canRenderCloseFlow = Boolean(session?.active_shift_id && activeShift) || Boolean(lastClosedShift);
+    const canRenderCloseFlow = Boolean(activeShift) || Boolean(lastClosedShift);
 
     if (!canRenderCloseFlow) {
         return (
