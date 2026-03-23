@@ -6,6 +6,8 @@ export type PaymentMethod = "CASH" | "PROMPTPAY" | "CREDIT_CARD";
 
 export type ProductType = "GOODS" | "SERVICE" | "MEMBERSHIP";
 
+export type IngredientUnit = "G" | "ML" | "PIECE";
+
 export type MembershipPeriod = "DAILY" | "MONTHLY" | "QUARTERLY" | "SEMIANNUAL" | "YEARLY";
 
 export type AccountType = "ASSET" | "LIABILITY" | "EQUITY" | "REVENUE" | "EXPENSE";
@@ -167,6 +169,37 @@ export interface Product {
   stock_on_hand?: number | null;
   membership_period?: MembershipPeriod | null;
   membership_duration_days?: number | null;
+  recipe_total_cost?: number | null;
+  recipe_item_count?: number;
+}
+
+export interface IngredientRecord {
+  ingredient_id: EntityId;
+  name: string;
+  unit: IngredientUnit;
+  purchase_quantity: number;
+  purchase_price: number;
+  cost_per_unit: number;
+  notes?: string | null;
+  is_active: boolean;
+}
+
+export interface ProductRecipeItemRecord {
+  recipe_item_id: EntityId;
+  product_id: EntityId;
+  ingredient_id: EntityId;
+  ingredient_name: string;
+  ingredient_unit: IngredientUnit;
+  quantity: number;
+  ingredient_cost_per_unit: number;
+  line_cost: number;
+}
+
+export interface ProductRecipeRecord {
+  product_id: EntityId;
+  product_name: string;
+  items: ProductRecipeItemRecord[];
+  total_cost: number;
 }
 
 export interface CreateOrderRequest {

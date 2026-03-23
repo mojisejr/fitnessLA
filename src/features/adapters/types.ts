@@ -4,6 +4,7 @@ import type {
   ChartOfAccountRecord,
   CreateTrainerInput,
   EntityId,
+  IngredientRecord,
   ManagedStaffUserRecord,
   CreateOrderRequest,
   DailySummary,
@@ -14,6 +15,7 @@ import type {
   MockShiftRecord,
   OrderResult,
   Product,
+  ProductRecipeRecord,
   ProductStockAdjustmentRecord,
   ShiftInventorySummaryRow,
   ShiftCloseResult,
@@ -63,6 +65,26 @@ export type UpdateProductInput = {
   stockOnHand?: number | null;
   membershipPeriod?: "DAILY" | "MONTHLY" | "QUARTERLY" | "SEMIANNUAL" | "YEARLY" | null;
   membershipDurationDays?: number | null;
+};
+
+export type CreateIngredientInput = {
+  name: string;
+  unit: "G" | "ML" | "PIECE";
+  purchaseQuantity: number;
+  purchasePrice: number;
+  notes?: string | null;
+};
+
+export type UpdateIngredientInput = CreateIngredientInput & {
+  ingredientId: EntityId;
+};
+
+export type ReplaceProductRecipeInput = {
+  productId: EntityId;
+  items: Array<{
+    ingredientId: EntityId;
+    quantity: number;
+  }>;
 };
 
 export type CreateProductInput = {
@@ -149,8 +171,13 @@ export interface AppAdapter {
   getActiveShift: () => Promise<MockShiftRecord | null>;
   listMembers: (filters?: MemberListFilters) => Promise<MemberSubscriptionRecord[]>;
   listProducts: () => Promise<Product[]>;
+  listIngredients: () => Promise<IngredientRecord[]>;
+  createIngredient: (input: CreateIngredientInput) => Promise<IngredientRecord>;
+  updateIngredient: (input: UpdateIngredientInput) => Promise<IngredientRecord>;
   createProduct: (input: CreateProductInput) => Promise<Product>;
   updateProduct: (input: UpdateProductInput) => Promise<Product>;
+  getProductRecipe: (productId: EntityId) => Promise<ProductRecipeRecord>;
+  replaceProductRecipe: (input: ReplaceProductRecipeInput) => Promise<ProductRecipeRecord>;
   listProductStockAdjustments: (productId?: EntityId) => Promise<ProductStockAdjustmentRecord[]>;
   addProductStockAdjustment: (input: CreateProductStockAdjustmentInput) => Promise<ProductStockAdjustmentRecord>;
   getShiftInventorySummary: (shiftId: EntityId) => Promise<ShiftInventorySummaryRow[]>;

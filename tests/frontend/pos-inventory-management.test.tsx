@@ -101,4 +101,50 @@ describe("POS inventory management", () => {
 
         expect(screen.getByLabelText("Product row Latte")).toBeInTheDocument();
     }, 30000);
+
+    it("creates ingredients and saves a recipe for the selected product", async () => {
+        renderWithProviders(<PosProductsPage />);
+
+        await waitForPosReady();
+
+        fireEvent.change(screen.getByLabelText("ชื่อวัตถุดิบ"), {
+            target: { value: "มัทฉะ" },
+        });
+        fireEvent.change(screen.getByLabelText("หน่วยวัตถุดิบ"), {
+            target: { value: "G" },
+        });
+        fireEvent.change(screen.getByLabelText("ปริมาณที่ซื้อ"), {
+            target: { value: "500" },
+        });
+        fireEvent.change(screen.getByLabelText("ราคาซื้อรวม"), {
+            target: { value: "450" },
+        });
+        fireEvent.click(screen.getByRole("button", { name: "เพิ่มวัตถุดิบ" }));
+
+        await waitFor(() => {
+            expect(screen.getByText("มัทฉะ")).toBeInTheDocument();
+        }, { timeout: 25000 });
+
+        fireEvent.click(screen.getByRole("button", { name: "เพิ่มวัตถุดิบในสูตร" }));
+
+        await waitFor(() => {
+            expect(screen.getByLabelText("วัตถุดิบสูตร 1")).toBeInTheDocument();
+        });
+
+        fireEvent.change(screen.getByLabelText("วัตถุดิบสูตร 1"), {
+            target: { value: "ingredient-4" },
+        });
+        fireEvent.change(screen.getByLabelText("ปริมาณสูตร 1"), {
+            target: { value: "15" },
+        });
+        fireEvent.click(screen.getByRole("button", { name: "บันทึกสูตรสินค้า" }));
+
+        await waitFor(() => {
+            expect(screen.getByText("บันทึกสูตรสินค้าเรียบร้อยแล้ว")).toBeInTheDocument();
+        }, { timeout: 25000 });
+
+        const recipeSection = screen.getByText("ผูกวัตถุดิบต่อสินค้าเพื่อคำนวณต้นทุนต่อแก้วหรือจาน").closest("section");
+        expect(recipeSection).not.toBeNull();
+        expect(within(recipeSection as HTMLElement).getAllByText(/฿13.50/).length).toBeGreaterThan(0);
+    }, 30000);
 });

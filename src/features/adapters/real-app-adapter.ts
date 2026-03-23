@@ -7,9 +7,11 @@ import type {
   SalesEntryUpdateResult,
   ShiftSummary,
   EntityId,
+  IngredientRecord,
   MockShiftRecord,
   OrderResult,
   Product,
+  ProductRecipeRecord,
   ProductStockAdjustmentRecord,
   ShiftCloseResult,
   ShiftOpenResult,
@@ -23,11 +25,14 @@ import type {
   CreateAdminUserInput,
   CreateChartOfAccountInput,
   CreateMemberInput,
+  CreateIngredientInput,
   CreateProductInput,
   CreateProductStockAdjustmentInput,
   DailySummaryQuery,
   MemberListFilters,
+  ReplaceProductRecipeInput,
   UpdateMemberInput,
+  UpdateIngredientInput,
   UpdateProductInput,
 } from "@/features/adapters/types";
 import { authClient } from "@/lib/auth-client";
@@ -117,6 +122,38 @@ export const realAppAdapter: AppAdapter = {
     return fetchJson<Product[]>("/api/v1/products");
   },
 
+  async listIngredients() {
+    return fetchJson<IngredientRecord[]>("/api/v1/ingredients");
+  },
+
+  async createIngredient(input: CreateIngredientInput) {
+    return fetchJson<IngredientRecord>("/api/v1/ingredients", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: input.name,
+        unit: input.unit,
+        purchase_quantity: input.purchaseQuantity,
+        purchase_price: input.purchasePrice,
+        notes: input.notes ?? undefined,
+      }),
+    });
+  },
+
+  async updateIngredient(input: UpdateIngredientInput) {
+    return fetchJson<IngredientRecord>(`/api/v1/ingredients/${encodeURIComponent(String(input.ingredientId))}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: input.name,
+        unit: input.unit,
+        purchase_quantity: input.purchaseQuantity,
+        purchase_price: input.purchasePrice,
+        notes: input.notes ?? undefined,
+      }),
+    });
+  },
+
   async createProduct(input: CreateProductInput) {
     return fetchJson<Product>("/api/v1/products", {
       method: "POST",
@@ -154,6 +191,23 @@ export const realAppAdapter: AppAdapter = {
         stock_on_hand: input.stockOnHand ?? undefined,
         membership_period: input.membershipPeriod ?? undefined,
         membership_duration_days: input.membershipDurationDays ?? undefined,
+      }),
+    });
+  },
+
+  async getProductRecipe(productId: EntityId) {
+    return fetchJson<ProductRecipeRecord>(`/api/v1/products/${encodeURIComponent(String(productId))}/recipe`);
+  },
+
+  async replaceProductRecipe(input: ReplaceProductRecipeInput) {
+    return fetchJson<ProductRecipeRecord>(`/api/v1/products/${encodeURIComponent(String(input.productId))}/recipe`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        items: input.items.map((item) => ({
+          ingredient_id: String(item.ingredientId),
+          quantity: item.quantity,
+        })),
       }),
     });
   },

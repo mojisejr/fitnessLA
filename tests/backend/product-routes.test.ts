@@ -2,11 +2,19 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { GET as productsGET, POST as productsPOST } from "../../src/app/api/v1/products/route";
 import { PATCH as productsPATCH } from "../../src/app/api/v1/products/[productId]/route";
+import { GET as ingredientsGET, POST as ingredientsPOST } from "../../src/app/api/v1/ingredients/route";
+import { PATCH as ingredientPATCH } from "../../src/app/api/v1/ingredients/[ingredientId]/route";
+import { GET as productRecipeGET, PATCH as productRecipePATCH } from "../../src/app/api/v1/products/[productId]/recipe/route";
 
 const mockResolveSessionFromRequest = vi.fn();
 const mockListProducts = vi.fn();
 const mockCreateProduct = vi.fn();
 const mockUpdateProduct = vi.fn();
+const mockListIngredients = vi.fn();
+const mockCreateIngredient = vi.fn();
+const mockUpdateIngredient = vi.fn();
+const mockGetProductRecipe = vi.fn();
+const mockReplaceProductRecipe = vi.fn();
 
 vi.mock("../../src/lib/session", () => ({
   resolveSessionFromRequest: (...args: unknown[]) => mockResolveSessionFromRequest(...args),
@@ -16,6 +24,11 @@ vi.mock("../../src/features/operations/services", () => ({
   listProducts: (...args: unknown[]) => mockListProducts(...args),
   createProduct: (...args: unknown[]) => mockCreateProduct(...args),
   updateProduct: (...args: unknown[]) => mockUpdateProduct(...args),
+  listIngredients: (...args: unknown[]) => mockListIngredients(...args),
+  createIngredient: (...args: unknown[]) => mockCreateIngredient(...args),
+  updateIngredient: (...args: unknown[]) => mockUpdateIngredient(...args),
+  getProductRecipe: (...args: unknown[]) => mockGetProductRecipe(...args),
+  replaceProductRecipe: (...args: unknown[]) => mockReplaceProductRecipe(...args),
 }));
 
 describe("phase2 product routes", () => {
@@ -223,5 +236,141 @@ describe("phase2 product routes", () => {
 
     expect(response.status).toBe(409);
     expect(body.code).toBe("DUPLICATE_PRODUCT_SKU");
+  });
+
+  it("returns 200 with ingredient list", async () => {
+    mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "ADMIN" });
+    mockListIngredients.mockResolvedValue([
+      {
+        ingredient_id: "ing-1",
+        name: "เมล็ดกาแฟคั่วเข้ม",
+        unit: "G",
+        purchase_quantity: 1000,
+        purchase_price: 690,
+        cost_per_unit: 0.69,
+        is_active: true,
+      },
+    ]);
+
+    const response = await ingredientsGET(new Request("http://localhost/api/v1/ingredients"));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body[0]).toMatchObject({ ingredient_id: "ing-1", unit: "G" });
+  });
+
+  it("returns 201 for ingredient create", async () => {
+    mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "ADMIN" });
+    mockCreateIngredient.mockResolvedValue({
+      ingredient_id: "ing-2",
+      name: "มัทฉะ",
+      unit: "G",
+      purchase_quantity: 500,
+      purchase_price: 450,
+      cost_per_unit: 0.9,
+      is_active: true,
+    });
+
+    const response = await ingredientsPOST(new Request("http://localhost/api/v1/ingredients", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "มัทฉะ",
+        unit: "G",
+        purchase_quantity: 500,
+        purchase_price: 450,
+      }),
+    }));
+    const body = await response.json();
+
+    expect(response.status).toBe(201);
+    expect(body).toMatchObject({ ingredient_id: "ing-2", name: "มัทฉะ" });
+  });
+
+  it("returns 200 for ingredient patch", async () => {
+    mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "OWNER" });
+    mockUpdateIngredient.mockResolvedValue({
+      ingredient_id: "ing-2",
+      name: "มัทฉะพรีเมียม",
+      unit: "G",
+      purchase_quantity: 500,
+      purchase_price: 520,
+      cost_per_unit: 1.04,
+      is_active: true,
+    });
+
+    const response = await ingredientPATCH(new Request("http://localhost/api/v1/ingredients/ing-2", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "มัทฉะพรีเมียม",
+        unit: "G",
+        purchase_quantity: 500,
+        purchase_price: 520,
+      }),
+    }), { params: Promise.resolve({ ingredientId: "ing-2" }) });
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.name).toBe("มัทฉะพรีเมียม");
+  });
+
+  it("returns 200 with product recipe", async () => {
+    mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "ADMIN" });
+    mockGetProductRecipe.mockResolvedValue({
+      product_id: "prod-1",
+      product_name: "Iced Americano",
+      items: [
+        {
+          recipe_item_id: "recipe-1",
+          product_id: "prod-1",
+          ingredient_id: "ing-1",
+          ingredient_name: "เมล็ดกาแฟคั่วเข้ม",
+          ingredient_unit: "G",
+          quantity: 20,
+          ingredient_cost_per_unit: 0.69,
+          line_cost: 13.8,
+        },
+      ],
+      total_cost: 13.8,
+    });
+
+    const response = await productRecipeGET(new Request("http://localhost/api/v1/products/prod-1/recipe"), {
+      params: Promise.resolve({ productId: "prod-1" }),
+    });
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.total_cost).toBe(13.8);
+  });
+
+  it("returns 200 when replacing product recipe", async () => {
+    mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "ADMIN" });
+    mockReplaceProductRecipe.mockResolvedValue({
+      product_id: "prod-1",
+      product_name: "Iced Americano",
+      items: [],
+      total_cost: 0,
+    });
+
+    const response = await productRecipePATCH(new Request("http://localhost/api/v1/products/prod-1/recipe", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        items: [
+          { ingredient_id: "ing-1", quantity: 20 },
+        ],
+      }),
+    }), {
+      params: Promise.resolve({ productId: "prod-1" }),
+    });
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toMatchObject({ product_id: "prod-1" });
+    expect(mockReplaceProductRecipe).toHaveBeenCalledWith({
+      product_id: "prod-1",
+      items: [{ ingredient_id: "ing-1", quantity: 20 }],
+    });
   });
 });

@@ -5,7 +5,7 @@ import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 
 import { useAppAdapter } from "@/features/adapters/adapter-provider";
 import { useAuth } from "@/features/auth/auth-provider";
-import type { ChartOfAccountRecord, Product, ProductStockAdjustmentRecord } from "@/lib/contracts";
+import type { ChartOfAccountRecord, IngredientRecord, Product, ProductRecipeRecord, ProductStockAdjustmentRecord } from "@/lib/contracts";
 import { POS_CATEGORY_LABEL, getPosSalesCategoryFromProduct } from "@/lib/pos-categories";
 import { formatCurrency, formatDateTime, getErrorCode, getErrorMessage } from "@/lib/utils";
 
@@ -16,6 +16,11 @@ type EditableProductType = "GOODS" | "SERVICE";
 type InlineRestockDraft = {
     quantity: string;
     note: string;
+};
+type DraftRecipeItem = {
+    key: string;
+    ingredientId: string;
+    quantity: string;
 };
 type InlineRestockFeedback = {
     tone: "error" | "success";
@@ -34,6 +39,12 @@ const featuredSlotChoices: Array<{ value: "" | `${FeaturedSlot}`; label: string 
     { value: "3", label: "ช่องด่วน 3" },
     { value: "4", label: "ช่องด่วน 4" },
 ];
+
+const ingredientUnitLabel: Record<IngredientRecord["unit"], string> = {
+    G: "กรัม",
+    ML: "มิลลิลิตร",
+    PIECE: "ชิ้น",
+};
 
 function getValidationErrorMessage(error: unknown) {
     if (
@@ -91,6 +102,7 @@ export default function PosProductsPage() {
 
     const [products, setProducts] = useState<Product[]>([]);
     const [productsLoading, setProductsLoading] = useState(true);
+    const [productsError, setProductsError] = useState<string | null>(null);
     const [query, setQuery] = useState("");
     const [selectedCategory, setSelectedCategory] = useState<SellCategory>("ALL");
     const [selectedProductId, setSelectedProductId] = useState("");
@@ -117,6 +129,25 @@ export default function PosProductsPage() {
     const [inlineRestockDrafts, setInlineRestockDrafts] = useState<Record<string, InlineRestockDraft>>({});
     const [inlineRestockFeedback, setInlineRestockFeedback] = useState<Record<string, InlineRestockFeedback>>({});
     const [restockingProductId, setRestockingProductId] = useState<string | null>(null);
+    const [ingredients, setIngredients] = useState<IngredientRecord[]>([]);
+    const [ingredientsLoading, setIngredientsLoading] = useState(true);
+    const [ingredientsError, setIngredientsError] = useState<string | null>(null);
+    const [ingredientEditorMode, setIngredientEditorMode] = useState<"create" | "edit">("create");
+    const [editingIngredientId, setEditingIngredientId] = useState("");
+    const [ingredientName, setIngredientName] = useState("");
+    const [ingredientUnit, setIngredientUnit] = useState<IngredientRecord["unit"]>("G");
+    const [ingredientPurchaseQuantity, setIngredientPurchaseQuantity] = useState("");
+    const [ingredientPurchasePrice, setIngredientPurchasePrice] = useState("");
+    const [ingredientNotes, setIngredientNotes] = useState("");
+    const [ingredientEditorMessage, setIngredientEditorMessage] = useState<string | null>(null);
+    const [ingredientEditorError, setIngredientEditorError] = useState<string | null>(null);
+    const [isSavingIngredient, setIsSavingIngredient] = useState(false);
+    const [recipe, setRecipe] = useState<ProductRecipeRecord | null>(null);
+    const [recipeRows, setRecipeRows] = useState<DraftRecipeItem[]>([]);
+    const [recipeLoading, setRecipeLoading] = useState(false);
+    const [recipeError, setRecipeError] = useState<string | null>(null);
+    const [recipeMessage, setRecipeMessage] = useState<string | null>(null);
+    const [isSavingRecipe, setIsSavingRecipe] = useState(false);
 
     const selectedProduct = useMemo(
         () => products.find((product) => String(product.product_id) === selectedProductId) ?? null,
@@ -174,12 +205,40 @@ export default function PosProductsPage() {
         [trackedProducts],
     );
 
+    const recipePreview = useMemo(() => {
+        const items = recipeRows
+            .filter((row) => row.ingredientId && row.quantity.trim())
+            .map((row) => {
+                const ingredient = ingredients.find((candidate) => String(candidate.ingredient_id) === row.ingredientId) ?? null;
+                const quantity = Number(row.quantity);
+                const lineCost = ingredient && Number.isFinite(quantity) && quantity > 0
+                    ? Number((ingredient.cost_per_unit * quantity).toFixed(6))
+                    : 0;
+
+                return {
+                    key: row.key,
+                    ingredient,
+                    quantity,
+                    lineCost,
+                };
+            });
+
+        return {
+            items,
+            totalCost: Number(items.reduce((sum, item) => sum + item.lineCost, 0).toFixed(6)),
+        };
+    }, [ingredients, recipeRows]);
+
     const refreshProducts = useCallback(async () => {
         setProductsLoading(true);
+        setProductsError(null);
 
         try {
             const result = await adapter.listProducts();
             setProducts(result);
+        } catch (error) {
+            setProducts([]);
+            setProductsError(getErrorMessage(error, "ไม่สามารถโหลดรายการสินค้าได้"));
         } finally {
             setProductsLoading(false);
         }
@@ -207,9 +266,57 @@ export default function PosProductsPage() {
         }
     }, [adapter]);
 
+    const refreshIngredients = useCallback(async () => {
+        setIngredientsLoading(true);
+        setIngredientsError(null);
+
+        try {
+            const result = await adapter.listIngredients();
+            setIngredients(result);
+        } catch (error) {
+            setIngredients([]);
+            setIngredientsError(getErrorMessage(error, "ไม่สามารถโหลดคลังวัตถุดิบได้"));
+        } finally {
+            setIngredientsLoading(false);
+        }
+    }, [adapter]);
+
+    const refreshRecipe = useCallback(async (productId?: string) => {
+        if (!productId) {
+            setRecipe(null);
+            setRecipeRows([]);
+            setRecipeLoading(false);
+            setRecipeError(null);
+            return;
+        }
+
+        setRecipeLoading(true);
+
+        try {
+            const result = await adapter.getProductRecipe(productId);
+            setRecipe(result);
+            setRecipeRows(result.items.map((item) => ({
+                key: String(item.recipe_item_id),
+                ingredientId: String(item.ingredient_id),
+                quantity: String(item.quantity),
+            })));
+            setRecipeError(null);
+        } catch (error) {
+            setRecipe(null);
+            setRecipeRows([]);
+            setRecipeError(getErrorMessage(error, "ไม่สามารถโหลดสูตรสินค้านี้ได้"));
+        } finally {
+            setRecipeLoading(false);
+        }
+    }, [adapter]);
+
     useEffect(() => {
         void refreshProducts();
     }, [refreshProducts]);
+
+    useEffect(() => {
+        void refreshIngredients();
+    }, [refreshIngredients]);
 
     useEffect(() => {
         let isActive = true;
@@ -269,11 +376,16 @@ export default function PosProductsPage() {
             setAdjustments([]);
             setAdjustmentsError(null);
             setAdjustmentsLoading(false);
+            setRecipe(null);
+            setRecipeRows([]);
+            setRecipeError(null);
+            setRecipeMessage(null);
             return;
         }
 
         void refreshAdjustments(selectedProduct ? String(selectedProduct.product_id) : undefined);
-    }, [isCreateMode, refreshAdjustments, selectedProduct]);
+        void refreshRecipe(selectedProduct ? String(selectedProduct.product_id) : undefined);
+    }, [isCreateMode, refreshAdjustments, refreshRecipe, selectedProduct]);
 
     function openCreateMode() {
         setIsCreateMode(true);
@@ -289,6 +401,10 @@ export default function PosProductsPage() {
         setSelectedRevenueAccountId("");
         setEditorMessage(null);
         setEditorError(null);
+        setRecipe(null);
+        setRecipeRows([]);
+        setRecipeError(null);
+        setRecipeMessage(null);
     }
 
     function openEditMode(productId?: string) {
@@ -311,6 +427,153 @@ export default function PosProductsPage() {
             delete next[productId];
             return next;
         });
+    }
+
+    function resetIngredientEditor() {
+        setIngredientEditorMode("create");
+        setEditingIngredientId("");
+        setIngredientName("");
+        setIngredientUnit("G");
+        setIngredientPurchaseQuantity("");
+        setIngredientPurchasePrice("");
+        setIngredientNotes("");
+        setIngredientEditorMessage(null);
+        setIngredientEditorError(null);
+    }
+
+    function editIngredient(ingredient: IngredientRecord) {
+        setIngredientEditorMode("edit");
+        setEditingIngredientId(String(ingredient.ingredient_id));
+        setIngredientName(ingredient.name);
+        setIngredientUnit(ingredient.unit);
+        setIngredientPurchaseQuantity(String(ingredient.purchase_quantity));
+        setIngredientPurchasePrice(String(ingredient.purchase_price));
+        setIngredientNotes(ingredient.notes ?? "");
+        setIngredientEditorMessage(null);
+        setIngredientEditorError(null);
+    }
+
+    function addRecipeRow() {
+        setRecipeRows((current) => [
+            ...current,
+            { key: `draft-${Date.now()}-${current.length}`, ingredientId: "", quantity: "" },
+        ]);
+        setRecipeMessage(null);
+        setRecipeError(null);
+    }
+
+    function updateRecipeRow(key: string, patch: Partial<DraftRecipeItem>) {
+        setRecipeRows((current) => current.map((row) => row.key === key ? { ...row, ...patch } : row));
+        setRecipeMessage(null);
+        setRecipeError(null);
+    }
+
+    function removeRecipeRow(key: string) {
+        setRecipeRows((current) => current.filter((row) => row.key !== key));
+        setRecipeMessage(null);
+        setRecipeError(null);
+    }
+
+    async function handleSaveIngredient() {
+        const parsedQuantity = Number(ingredientPurchaseQuantity);
+        const parsedPrice = Number(ingredientPurchasePrice);
+
+        if (!ingredientName.trim()) {
+            setIngredientEditorError("กรุณาระบุชื่อวัตถุดิบ");
+            return;
+        }
+
+        if (Number.isNaN(parsedQuantity) || parsedQuantity <= 0) {
+            setIngredientEditorError("ปริมาณที่ซื้อต้องมากกว่า 0");
+            return;
+        }
+
+        if (Number.isNaN(parsedPrice) || parsedPrice < 0) {
+            setIngredientEditorError("ราคาซื้อต้องเป็นศูนย์หรือมากกว่า");
+            return;
+        }
+
+        setIsSavingIngredient(true);
+        setIngredientEditorError(null);
+        setIngredientEditorMessage(null);
+
+        try {
+            if (ingredientEditorMode === "edit" && editingIngredientId) {
+                await adapter.updateIngredient({
+                    ingredientId: editingIngredientId,
+                    name: ingredientName,
+                    unit: ingredientUnit,
+                    purchaseQuantity: parsedQuantity,
+                    purchasePrice: parsedPrice,
+                    notes: ingredientNotes || null,
+                });
+                setIngredientEditorMessage("อัปเดตวัตถุดิบเรียบร้อยแล้ว");
+            } else {
+                await adapter.createIngredient({
+                    name: ingredientName,
+                    unit: ingredientUnit,
+                    purchaseQuantity: parsedQuantity,
+                    purchasePrice: parsedPrice,
+                    notes: ingredientNotes || null,
+                });
+                setIngredientEditorMessage("เพิ่มวัตถุดิบใหม่เรียบร้อยแล้ว");
+                resetIngredientEditor();
+            }
+
+            await refreshIngredients();
+        } catch (error) {
+            setIngredientEditorError(getErrorMessage(error, ingredientEditorMode === "edit" ? "ไม่สามารถแก้ไขวัตถุดิบได้" : "ไม่สามารถเพิ่มวัตถุดิบได้"));
+        } finally {
+            setIsSavingIngredient(false);
+        }
+    }
+
+    async function handleSaveRecipe() {
+        if (!selectedProduct) {
+            return;
+        }
+
+        const hasIncompleteRow = recipeRows.some((row) => (row.ingredientId && !row.quantity.trim()) || (!row.ingredientId && row.quantity.trim()));
+        if (hasIncompleteRow) {
+            setRecipeError("กรุณาเลือกวัตถุดิบและระบุปริมาณให้ครบทุกบรรทัด");
+            return;
+        }
+
+        const payloadItems = recipeRows
+            .filter((row) => row.ingredientId && row.quantity.trim())
+            .map((row) => ({
+                ingredientId: row.ingredientId,
+                quantity: Number(row.quantity),
+            }));
+
+        if (payloadItems.some((item) => Number.isNaN(item.quantity) || item.quantity <= 0)) {
+            setRecipeError("ปริมาณวัตถุดิบในสูตรต้องมากกว่า 0");
+            return;
+        }
+
+        setIsSavingRecipe(true);
+        setRecipeError(null);
+        setRecipeMessage(null);
+
+        try {
+            const savedRecipe = await adapter.replaceProductRecipe({
+                productId: selectedProduct.product_id,
+                items: payloadItems,
+            });
+
+            setRecipe(savedRecipe);
+            setRecipeRows(savedRecipe.items.map((item) => ({
+                key: String(item.recipe_item_id),
+                ingredientId: String(item.ingredient_id),
+                quantity: String(item.quantity),
+            })));
+            setRecipeMessage(payloadItems.length > 0 ? "บันทึกสูตรสินค้าเรียบร้อยแล้ว" : "ล้างสูตรสินค้านี้เรียบร้อยแล้ว");
+            await refreshProducts();
+        } catch (error) {
+            setRecipeError(getErrorMessage(error, "ไม่สามารถบันทึกสูตรสินค้าได้"));
+        } finally {
+            setIsSavingRecipe(false);
+        }
     }
 
     function updateInlineRestockDraft(productId: string, patch: Partial<InlineRestockDraft>) {
@@ -539,6 +802,10 @@ export default function PosProductsPage() {
                         <p className="text-xs font-semibold text-muted">ใกล้หมด</p>
                         <p className="mt-2 text-3xl font-semibold text-foreground">{lowStockProducts.length}</p>
                     </div>
+                    <div className="rounded-[22px] border border-line bg-background/70 p-4">
+                        <p className="text-xs font-semibold text-muted">วัตถุดิบในคลังสูตร</p>
+                        <p className="mt-2 text-3xl font-semibold text-foreground">{ingredients.length}</p>
+                    </div>
                 </div>
 
                 <div className="grid gap-3 lg:grid-cols-[minmax(0,1.2fr)_260px_auto]">
@@ -574,6 +841,10 @@ export default function PosProductsPage() {
                     <div className="rounded-3xl border border-dashed border-line bg-background p-6 text-sm text-muted">
                         กำลังโหลดรายการสินค้า...
                     </div>
+                ) : productsError ? (
+                    <div className="rounded-3xl border border-warning bg-warning-soft p-6 text-sm text-foreground">
+                        {productsError}
+                    </div>
                 ) : categorySections.length > 0 ? (
                     <div className="space-y-5">
                         {categorySections.map((section) => (
@@ -596,6 +867,7 @@ export default function PosProductsPage() {
                                                 <th className="px-4 py-3 text-left font-semibold text-muted">ราคา</th>
                                                 <th className="px-4 py-3 text-left font-semibold text-muted">คงเหลือ</th>
                                                 <th className="px-4 py-3 text-left font-semibold text-muted">บัญชีรายได้</th>
+                                                <th className="px-4 py-3 text-left font-semibold text-muted">ต้นทุนสูตร</th>
                                                 <th className="px-4 py-3 text-left font-semibold text-muted">ปักหมุด</th>
                                                 <th className="px-4 py-3 text-right font-semibold text-muted">จัดการ</th>
                                             </tr>
@@ -652,6 +924,9 @@ export default function PosProductsPage() {
                                                             <td className="px-4 py-4 align-top text-xs text-muted">
                                                                 {revenueAccount ? `${revenueAccount.account_code} · ${revenueAccount.account_name}` : "ใช้บัญชีหลักของระบบ"}
                                                             </td>
+                                                            <td className="px-4 py-4 align-top text-xs text-muted">
+                                                                {typeof product.recipe_total_cost === "number" ? `${formatCurrency(product.recipe_total_cost)} · ${product.recipe_item_count ?? 0} รายการ` : "ยังไม่ตั้งสูตร"}
+                                                            </td>
                                                             <td className="px-4 py-4 align-top text-[#f3e8ba]">{product.featured_slot ? `ช่อง ${product.featured_slot}` : "-"}</td>
                                                             <td className="px-4 py-4 align-top text-right">
                                                                 <button
@@ -665,7 +940,7 @@ export default function PosProductsPage() {
                                                         </tr>
                                                         {product.track_stock && isInlineRestockOpen ? (
                                                             <tr aria-label={`Restock row ${product.name}`}>
-                                                                <td colSpan={8} className="px-4 pb-4 pt-0">
+                                                                <td colSpan={9} className="px-4 pb-4 pt-0">
                                                                     <div className="rounded-[22px] border border-line bg-[#161510] p-4">
                                                                         <div className="grid gap-3 lg:grid-cols-[180px_180px_minmax(0,1fr)_auto] lg:items-end">
                                                                             <div className="rounded-[18px] border border-line bg-background/70 px-4 py-3 text-sm text-foreground">
@@ -1015,6 +1290,234 @@ export default function PosProductsPage() {
                     ) : (
                         <div className="mt-4 rounded-3xl border border-dashed border-line bg-[#161510] p-4 text-sm text-muted">
                             ยังไม่มีประวัติการเติมสินค้าสำหรับรายการที่เลือก
+                        </div>
+                    )}
+                </section>
+
+                <section className="rounded-3xl border border-line bg-background/70 p-5">
+                    <div className="flex items-start justify-between gap-3">
+                        <div>
+                            <p className="text-xs font-semibold text-muted">สูตรต้นทุนต่อหน่วยขาย</p>
+                            <h2 className="mt-2 text-xl font-semibold text-foreground">ผูกวัตถุดิบต่อสินค้าเพื่อคำนวณต้นทุนต่อแก้วหรือจาน</h2>
+                        </div>
+                        {recipe ? <p className="text-sm text-muted">{recipe.product_name}</p> : null}
+                    </div>
+
+                    {isCreateMode || !selectedProduct ? (
+                        <div className="mt-4 rounded-3xl border border-dashed border-line bg-[#161510] p-4 text-sm text-muted">
+                            สร้างหรือเลือกสินค้าจากตารางก่อน แล้วค่อยผูกวัตถุดิบเป็นสูตรของสินค้านั้น
+                        </div>
+                    ) : (
+                        <>
+                            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                                <div className="rounded-[20px] border border-line bg-[#161510] px-4 py-4">
+                                    <p className="text-xs text-muted">ต้นทุนรวมต่อหน่วยขาย</p>
+                                    <p className="mt-2 text-2xl font-semibold text-[#f3e8ba]">{formatCurrency(recipePreview.totalCost)}</p>
+                                </div>
+                                <div className="rounded-[20px] border border-line bg-[#161510] px-4 py-4">
+                                    <p className="text-xs text-muted">ส่วนต่างจากราคาขาย</p>
+                                    <p className="mt-2 text-2xl font-semibold text-[#f3e8ba]">{formatCurrency((selectedProduct.price ?? 0) - recipePreview.totalCost)}</p>
+                                </div>
+                            </div>
+
+                            {recipeLoading ? <div className="mt-4 text-sm text-muted">กำลังโหลดสูตรสินค้า...</div> : null}
+                            {recipeError ? <div className="mt-4 rounded-[20px] border border-warning bg-warning-soft px-4 py-3 text-sm text-foreground">{recipeError}</div> : null}
+                            {recipeMessage ? <div className="mt-4 rounded-[20px] border border-accent bg-accent-soft px-4 py-3 text-sm text-foreground">{recipeMessage}</div> : null}
+
+                            <div className="mt-4 space-y-3">
+                                {recipeRows.length > 0 ? recipeRows.map((row, index) => {
+                                    const ingredient = ingredients.find((candidate) => String(candidate.ingredient_id) === row.ingredientId) ?? null;
+                                    const quantity = Number(row.quantity);
+                                    const lineCost = ingredient && Number.isFinite(quantity) && quantity > 0
+                                        ? Number((ingredient.cost_per_unit * quantity).toFixed(6))
+                                        : 0;
+
+                                    return (
+                                        <div key={row.key} className="rounded-[20px] border border-line bg-[#161510] p-4">
+                                            <div className="grid gap-3 lg:grid-cols-[minmax(0,1.1fr)_140px_140px_auto] lg:items-end">
+                                                <label className="block">
+                                                    <span className="text-sm font-medium text-foreground">วัตถุดิบ #{index + 1}</span>
+                                                    <select
+                                                        aria-label={`วัตถุดิบสูตร ${index + 1}`}
+                                                        value={row.ingredientId}
+                                                        onChange={(event) => updateRecipeRow(row.key, { ingredientId: event.target.value })}
+                                                        className="mt-2 w-full rounded-[18px] border border-line bg-[#fff8de] px-4 py-3 text-[#17130a] outline-none transition focus:border-accent"
+                                                    >
+                                                        <option value="">เลือกวัตถุดิบ</option>
+                                                        {ingredients.map((candidate) => (
+                                                            <option key={candidate.ingredient_id} value={String(candidate.ingredient_id)}>
+                                                                {candidate.name} · {ingredientUnitLabel[candidate.unit]} · {formatCurrency(candidate.cost_per_unit)}/{ingredientUnitLabel[candidate.unit]}
+                                                            </option>
+                                                        ))}
+                                                    </select>
+                                                </label>
+                                                <label className="block">
+                                                    <span className="text-sm font-medium text-foreground">ปริมาณต่อหน่วยขาย</span>
+                                                    <input
+                                                        aria-label={`ปริมาณสูตร ${index + 1}`}
+                                                        inputMode="decimal"
+                                                        value={row.quantity}
+                                                        onChange={(event) => updateRecipeRow(row.key, { quantity: event.target.value })}
+                                                        className="mt-2 w-full rounded-[18px] border border-line bg-[#fff8de] px-4 py-3 text-[#17130a] outline-none transition focus:border-accent"
+                                                    />
+                                                </label>
+                                                <div className="rounded-[18px] border border-line bg-background/70 px-4 py-3 text-sm text-foreground">
+                                                    <p className="text-xs text-muted">ต้นทุนบรรทัดนี้</p>
+                                                    <p className="mt-2 text-lg font-semibold">{formatCurrency(lineCost)}</p>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => removeRecipeRow(row.key)}
+                                                    className="rounded-full border border-line px-4 py-3 text-sm font-semibold text-foreground transition hover:border-accent hover:bg-accent-soft"
+                                                >
+                                                    ลบบรรทัด
+                                                </button>
+                                            </div>
+                                            {ingredient ? (
+                                                <p className="mt-3 text-xs text-muted">{ingredient.name} ใช้หน่วย {ingredientUnitLabel[ingredient.unit]} และมีต้นทุน {formatCurrency(ingredient.cost_per_unit)} ต่อ {ingredientUnitLabel[ingredient.unit]}</p>
+                                            ) : null}
+                                        </div>
+                                    );
+                                }) : (
+                                    <div className="rounded-[20px] border border-dashed border-line bg-[#161510] px-4 py-4 text-sm text-muted">
+                                        ยังไม่มีวัตถุดิบในสูตรนี้ กดเพิ่มบรรทัดเพื่อเริ่มผูกต้นทุนต่อหน่วยขาย
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="mt-4 flex flex-wrap gap-3">
+                                <button
+                                    type="button"
+                                    onClick={addRecipeRow}
+                                    className="rounded-full border border-line px-5 py-3 text-sm font-semibold text-foreground transition hover:border-accent hover:bg-accent-soft"
+                                >
+                                    เพิ่มวัตถุดิบในสูตร
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => void handleSaveRecipe()}
+                                    disabled={isSavingRecipe}
+                                    className="rounded-full bg-accent px-5 py-3 text-sm font-semibold text-black transition hover:bg-accent-strong disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                    {isSavingRecipe ? "กำลังบันทึกสูตร..." : "บันทึกสูตรสินค้า"}
+                                </button>
+                            </div>
+                        </>
+                    )}
+                </section>
+
+                <section className="rounded-3xl border border-line bg-background/70 p-5">
+                    <div className="flex items-start justify-between gap-3">
+                        <div>
+                            <p className="text-xs font-semibold text-muted">คลังวัตถุดิบ</p>
+                            <h2 className="mt-2 text-xl font-semibold text-foreground">เพิ่มและแก้ไขวัตถุดิบที่ใช้เป็นต้นทุนเมนู</h2>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={resetIngredientEditor}
+                            className="rounded-full border border-line px-4 py-2 text-xs font-semibold text-foreground transition hover:border-accent hover:bg-accent-soft"
+                        >
+                            เพิ่มวัตถุดิบใหม่
+                        </button>
+                    </div>
+
+                    <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                        <label className="block">
+                            <span className="text-sm font-medium text-foreground">ชื่อวัตถุดิบ</span>
+                            <input
+                                aria-label="ชื่อวัตถุดิบ"
+                                value={ingredientName}
+                                onChange={(event) => setIngredientName(event.target.value)}
+                                className="mt-2 w-full rounded-[18px] border border-line bg-[#fff8de] px-4 py-3 text-[#17130a] outline-none transition focus:border-accent"
+                            />
+                        </label>
+                        <label className="block">
+                            <span className="text-sm font-medium text-foreground">หน่วย</span>
+                            <select
+                                aria-label="หน่วยวัตถุดิบ"
+                                value={ingredientUnit}
+                                onChange={(event) => setIngredientUnit(event.target.value as IngredientRecord["unit"])}
+                                className="mt-2 w-full rounded-[18px] border border-line bg-[#fff8de] px-4 py-3 text-[#17130a] outline-none transition focus:border-accent"
+                            >
+                                {Object.entries(ingredientUnitLabel).map(([value, label]) => (
+                                    <option key={value} value={value}>{label}</option>
+                                ))}
+                            </select>
+                        </label>
+                        <label className="block">
+                            <span className="text-sm font-medium text-foreground">ปริมาณที่ซื้อ</span>
+                            <input
+                                aria-label="ปริมาณที่ซื้อ"
+                                inputMode="decimal"
+                                value={ingredientPurchaseQuantity}
+                                onChange={(event) => setIngredientPurchaseQuantity(event.target.value)}
+                                className="mt-2 w-full rounded-[18px] border border-line bg-[#fff8de] px-4 py-3 text-[#17130a] outline-none transition focus:border-accent"
+                            />
+                        </label>
+                        <label className="block">
+                            <span className="text-sm font-medium text-foreground">ราคาซื้อรวม</span>
+                            <input
+                                aria-label="ราคาซื้อรวม"
+                                inputMode="decimal"
+                                value={ingredientPurchasePrice}
+                                onChange={(event) => setIngredientPurchasePrice(event.target.value)}
+                                className="mt-2 w-full rounded-[18px] border border-line bg-[#fff8de] px-4 py-3 text-[#17130a] outline-none transition focus:border-accent"
+                            />
+                        </label>
+                    </div>
+
+                    <label className="mt-4 block">
+                        <span className="text-sm font-medium text-foreground">หมายเหตุ</span>
+                        <input
+                            aria-label="หมายเหตุวัตถุดิบ"
+                            value={ingredientNotes}
+                            onChange={(event) => setIngredientNotes(event.target.value)}
+                            className="mt-2 w-full rounded-[18px] border border-line bg-[#fff8de] px-4 py-3 text-[#17130a] outline-none transition focus:border-accent"
+                        />
+                    </label>
+
+                    {ingredientEditorError ? <div className="mt-4 rounded-[20px] border border-warning bg-warning-soft px-4 py-3 text-sm text-foreground">{ingredientEditorError}</div> : null}
+                    {ingredientEditorMessage ? <div className="mt-4 rounded-[20px] border border-accent bg-accent-soft px-4 py-3 text-sm text-foreground">{ingredientEditorMessage}</div> : null}
+                    {ingredientsError ? <div className="mt-4 rounded-[20px] border border-warning bg-warning-soft px-4 py-3 text-sm text-foreground">{ingredientsError}</div> : null}
+
+                    <div className="mt-4 flex flex-wrap gap-3">
+                        <button
+                            type="button"
+                            onClick={() => void handleSaveIngredient()}
+                            disabled={isSavingIngredient}
+                            className="rounded-full bg-accent px-5 py-3 text-sm font-semibold text-black transition hover:bg-accent-strong disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                            {isSavingIngredient ? "กำลังบันทึกวัตถุดิบ..." : ingredientEditorMode === "edit" ? "บันทึกวัตถุดิบ" : "เพิ่มวัตถุดิบ"}
+                        </button>
+                    </div>
+
+                    {ingredientsLoading ? (
+                        <div className="mt-4 rounded-3xl border border-dashed border-line bg-[#161510] p-4 text-sm text-muted">
+                            กำลังโหลดวัตถุดิบ...
+                        </div>
+                    ) : ingredients.length > 0 ? (
+                        <div className="mt-4 space-y-3">
+                            {ingredients.map((ingredient) => (
+                                <button
+                                    key={ingredient.ingredient_id}
+                                    type="button"
+                                    onClick={() => editIngredient(ingredient)}
+                                    className="w-full rounded-[20px] border border-line bg-[#161510] px-4 py-4 text-left text-sm text-foreground transition hover:border-accent"
+                                >
+                                    <div className="flex items-start justify-between gap-3">
+                                        <div>
+                                            <p className="font-semibold text-[#f3e8ba]">{ingredient.name}</p>
+                                            <p className="mt-1 text-xs text-muted">{ingredient.purchase_quantity} {ingredientUnitLabel[ingredient.unit]} · ต้นทุน {formatCurrency(ingredient.cost_per_unit)}/{ingredientUnitLabel[ingredient.unit]}</p>
+                                        </div>
+                                        <p className="text-xs text-muted">ซื้อ {formatCurrency(ingredient.purchase_price)}</p>
+                                    </div>
+                                    {ingredient.notes ? <p className="mt-3 text-sm leading-6 text-muted">{ingredient.notes}</p> : null}
+                                </button>
+                            ))}
+                        </div>
+                    ) : (
+                        <div className="mt-4 rounded-3xl border border-dashed border-line bg-[#161510] p-4 text-sm text-muted">
+                            ยังไม่มีวัตถุดิบในระบบ เริ่มจากเพิ่มเมล็ดกาแฟ, นม, น้ำผึ้ง หรือมัทฉะก่อน
                         </div>
                     )}
                 </section>

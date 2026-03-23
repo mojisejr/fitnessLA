@@ -18,6 +18,59 @@ export type ProductDto = {
   stock_on_hand?: number | null;
   membership_period?: "DAILY" | "MONTHLY" | "QUARTERLY" | "SEMIANNUAL" | "YEARLY" | null;
   membership_duration_days?: number | null;
+  recipe_total_cost?: number | null;
+  recipe_item_count?: number;
+};
+
+export type IngredientUnitDto = "G" | "ML" | "PIECE";
+
+export type IngredientDto = {
+  ingredient_id: string;
+  name: string;
+  unit: IngredientUnitDto;
+  purchase_quantity: number;
+  purchase_price: number;
+  cost_per_unit: number;
+  notes?: string | null;
+  is_active: boolean;
+};
+
+export type CreateIngredientInputDto = {
+  name: string;
+  unit: IngredientUnitDto;
+  purchase_quantity: number;
+  purchase_price: number;
+  notes?: string | null;
+};
+
+export type UpdateIngredientInputDto = CreateIngredientInputDto & {
+  ingredient_id: string;
+};
+
+export type ProductRecipeItemDto = {
+  recipe_item_id: string;
+  product_id: string;
+  ingredient_id: string;
+  ingredient_name: string;
+  ingredient_unit: IngredientUnitDto;
+  quantity: number;
+  ingredient_cost_per_unit: number;
+  line_cost: number;
+};
+
+export type ProductRecipeDto = {
+  product_id: string;
+  product_name: string;
+  items: ProductRecipeItemDto[];
+  total_cost: number;
+};
+
+export type ReplaceProductRecipeInputDto = {
+  product_id: string;
+  items: Array<{
+    ingredient_id: string;
+    quantity: number;
+  }>;
 };
 
 export type CreateProductInputDto = {
@@ -560,6 +613,13 @@ function mapProductRecord(product: {
   stockOnHand?: number | null;
   membershipPeriod?: string | null;
   membershipDurationDays?: number | null;
+  recipeItems?: Array<{
+    quantity: Prisma.Decimal;
+    ingredient: {
+      purchasePrice: Prisma.Decimal;
+      purchaseQuantity: Prisma.Decimal;
+    };
+  }>;
 }): ProductDto {
   const productType = assertProductType(product.productType);
   const membershipPeriod = inferMembershipPeriod(product.sku, product.membershipPeriod);
@@ -570,6 +630,12 @@ function mapProductRecord(product: {
   });
   const featuredSlot = product.featuredSlot === 1 || product.featuredSlot === 2 || product.featuredSlot === 3 || product.featuredSlot === 4
     ? product.featuredSlot
+    : null;
+  const recipeItems = product.recipeItems ?? [];
+  const recipeTotalCost = recipeItems.length > 0
+    ? Number(
+        recipeItems.reduce((sum, item) => sum.add(item.quantity.mul(item.ingredient.purchasePrice.div(item.ingredient.purchaseQuantity))), new Prisma.Decimal(0)),
+      )
     : null;
 
   return {
@@ -589,6 +655,94 @@ function mapProductRecord(product: {
       productType === "MEMBERSHIP"
         ? product.membershipDurationDays ?? defaultMembershipDurationDays(membershipPeriod)
         : null,
+    recipe_total_cost: recipeTotalCost,
+    recipe_item_count: recipeItems.length,
+  };
+}
+
+function assertIngredientUnit(value: string): IngredientUnitDto {
+  if (value === "G" || value === "ML" || value === "PIECE") {
+    return value;
+  }
+
+  throw new Error("INVALID_INGREDIENT_UNIT");
+}
+
+function calculateIngredientCostPerUnit(purchasePrice: Prisma.Decimal, purchaseQuantity: Prisma.Decimal) {
+  return Number(purchasePrice.div(purchaseQuantity).toDecimalPlaces(6));
+}
+
+function mapIngredientRecord(record: {
+  id: string;
+  name: string;
+  unit: string;
+  purchaseQuantity: Prisma.Decimal;
+  purchasePrice: Prisma.Decimal;
+  notes: string | null;
+  isActive: boolean;
+}): IngredientDto {
+  return {
+    ingredient_id: record.id,
+    name: record.name,
+    unit: assertIngredientUnit(record.unit),
+    purchase_quantity: Number(record.purchaseQuantity),
+    purchase_price: Number(record.purchasePrice),
+    cost_per_unit: calculateIngredientCostPerUnit(record.purchasePrice, record.purchaseQuantity),
+    notes: record.notes,
+    is_active: record.isActive,
+  };
+}
+
+function mapProductRecipeItemRecord(record: {
+  id: string;
+  quantity: Prisma.Decimal;
+  productId: string;
+  ingredient: {
+    id: string;
+    name: string;
+    unit: string;
+    purchasePrice: Prisma.Decimal;
+    purchaseQuantity: Prisma.Decimal;
+  };
+}): ProductRecipeItemDto {
+  const ingredientCostPerUnit = calculateIngredientCostPerUnit(record.ingredient.purchasePrice, record.ingredient.purchaseQuantity);
+  const quantity = Number(record.quantity);
+
+  return {
+    recipe_item_id: record.id,
+    product_id: record.productId,
+    ingredient_id: record.ingredient.id,
+    ingredient_name: record.ingredient.name,
+    ingredient_unit: assertIngredientUnit(record.ingredient.unit),
+    quantity,
+    ingredient_cost_per_unit: ingredientCostPerUnit,
+    line_cost: Number(record.quantity.mul(record.ingredient.purchasePrice.div(record.ingredient.purchaseQuantity)).toDecimalPlaces(6)),
+  };
+}
+
+function mapProductRecipeRecord(record: {
+  id: string;
+  name: string;
+  recipeItems: Array<{
+    id: string;
+    quantity: Prisma.Decimal;
+    productId: string;
+    ingredient: {
+      id: string;
+      name: string;
+      unit: string;
+      purchasePrice: Prisma.Decimal;
+      purchaseQuantity: Prisma.Decimal;
+    };
+  }>;
+}): ProductRecipeDto {
+  const items = record.recipeItems.map(mapProductRecipeItemRecord);
+
+  return {
+    product_id: record.id,
+    product_name: record.name,
+    items,
+    total_cost: Number(items.reduce((sum, item) => sum + item.line_cost, 0).toFixed(6)),
   };
 }
 
@@ -849,6 +1003,19 @@ export async function listProducts(): Promise<ProductDto[]> {
   const products = await prisma.product.findMany({
     where: { isActive: true },
     orderBy: { createdAt: "asc" },
+    include: {
+      recipeItems: {
+        select: {
+          quantity: true,
+          ingredient: {
+            select: {
+              purchasePrice: true,
+              purchaseQuantity: true,
+            },
+          },
+        },
+      },
+    },
   });
 
   return products.map((product) =>
@@ -857,6 +1024,210 @@ export async function listProducts(): Promise<ProductDto[]> {
       revenueAccountId: product.revenueAccountId,
     }),
   );
+}
+
+export async function listIngredients(): Promise<IngredientDto[]> {
+  const ingredients = await prisma.ingredient.findMany({
+    where: { isActive: true },
+    orderBy: [{ name: "asc" }],
+  });
+
+  return ingredients.map(mapIngredientRecord);
+}
+
+export async function createIngredient(input: CreateIngredientInputDto): Promise<IngredientDto> {
+  const name = input.name.trim();
+
+  if (!name) {
+    throw new Error("INVALID_INGREDIENT");
+  }
+
+  if (input.purchase_price < 0) {
+    throw new Error("INVALID_INGREDIENT_PRICE");
+  }
+
+  if (input.purchase_quantity <= 0) {
+    throw new Error("INVALID_INGREDIENT_QUANTITY");
+  }
+
+  const ingredient = await prisma.ingredient.create({
+    data: {
+      name,
+      unit: assertIngredientUnit(input.unit),
+      purchasePrice: asMoney(input.purchase_price),
+      purchaseQuantity: new Prisma.Decimal(input.purchase_quantity.toFixed(3)),
+      notes: input.notes?.trim() ? input.notes.trim() : null,
+      isActive: true,
+    },
+  });
+
+  return mapIngredientRecord(ingredient);
+}
+
+export async function updateIngredient(input: UpdateIngredientInputDto): Promise<IngredientDto> {
+  const ingredientId = input.ingredient_id.trim();
+  const name = input.name.trim();
+
+  if (!ingredientId) {
+    throw new Error("INGREDIENT_NOT_FOUND");
+  }
+
+  if (!name) {
+    throw new Error("INVALID_INGREDIENT");
+  }
+
+  if (input.purchase_price < 0) {
+    throw new Error("INVALID_INGREDIENT_PRICE");
+  }
+
+  if (input.purchase_quantity <= 0) {
+    throw new Error("INVALID_INGREDIENT_QUANTITY");
+  }
+
+  const existing = await prisma.ingredient.findUnique({ where: { id: ingredientId } });
+  if (!existing) {
+    throw new Error("INGREDIENT_NOT_FOUND");
+  }
+
+  const updated = await prisma.ingredient.update({
+    where: { id: ingredientId },
+    data: {
+      name,
+      unit: assertIngredientUnit(input.unit),
+      purchasePrice: asMoney(input.purchase_price),
+      purchaseQuantity: new Prisma.Decimal(input.purchase_quantity.toFixed(3)),
+      notes: input.notes?.trim() ? input.notes.trim() : null,
+    },
+  });
+
+  return mapIngredientRecord(updated);
+}
+
+export async function getProductRecipe(productId: string): Promise<ProductRecipeDto> {
+  const normalizedProductId = productId.trim();
+  if (!normalizedProductId) {
+    throw new Error("PRODUCT_NOT_FOUND");
+  }
+
+  const product = await prisma.product.findUnique({
+    where: { id: normalizedProductId },
+    select: {
+      id: true,
+      name: true,
+      recipeItems: {
+        orderBy: [{ createdAt: "asc" }],
+        select: {
+          id: true,
+          quantity: true,
+          productId: true,
+          ingredient: {
+            select: {
+              id: true,
+              name: true,
+              unit: true,
+              purchasePrice: true,
+              purchaseQuantity: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (!product) {
+    throw new Error("PRODUCT_NOT_FOUND");
+  }
+
+  return mapProductRecipeRecord(product);
+}
+
+export async function replaceProductRecipe(input: ReplaceProductRecipeInputDto): Promise<ProductRecipeDto> {
+  const productId = input.product_id.trim();
+  if (!productId) {
+    throw new Error("PRODUCT_NOT_FOUND");
+  }
+
+  const normalizedItems = input.items.map((item) => ({
+    ingredient_id: item.ingredient_id.trim(),
+    quantity: item.quantity,
+  }));
+
+  if (normalizedItems.some((item) => !item.ingredient_id)) {
+    throw new Error("INGREDIENT_NOT_FOUND");
+  }
+
+  if (normalizedItems.some((item) => item.quantity <= 0)) {
+    throw new Error("INVALID_RECIPE_QUANTITY");
+  }
+
+  const uniqueIngredientIds = new Set(normalizedItems.map((item) => item.ingredient_id));
+  if (uniqueIngredientIds.size !== normalizedItems.length) {
+    throw new Error("DUPLICATE_RECIPE_INGREDIENT");
+  }
+
+  const recipe = await prisma.$transaction(async (tx) => {
+    const product = await tx.product.findUnique({ where: { id: productId }, select: { id: true } });
+    if (!product) {
+      throw new Error("PRODUCT_NOT_FOUND");
+    }
+
+    if (normalizedItems.length > 0) {
+      const ingredients = await tx.ingredient.findMany({
+        where: {
+          id: { in: Array.from(uniqueIngredientIds) },
+          isActive: true,
+        },
+        select: { id: true },
+      });
+
+      if (ingredients.length !== normalizedItems.length) {
+        throw new Error("INGREDIENT_NOT_FOUND");
+      }
+    }
+
+    await tx.productRecipeItem.deleteMany({ where: { productId } });
+
+    if (normalizedItems.length > 0) {
+      await tx.productRecipeItem.createMany({
+        data: normalizedItems.map((item) => ({
+          productId,
+          ingredientId: item.ingredient_id,
+          quantity: new Prisma.Decimal(item.quantity.toFixed(3)),
+        })),
+      });
+    }
+
+    return tx.product.findUnique({
+      where: { id: productId },
+      select: {
+        id: true,
+        name: true,
+        recipeItems: {
+          orderBy: [{ createdAt: "asc" }],
+          select: {
+            id: true,
+            quantity: true,
+            productId: true,
+            ingredient: {
+              select: {
+                id: true,
+                name: true,
+                unit: true,
+                purchasePrice: true,
+                purchaseQuantity: true,
+              },
+            },
+          },
+        },
+      },
+    });
+  });
+
+  if (!recipe) {
+    throw new Error("PRODUCT_NOT_FOUND");
+  }
+
+  return mapProductRecipeRecord(recipe);
 }
 
 export async function listProductStockAdjustments(productId?: string): Promise<ProductStockAdjustmentDto[]> {

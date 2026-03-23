@@ -7,9 +7,12 @@ import type {
   ShiftSummary,
   EntityId,
   ExpenseResult,
+  IngredientRecord,
   MemberSubscriptionRecord,
   OrderResult,
   Product,
+  ProductRecipeRecord,
+  ProductRecipeItemRecord,
   ProductStockAdjustmentRecord,
   SalesEntryItem,
   ShiftInventorySummaryRow,
@@ -35,9 +38,12 @@ import type {
   CreateAdminUserInput,
   CreateChartOfAccountInput,
   CreateMemberInput,
+  CreateIngredientInput,
   CreateProductInput,
   CreateProductStockAdjustmentInput,
+  ReplaceProductRecipeInput,
   UpdateMemberInput,
+  UpdateIngredientInput,
   UpdateProductInput,
 } from "@/features/adapters/types";
 import { prependMemberRegistry, readMemberRegistry, writeMemberRegistry } from "@/features/members/member-registry";
@@ -73,9 +79,43 @@ let orderSequence = 1001;
 let expenseSequence = 3001;
 let shiftSequence = 701;
 let productSequence = Math.max(...mockProducts.map((item) => Number(item.product_id))) + 1;
+let ingredientSequence = 1;
 let memberSequence = 1;
 let chartOfAccountsState = mockChartOfAccounts.map((item) => ({ ...item }));
 let productsState = mockProducts.map((item) => ({ ...item }));
+let ingredientsState: IngredientRecord[] = [
+  {
+    ingredient_id: "ingredient-1",
+    name: "เมล็ดกาแฟคั่วเข้ม",
+    unit: "G",
+    purchase_quantity: 1000,
+    purchase_price: 690,
+    cost_per_unit: 0.69,
+    notes: "กาแฟ 1 กิโลกรัม",
+    is_active: true,
+  },
+  {
+    ingredient_id: "ingredient-2",
+    name: "นม Meiji",
+    unit: "ML",
+    purchase_quantity: 946,
+    purchase_price: 100,
+    cost_per_unit: 0.105708,
+    notes: null,
+    is_active: true,
+  },
+  {
+    ingredient_id: "ingredient-3",
+    name: "น้ำผึ้ง",
+    unit: "G",
+    purchase_quantity: 200,
+    purchase_price: 190,
+    cost_per_unit: 0.95,
+    notes: null,
+    is_active: true,
+  },
+];
+let productRecipeItemsState: ProductRecipeItemRecord[] = [];
 let productStockAdjustmentsState: ProductStockAdjustmentRecord[] = [];
 let productStockAdjustmentSequence = 1;
 let managedUsersState: MockManagedUser[] = [];
@@ -333,6 +373,14 @@ function cloneProduct(product: Product) {
   return { ...product };
 }
 
+function cloneIngredient(ingredient: IngredientRecord) {
+  return { ...ingredient };
+}
+
+function cloneRecipeItem(item: ProductRecipeItemRecord) {
+  return { ...item };
+}
+
 function cloneProductStockAdjustment(adjustment: ProductStockAdjustmentRecord) {
   return { ...adjustment };
 }
@@ -460,8 +508,42 @@ export function resetMockAdapterState() {
   expenseSequence = 3001;
   shiftSequence = 701;
   productSequence = Math.max(...mockProducts.map((item) => Number(item.product_id))) + 1;
+  ingredientSequence = 4;
   chartOfAccountsState = mockChartOfAccounts.map((item) => ({ ...item }));
   productsState = mockProducts.map((item) => ({ ...item }));
+  ingredientsState = [
+    {
+      ingredient_id: "ingredient-1",
+      name: "เมล็ดกาแฟคั่วเข้ม",
+      unit: "G",
+      purchase_quantity: 1000,
+      purchase_price: 690,
+      cost_per_unit: 0.69,
+      notes: "กาแฟ 1 กิโลกรัม",
+      is_active: true,
+    },
+    {
+      ingredient_id: "ingredient-2",
+      name: "นม Meiji",
+      unit: "ML",
+      purchase_quantity: 946,
+      purchase_price: 100,
+      cost_per_unit: 0.105708,
+      notes: null,
+      is_active: true,
+    },
+    {
+      ingredient_id: "ingredient-3",
+      name: "น้ำผึ้ง",
+      unit: "G",
+      purchase_quantity: 200,
+      purchase_price: 190,
+      cost_per_unit: 0.95,
+      notes: null,
+      is_active: true,
+    },
+  ];
+  productRecipeItemsState = [];
   productStockAdjustmentsState = [];
   productStockAdjustmentSequence = 1;
   managedUsersState = [];
@@ -517,7 +599,117 @@ export const mockAppAdapter: AppAdapter = {
 
   async listProducts() {
     await sleep(180);
-    return productsState.map((product) => ({ ...product } satisfies Product));
+    return productsState.map((product) => {
+      const recipeItems = productRecipeItemsState.filter((item) => String(item.product_id) === String(product.product_id));
+      const recipeTotalCost = recipeItems.length > 0 ? recipeItems.reduce((sum, item) => sum + item.line_cost, 0) : null;
+      return {
+        ...product,
+        recipe_total_cost: recipeTotalCost,
+        recipe_item_count: recipeItems.length,
+      } satisfies Product;
+    });
+  },
+
+  async listIngredients() {
+    await sleep(120);
+    return ingredientsState.filter((ingredient) => ingredient.is_active).map(cloneIngredient);
+  },
+
+  async createIngredient(input: CreateIngredientInput) {
+    await sleep(160);
+
+    if (!input.name.trim()) {
+      throw createError("INVALID_INGREDIENT", "กรุณาระบุชื่อวัตถุดิบ");
+    }
+
+    if (input.purchasePrice < 0) {
+      throw createError("INVALID_INGREDIENT_PRICE", "ราคาซื้อต้องเป็นศูนย์หรือมากกว่า");
+    }
+
+    if (input.purchaseQuantity <= 0) {
+      throw createError("INVALID_INGREDIENT_QUANTITY", "ปริมาณที่ซื้อต้องมากกว่า 0");
+    }
+
+    if (!["G", "ML", "PIECE"].includes(input.unit)) {
+      throw createError("INVALID_INGREDIENT_UNIT", "หน่วยวัตถุดิบไม่ถูกต้อง");
+    }
+
+    if (ingredientsState.some((ingredient) => ingredient.name.toLowerCase() === input.name.trim().toLowerCase())) {
+      throw createError("DUPLICATE_INGREDIENT_NAME", "ชื่อวัตถุดิบนี้มีอยู่แล้ว");
+    }
+
+    const nextIngredient: IngredientRecord = {
+      ingredient_id: `ingredient-${ingredientSequence}`,
+      name: input.name.trim(),
+      unit: input.unit,
+      purchase_quantity: Number(input.purchaseQuantity.toFixed(3)),
+      purchase_price: roundMoney(input.purchasePrice),
+      cost_per_unit: Number((input.purchasePrice / input.purchaseQuantity).toFixed(6)),
+      notes: input.notes?.trim() ? input.notes.trim() : null,
+      is_active: true,
+    };
+
+    ingredientSequence += 1;
+    ingredientsState = [...ingredientsState, nextIngredient];
+    return cloneIngredient(nextIngredient);
+  },
+
+  async updateIngredient(input: UpdateIngredientInput) {
+    await sleep(160);
+
+    const targetIngredient = ingredientsState.find((ingredient) => String(ingredient.ingredient_id) === String(input.ingredientId));
+    if (!targetIngredient) {
+      throw createError("INGREDIENT_NOT_FOUND", "ไม่พบวัตถุดิบที่ต้องการแก้ไข");
+    }
+
+    if (!input.name.trim()) {
+      throw createError("INVALID_INGREDIENT", "กรุณาระบุชื่อวัตถุดิบ");
+    }
+
+    if (input.purchasePrice < 0) {
+      throw createError("INVALID_INGREDIENT_PRICE", "ราคาซื้อต้องเป็นศูนย์หรือมากกว่า");
+    }
+
+    if (input.purchaseQuantity <= 0) {
+      throw createError("INVALID_INGREDIENT_QUANTITY", "ปริมาณที่ซื้อต้องมากกว่า 0");
+    }
+
+    if (!["G", "ML", "PIECE"].includes(input.unit)) {
+      throw createError("INVALID_INGREDIENT_UNIT", "หน่วยวัตถุดิบไม่ถูกต้อง");
+    }
+
+    if (ingredientsState.some((ingredient) => String(ingredient.ingredient_id) !== String(input.ingredientId) && ingredient.name.toLowerCase() === input.name.trim().toLowerCase())) {
+      throw createError("DUPLICATE_INGREDIENT_NAME", "ชื่อวัตถุดิบนี้มีอยู่แล้ว");
+    }
+
+    ingredientsState = ingredientsState.map((ingredient) =>
+      String(ingredient.ingredient_id) === String(input.ingredientId)
+        ? {
+            ...ingredient,
+            name: input.name.trim(),
+            unit: input.unit,
+            purchase_quantity: Number(input.purchaseQuantity.toFixed(3)),
+            purchase_price: roundMoney(input.purchasePrice),
+            cost_per_unit: Number((input.purchasePrice / input.purchaseQuantity).toFixed(6)),
+            notes: input.notes?.trim() ? input.notes.trim() : null,
+          }
+        : ingredient,
+    );
+
+    const updatedIngredient = ingredientsState.find((ingredient) => String(ingredient.ingredient_id) === String(input.ingredientId))!;
+    productRecipeItemsState = productRecipeItemsState.map((item) =>
+      String(item.ingredient_id) === String(updatedIngredient.ingredient_id)
+        ? {
+            ...item,
+            ingredient_name: updatedIngredient.name,
+            ingredient_unit: updatedIngredient.unit,
+            ingredient_cost_per_unit: updatedIngredient.cost_per_unit,
+            line_cost: Number((updatedIngredient.cost_per_unit * item.quantity).toFixed(6)),
+          }
+        : item,
+    );
+
+    return cloneIngredient(updatedIngredient);
   },
 
   async createProduct(input: CreateProductInput) {
@@ -639,6 +831,74 @@ export const mockAppAdapter: AppAdapter = {
     }
 
     return cloneProduct(updatedProduct);
+  },
+
+  async getProductRecipe(productId: EntityId) {
+    await sleep(120);
+
+    const product = productsState.find((candidate) => String(candidate.product_id) === String(productId));
+    if (!product) {
+      throw createError("PRODUCT_NOT_FOUND", "ไม่พบสินค้าที่ต้องการดูสูตร");
+    }
+
+    const items = productRecipeItemsState
+      .filter((item) => String(item.product_id) === String(productId))
+      .map(cloneRecipeItem);
+
+    return {
+      product_id: product.product_id,
+      product_name: product.name,
+      items,
+      total_cost: Number(items.reduce((sum, item) => sum + item.line_cost, 0).toFixed(6)),
+    } satisfies ProductRecipeRecord;
+  },
+
+  async replaceProductRecipe(input: ReplaceProductRecipeInput) {
+    await sleep(180);
+
+    const product = productsState.find((candidate) => String(candidate.product_id) === String(input.productId));
+    if (!product) {
+      throw createError("PRODUCT_NOT_FOUND", "ไม่พบสินค้าที่ต้องการแก้ไขสูตร");
+    }
+
+    const uniqueIngredientIds = new Set(input.items.map((item) => String(item.ingredientId)));
+    if (uniqueIngredientIds.size !== input.items.length) {
+      throw createError("DUPLICATE_RECIPE_INGREDIENT", "วัตถุดิบในสูตรซ้ำกัน");
+    }
+
+    if (input.items.some((item) => item.quantity <= 0)) {
+      throw createError("INVALID_RECIPE_QUANTITY", "ปริมาณวัตถุดิบในสูตรต้องมากกว่า 0");
+    }
+
+    const nextItems: ProductRecipeItemRecord[] = input.items.map((item, index) => {
+      const ingredient = ingredientsState.find((candidate) => String(candidate.ingredient_id) === String(item.ingredientId) && candidate.is_active);
+      if (!ingredient) {
+        throw createError("INGREDIENT_NOT_FOUND", "ไม่พบวัตถุดิบที่เลือก");
+      }
+
+      return {
+        recipe_item_id: `recipe-${String(input.productId)}-${index + 1}`,
+        product_id: product.product_id,
+        ingredient_id: ingredient.ingredient_id,
+        ingredient_name: ingredient.name,
+        ingredient_unit: ingredient.unit,
+        quantity: Number(item.quantity.toFixed(3)),
+        ingredient_cost_per_unit: ingredient.cost_per_unit,
+        line_cost: Number((ingredient.cost_per_unit * item.quantity).toFixed(6)),
+      } satisfies ProductRecipeItemRecord;
+    });
+
+    productRecipeItemsState = [
+      ...productRecipeItemsState.filter((item) => String(item.product_id) !== String(input.productId)),
+      ...nextItems,
+    ];
+
+    return {
+      product_id: product.product_id,
+      product_name: product.name,
+      items: nextItems.map(cloneRecipeItem),
+      total_cost: Number(nextItems.reduce((sum, item) => sum + item.line_cost, 0).toFixed(6)),
+    } satisfies ProductRecipeRecord;
   },
 
   async listProductStockAdjustments(productId?: EntityId) {
