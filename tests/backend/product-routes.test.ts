@@ -151,6 +151,52 @@ describe("phase2 product routes", () => {
     expect(body.code).toBe("FORBIDDEN");
   });
 
+  it("returns 400 when membership display category is submitted with non-membership product type", async () => {
+    mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "ADMIN" });
+    mockCreateProduct.mockRejectedValue(new Error("INVALID_MEMBERSHIP_PRODUCT_CONTRACT"));
+
+    const response = await productsPOST(
+      new Request("http://localhost/api/v1/products", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sku: "MEM-DRIFT-001",
+          name: "Membership-looking service",
+          price: 999,
+          product_type: "SERVICE",
+          pos_category: "MEMBERSHIP",
+        }),
+      }),
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(body.code).toBe("INVALID_MEMBERSHIP_PRODUCT_CONTRACT");
+  });
+
+  it("returns 400 when membership product is missing explicit membership metadata", async () => {
+    mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "ADMIN" });
+    mockCreateProduct.mockRejectedValue(new Error("MEMBERSHIP_METADATA_REQUIRED"));
+
+    const response = await productsPOST(
+      new Request("http://localhost/api/v1/products", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sku: "MEM-NEW-001",
+          name: "New Monthly Membership",
+          price: 1500,
+          product_type: "MEMBERSHIP",
+          pos_category: "MEMBERSHIP",
+        }),
+      }),
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(body.code).toBe("MEMBERSHIP_METADATA_REQUIRED");
+  });
+
   it("returns 200 when cashier reads stock adjustment history", async () => {
     mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "CASHIER" });
     mockListProductStockAdjustments.mockResolvedValue([
@@ -321,6 +367,32 @@ describe("phase2 product routes", () => {
 
     expect(response.status).toBe(409);
     expect(body.code).toBe("DUPLICATE_PRODUCT_SKU");
+  });
+
+  it("returns 400 when product update would keep membership display with non-membership business type", async () => {
+    mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "OWNER" });
+    mockUpdateProduct.mockRejectedValue(new Error("INVALID_MEMBERSHIP_PRODUCT_CONTRACT"));
+
+    const response = await productsPATCH(
+      new Request("http://localhost/api/v1/products/p2", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sku: "PT-001",
+          name: "PT Session Plus",
+          price: 1500,
+          pos_category: "MEMBERSHIP",
+        }),
+      }),
+      {
+        params: Promise.resolve({ productId: "p2" }),
+      },
+    );
+
+    const body = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(body.code).toBe("INVALID_MEMBERSHIP_PRODUCT_CONTRACT");
   });
 
   it("returns 200 with ingredient list", async () => {

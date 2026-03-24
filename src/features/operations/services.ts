@@ -101,6 +101,8 @@ export type UpdateProductInputDto = {
   membership_duration_days?: number | null;
 };
 
+type MembershipPeriod = ProductDto["membership_period"];
+
 export type ProductStockAdjustmentDto = {
   adjustment_id: string;
   product_id: string;
@@ -885,6 +887,16 @@ function normalizeProductTagline(value?: string | null) {
   return trimmed ? trimmed : null;
 }
 
+function isMembershipPeriod(value: string | null | undefined): value is NonNullable<MembershipPeriod> {
+  return (
+    value === "DAILY" ||
+    value === "MONTHLY" ||
+    value === "QUARTERLY" ||
+    value === "SEMIANNUAL" ||
+    value === "YEARLY"
+  );
+}
+
 function normalizeFeaturedSlot(value?: number | null) {
   if (value == null) {
     return null;
@@ -915,6 +927,35 @@ function resolvePosCategoryCode(input: {
   }
 
   return input.posCategory;
+}
+
+function assertMembershipProductContract(input: {
+  productType: "GOODS" | "SERVICE" | "MEMBERSHIP";
+  posCategory?: string | null;
+  membershipPeriod?: MembershipPeriod;
+  membershipDurationDays?: number | null;
+}) {
+  const hasMembershipDisplayCategory = input.posCategory === "MEMBERSHIP";
+
+  if (hasMembershipDisplayCategory && input.productType !== "MEMBERSHIP") {
+    throw new Error("INVALID_MEMBERSHIP_PRODUCT_CONTRACT");
+  }
+
+  if (input.productType !== "MEMBERSHIP") {
+    return;
+  }
+
+  if (input.posCategory != null && input.posCategory !== "MEMBERSHIP") {
+    throw new Error("INVALID_MEMBERSHIP_PRODUCT_CONTRACT");
+  }
+
+  if (!isMembershipPeriod(input.membershipPeriod)) {
+    throw new Error("MEMBERSHIP_METADATA_REQUIRED");
+  }
+
+  if (!Number.isInteger(input.membershipDurationDays) || (input.membershipDurationDays ?? 0) <= 0) {
+    throw new Error("MEMBERSHIP_METADATA_REQUIRED");
+  }
 }
 
 async function clearFeaturedSlotConflict(
@@ -1953,6 +1994,12 @@ export async function createProduct(input: CreateProductInputDto): Promise<Produ
   }
 
   const productType = assertProductType(input.product_type);
+  assertMembershipProductContract({
+    productType,
+    posCategory: input.pos_category,
+    membershipPeriod: input.membership_period,
+    membershipDurationDays: input.membership_duration_days ?? null,
+  });
   const revenueAccountId = await resolveRevenueAccountId(prisma, input.revenue_account_id);
   const stockOnHand = productType === "GOODS" ? Math.max(0, input.stock_on_hand ?? 0) : null;
   const tagline = normalizeProductTagline(input.tagline);
@@ -2020,6 +2067,16 @@ export async function updateProduct(input: UpdateProductInputDto): Promise<Produ
   const revenueAccountId = await resolveRevenueAccountId(prisma, input.revenue_account_id);
   const productType = assertProductType(existing.productType);
   const tagline = normalizeProductTagline(input.tagline);
+  const nextMembershipPeriod = input.membership_period ?? inferMembershipPeriod(existing.sku, existing.membershipPeriod);
+  const nextMembershipDurationDays = input.membership_duration_days
+    ?? existing.membershipDurationDays
+    ?? defaultMembershipDurationDays(nextMembershipPeriod);
+  assertMembershipProductContract({
+    productType,
+    posCategory: input.pos_category ?? existing.posCategoryCode,
+    membershipPeriod: nextMembershipPeriod,
+    membershipDurationDays: nextMembershipDurationDays,
+  });
   const posCategoryCode = resolvePosCategoryCode({
     sku,
     productType,
@@ -2029,8 +2086,8 @@ export async function updateProduct(input: UpdateProductInputDto): Promise<Produ
   const membershipMetadata = normalizeMembershipMetadata({
     productType,
     sku,
-    membershipPeriod: input.membership_period ?? inferMembershipPeriod(existing.sku, existing.membershipPeriod),
-    membershipDurationDays: input.membership_duration_days ?? existing.membershipDurationDays ?? null,
+    membershipPeriod: nextMembershipPeriod,
+    membershipDurationDays: nextMembershipDurationDays,
   });
 
   const updated = await prisma.$transaction(async (tx) => {

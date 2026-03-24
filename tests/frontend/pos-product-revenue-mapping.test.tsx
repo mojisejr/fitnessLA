@@ -123,6 +123,74 @@ describe("POS product revenue mapping", () => {
         }, { timeout: 20000 });
     }, 30000);
 
+    it("sends explicit membership metadata when creating a membership product", async () => {
+        const createProductSpy = vi.spyOn(mockAppAdapter, "createProduct");
+
+        renderWithProviders(<PosProductsPage />);
+
+        await waitForPosReady();
+
+        fireEvent.click(screen.getAllByRole("button", { name: "เพิ่มสินค้าใหม่" })[0]);
+        fireEvent.change(screen.getByLabelText("ประเภทสินค้าใหม่"), {
+            target: { value: "MEMBERSHIP" },
+        });
+        fireEvent.change(screen.getByLabelText("SKU"), {
+            target: { value: "MEM-QTR-NEW" },
+        });
+        fireEvent.change(screen.getByLabelText("ชื่อสินค้า"), {
+            target: { value: "Quarterly Membership" },
+        });
+        fireEvent.change(screen.getByLabelText("ราคา"), {
+            target: { value: "3900" },
+        });
+        fireEvent.change(screen.getByLabelText("รอบสมาชิก"), {
+            target: { value: "QUARTERLY" },
+        });
+        fireEvent.change(screen.getByLabelText("จำนวนวันสมาชิก"), {
+            target: { value: "90" },
+        });
+        fireEvent.click(screen.getByRole("button", { name: "สร้างสินค้าใหม่" }));
+
+        await waitFor(() => {
+            expect(createProductSpy).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    productType: "MEMBERSHIP",
+                    posCategory: "MEMBERSHIP",
+                    membershipPeriod: "QUARTERLY",
+                    membershipDurationDays: 90,
+                    stockOnHand: null,
+                }),
+            );
+        }, { timeout: 20000 });
+    }, 30000);
+
+    it("sends explicit membership metadata when updating a membership product", async () => {
+        const updateProductSpy = vi.spyOn(mockAppAdapter, "updateProduct");
+
+        renderWithProviders(<PosProductsPage />);
+
+        await waitForPosReady();
+
+        fireEvent.click(screen.getByText("Monthly Membership"));
+        fireEvent.change(screen.getByLabelText("รอบสมาชิก"), {
+            target: { value: "YEARLY" },
+        });
+        fireEvent.change(screen.getByLabelText("จำนวนวันสมาชิก"), {
+            target: { value: "365" },
+        });
+        fireEvent.click(screen.getByRole("button", { name: "บันทึกสินค้า" }));
+
+        await waitFor(() => {
+            expect(updateProductSpy).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    membershipPeriod: "YEARLY",
+                    membershipDurationDays: 365,
+                    posCategory: "MEMBERSHIP",
+                }),
+            );
+        }, { timeout: 20000 });
+    }, 30000);
+
     it("shows pinned products for quick selection", async () => {
         renderWithProviders(<PosProductsPage />);
 

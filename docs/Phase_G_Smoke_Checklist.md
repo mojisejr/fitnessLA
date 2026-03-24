@@ -105,6 +105,7 @@ Network assertions:
 - [ ] request เป็น `POST /api/v1/products`
 - [ ] payload มี `revenue_account_id`
 - [ ] payload มี `stock_on_hand` เมื่อสร้างสินค้า `GOODS`
+- [ ] ถ้าสร้างสินค้า `MEMBERSHIP` payload ต้องมี `product_type: MEMBERSHIP`, `pos_category: MEMBERSHIP`, `membership_period`, และ `membership_duration_days`
 - [ ] status code เป็น 2xx
 
 ## Screen 6: Product Update Flow
@@ -122,6 +123,7 @@ Network assertions:
 - [ ] request เป็น `PATCH /api/v1/products/:productId`
 - [ ] payload มี `revenue_account_id`
 - [ ] ถ้าเป็น goods payload มี `stock_on_hand`
+- [ ] ถ้าแก้ membership product payload ต้องคง `pos_category: MEMBERSHIP` และส่ง `membership_period` + `membership_duration_days`
 - [ ] status code เป็น 2xx
 
 ## Screen 7: Membership Checkout
@@ -133,6 +135,7 @@ Path: `/pos`
 - [ ] เลือกวิธีชำระเงิน
 - [ ] กด checkout สำเร็จ
 - [ ] ได้ success state หรือ receipt state ตาม UI ปัจจุบัน
+- [ ] มีอย่างน้อย 1 รอบที่ใช้ membership product ที่สร้างใหม่ในหน้านี้เอง ไม่ใช่ใช้แต่ product seed เดิม
 
 Network assertions:
 
@@ -173,6 +176,13 @@ Network assertions:
 
 - [ ] request `GET /api/v1/members`
 - [ ] status code เป็น `200`
+- [ ] member ใหม่ที่มาจาก product ที่เพิ่งสร้าง แสดงผลหลัง reload โดยไม่ต้องแก้ SKU หรือแก้ข้อมูลผ่านฐานข้อมูล
+
+## Legacy Contract Audit
+
+- [ ] รัน `npm run db:audit:membership-product-contract`
+- [ ] ตรวจว่ากลุ่ม `displayMembershipButWrongType` เป็น `0` หรือมีแผน remediation ที่อนุมัติแล้ว
+- [ ] ถ้ามี findings ให้แนบ JSON audit เป็น evidence ก่อนแก้ข้อมูล production
 
 ## Screen 9: Close Shift
 

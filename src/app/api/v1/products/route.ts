@@ -175,6 +175,26 @@ export async function POST(request: Request) {
       );
     }
 
+    if (error instanceof Error && error.message === "INVALID_MEMBERSHIP_PRODUCT_CONTRACT") {
+      return NextResponse.json(
+        {
+          code: "INVALID_MEMBERSHIP_PRODUCT_CONTRACT",
+          message: "สินค้าที่แสดงเป็นหมวดสมาชิกต้องบันทึกเป็น MEMBERSHIP และใช้หมวดขาย POS เป็น MEMBERSHIP เท่านั้น",
+        },
+        { status: 400 },
+      );
+    }
+
+    if (error instanceof Error && error.message === "MEMBERSHIP_METADATA_REQUIRED") {
+      return NextResponse.json(
+        {
+          code: "MEMBERSHIP_METADATA_REQUIRED",
+          message: "สินค้าสมาชิกต้องระบุรอบสมาชิกและจำนวนวันสมาชิกให้ครบถ้วน",
+        },
+        { status: 400 },
+      );
+    }
+
     if (error instanceof Error && error.message === "INVALID_FEATURED_SLOT") {
       return NextResponse.json(
         {

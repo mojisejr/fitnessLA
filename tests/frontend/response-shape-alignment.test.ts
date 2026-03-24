@@ -371,8 +371,11 @@ describe("real-app-adapter — response shape alignment", () => {
       sku: "MEM-001",
       name: "Monthly Membership",
       price: 1500,
-      productType: "SERVICE",
+      productType: "MEMBERSHIP",
+      posCategory: "MEMBERSHIP",
       revenueAccountId: "coa-4101",
+      membershipPeriod: "MONTHLY",
+      membershipDurationDays: 30,
     });
 
     expect(result).toMatchObject({
@@ -405,7 +408,10 @@ describe("real-app-adapter — response shape alignment", () => {
       sku: "MEM-001",
       name: "Monthly Membership Plus",
       price: 1800,
+      posCategory: "MEMBERSHIP",
       revenueAccountId: "coa-4102",
+      membershipPeriod: "MONTHLY",
+      membershipDurationDays: 30,
     });
 
     expect(result).toMatchObject({
