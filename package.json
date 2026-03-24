@@ -3,16 +3,24 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --webpack",
+    "dev": "prisma generate && next dev --webpack",
     "build": "prisma generate && next build --webpack",
     "start": "next start",
     "postinstall": "prisma generate",
     "lint": "eslint",
     "test": "vitest run",
+    "test:browser:smoke": "playwright test",
+    "test:browser:smoke:headed": "playwright test --headed",
+    "test:browser:smoke:real-account": "node --env-file=.env ./node_modules/@playwright/test/cli.js test tests/browser/auth-real-accounts.smoke.spec.ts -c playwright.local.config.ts",
+    "test:browser:smoke:real-account:headed": "node --env-file=.env ./node_modules/@playwright/test/cli.js test tests/browser/auth-real-accounts.smoke.spec.ts -c playwright.local.config.ts --headed",
+    "test:browser:install": "playwright install chromium",
     "db:migrate": "prisma migrate dev --name init_accounting_auth",
     "db:seed": "prisma db seed",
     "db:seed:users": "node prisma/seed-users.mjs",
-    "db:seed:real-mode": "node --env-file=.env scripts/seed-real-mode.mjs"
+    "db:seed:real-mode": "node --env-file=.env scripts/seed-real-mode.mjs",
+    "db:sync:pos-catalog": "node --env-file=.env scripts/sync-pos-catalog.mjs",
+    "db:verify:pos-products": "node --env-file=.env scripts/verify-pos-products.mjs",
+    "db:audit:membership-product-contract": "node --env-file=.env scripts/audit-membership-product-contract.mjs"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.4.2",
@@ -33,6 +41,7 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@playwright/test": "^1.58.2",
     "@tailwindcss/postcss": "^4",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",

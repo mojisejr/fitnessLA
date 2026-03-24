@@ -164,7 +164,7 @@ vi.mock("../../src/features/operations/services", () => ({
 }));
 
 async function runFlowOnce() {
-  mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "OWNER" });
+  mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "OWNER", full_name: "Pim Counter" });
 
   const openResponse = await openShiftPOST(
     new Request("http://localhost/api/v1/shifts/open", {
@@ -236,13 +236,13 @@ async function runFlowOnce() {
   const glResponse = await generalLedgerGET(
     new Request("http://localhost/api/v1/reports/gl?start_date=2026-03-15&end_date=2026-03-15"),
   );
-  const glText = await glResponse.text();
-  expect(glResponse.status).toBe(200);
+  const glBody = await glResponse.json();
+  expect(glResponse.status).toBe(404);
 
   return {
     dailySummary: dailyBody,
     shiftSummary: shiftBody,
-    glCsv: glText,
+    glBody,
   };
 }
 
@@ -267,7 +267,9 @@ describe("Phase 4 regression flow", () => {
         cash_shortage: 50,
       },
     });
-    expect(result.glCsv).toContain("Date,Account Code,Account Name,Debit,Credit,Description");
+    expect(result.glBody).toMatchObject({
+      code: "FEATURE_DISABLED",
+    });
   });
 
   it("produces deterministic outputs across two identical runs", async () => {
@@ -280,6 +282,6 @@ describe("Phase 4 regression flow", () => {
 
     expect(round2.dailySummary).toEqual(round1.dailySummary);
     expect(round2.shiftSummary).toEqual(round1.shiftSummary);
-    expect(round2.glCsv).toEqual(round1.glCsv);
+    expect(round2.glBody).toEqual(round1.glBody);
   });
 });

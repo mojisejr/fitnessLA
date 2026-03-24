@@ -188,6 +188,168 @@ describe("real-app-adapter — request payload shapes", () => {
     expect(init.credentials).toBe("include");
   });
 
+  it("2C-7c: deleteMember DELETEs the member endpoint with credentials included", async () => {
+    spyFetch({ member_id: "m-1", full_name: "Delete Me" });
+
+    await realAppAdapter.deleteMember("m-1");
+
+    const [url, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/v1/members/m-1");
+    expect(init.method).toBe("DELETE");
+    expect(init.credentials).toBe("include");
+  });
+
+  it("2C-7d: deleteTrainer DELETEs the trainer endpoint with credentials included", async () => {
+    spyFetch({ trainer_id: "t-1", full_name: "Delete Trainer" });
+
+    await realAppAdapter.deleteTrainer("t-1");
+
+    const [url, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/v1/trainers/t-1");
+    expect(init.method).toBe("DELETE");
+    expect(init.credentials).toBe("include");
+  });
+
+  it("2C-7e: deleteTrainingEnrollment DELETEs the trainer enrollment endpoint", async () => {
+    spyFetch({ enrollment_id: "e-1", customer_name: "Delete Me", package_name: "PT-10" });
+
+    await realAppAdapter.deleteTrainingEnrollment("e-1");
+
+    const [url, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/v1/trainers/enrollments/e-1");
+    expect(init.method).toBe("DELETE");
+    expect(init.credentials).toBe("include");
+  });
+
+  it("2C-7f: deleteTrainingEnrollments POSTs selected enrollment ids to bulk-delete endpoint", async () => {
+    spyFetch({ deleted_count: 2, deleted_enrollments: [] });
+
+    await realAppAdapter.deleteTrainingEnrollments(["e-1", "e-2"]);
+
+    const [url, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/v1/trainers/enrollments/bulk-delete");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(init.body as string)).toEqual({ enrollment_ids: ["e-1", "e-2"] });
+  });
+
+  it("2C-7g: deleteSalesEntry DELETEs the order endpoint with credentials included", async () => {
+    spyFetch({ order_id: "ord-1", order_number: "ORD-2026-0035" });
+
+    await realAppAdapter.deleteSalesEntry("ord-1");
+
+    const [url, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/v1/orders/ord-1");
+    expect(init.method).toBe("DELETE");
+    expect(init.credentials).toBe("include");
+  });
+
+  it("2C-7h: deleteSalesEntries POSTs selected order ids to bulk-delete endpoint", async () => {
+    spyFetch({ deleted_count: 2, deleted_orders: [] });
+
+    await realAppAdapter.deleteSalesEntries(["ord-1", "ord-2"]);
+
+    const [url, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/v1/orders/bulk-delete");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(init.body as string)).toEqual({ order_ids: ["ord-1", "ord-2"] });
+  });
+
+  it("2C-7i: createProduct POSTs tagline, pos_category, and featured_slot", async () => {
+    spyFetch({ product_id: "prod-1" });
+
+    await realAppAdapter.createProduct({
+      sku: "SHAKE-02",
+      name: "Choco Protein Shake",
+      tagline: "สูตรขายดีหลังออกกำลังกาย",
+      price: 115,
+      productType: "GOODS",
+      posCategory: "COFFEE",
+      featuredSlot: 2,
+      stockOnHand: 9,
+    });
+
+    const [url, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/v1/products");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      tagline: "สูตรขายดีหลังออกกำลังกาย",
+      pos_category: "COFFEE",
+      featured_slot: 2,
+    });
+  });
+
+  it("2C-7j: updateProduct PATCHes tagline, pos_category, and featured_slot", async () => {
+    spyFetch({ product_id: "prod-1" });
+
+    await realAppAdapter.updateProduct({
+      productId: "prod-1",
+      sku: "PT-01",
+      name: "Personal Training Session",
+      tagline: "จองง่ายที่หน้าเคาน์เตอร์",
+      price: 500,
+      posCategory: "TRAINING",
+      featuredSlot: 4,
+    });
+
+    const [url, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/v1/products/prod-1");
+    expect(init.method).toBe("PATCH");
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      tagline: "จองง่ายที่หน้าเคาน์เตอร์",
+      pos_category: "TRAINING",
+      featured_slot: 4,
+    });
+  });
+
+  it("2C-7k: createProduct POSTs explicit membership metadata for membership products", async () => {
+    spyFetch({ product_id: "prod-2" });
+
+    await realAppAdapter.createProduct({
+      sku: "MEM-QTR-01",
+      name: "Quarterly Membership",
+      price: 3900,
+      productType: "MEMBERSHIP",
+      posCategory: "MEMBERSHIP",
+      membershipPeriod: "QUARTERLY",
+      membershipDurationDays: 90,
+    });
+
+    const [url, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/v1/products");
+    expect(init.method).toBe("POST");
+    const payload = JSON.parse(init.body as string);
+    expect(payload).toMatchObject({
+      product_type: "MEMBERSHIP",
+      pos_category: "MEMBERSHIP",
+      membership_period: "QUARTERLY",
+      membership_duration_days: 90,
+    });
+    expect(payload).not.toHaveProperty("stock_on_hand");
+  });
+
+  it("2C-7l: updateProduct PATCHes membership metadata for membership products", async () => {
+    spyFetch({ product_id: "prod-2" });
+
+    await realAppAdapter.updateProduct({
+      productId: "prod-2",
+      sku: "MEM-QTR-01",
+      name: "Quarterly Membership Plus",
+      price: 4200,
+      posCategory: "MEMBERSHIP",
+      membershipPeriod: "QUARTERLY",
+      membershipDurationDays: 95,
+    });
+
+    const [url, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/v1/products/prod-2");
+    expect(init.method).toBe("PATCH");
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      pos_category: "MEMBERSHIP",
+      membership_period: "QUARTERLY",
+      membership_duration_days: 95,
+    });
+  });
+
   // ── 2D: Expenses ───────────────────────────────────────────────────────
 
   it("2D-8: createExpense with file sends FormData with receipt_file field", async () => {
@@ -235,6 +397,31 @@ describe("real-app-adapter — request payload shapes", () => {
     expect(formData.get("receipt_file")).toBeNull();
   });
 
+  it("2D-10: createAdminUser POSTs username, password, full_name, phone, and role", async () => {
+    spyFetch({
+      user_id: "user-1",
+      username: "june.desk",
+      full_name: "June Desk",
+      phone: "0812345678",
+      role: "ADMIN",
+    });
+
+    const request: CreateAdminUserInput = {
+      full_name: "June Desk",
+      phone: "0812345678",
+      username: "june.desk",
+      password: "deskpass123",
+      role: "ADMIN",
+    };
+
+    await realAppAdapter.createAdminUser(request);
+
+    const [url, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/v1/admin/users");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(init.body as string)).toEqual(request);
+  });
+
   it("2D-10: createExpense does NOT set Content-Type header (browser auto-sets multipart boundary)", async () => {
     spyFetch({ expense_id: "exp-3", status: "POSTED" });
 
@@ -262,37 +449,10 @@ describe("real-app-adapter — request payload shapes", () => {
       shift_discrepancies: 0,
     });
 
-    await realAppAdapter.getDailySummary("2026-03-10");
+    await realAppAdapter.getDailySummary({ period: "DAY", date: "2026-03-10" });
 
     const [url] = fetchSpy.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe("/api/v1/reports/daily-summary?date=2026-03-10");
+    expect(url).toBe("/api/v1/reports/daily-summary?period=DAY&date=2026-03-10");
   });
 
-  it("2E-12: createAdminUser POSTs /api/v1/admin/users with full_name, username, email, role", async () => {
-    spyFetch({
-      user_id: "new-1",
-      username: "jsmith",
-      full_name: "John Smith",
-      email: "jsmith@example.com",
-      role: "CASHIER",
-    });
-
-    const input: CreateAdminUserInput = {
-      full_name: "John Smith",
-      username: "jsmith",
-      email: "jsmith@example.com",
-      role: "CASHIER",
-    };
-    await realAppAdapter.createAdminUser(input);
-
-    const [url, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe("/api/v1/admin/users");
-    expect(init.method).toBe("POST");
-    expect(JSON.parse(init.body as string)).toMatchObject({
-      full_name: "John Smith",
-      username: "jsmith",
-      email: "jsmith@example.com",
-      role: "CASHIER",
-    });
-  });
 });

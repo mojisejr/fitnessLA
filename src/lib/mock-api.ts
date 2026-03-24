@@ -12,6 +12,7 @@ import type {
   UserSession,
 } from "@/lib/contracts";
 import { demoPassword, mockDailySummary, mockProducts, mockUsersByRole } from "@/lib/mock-data";
+import { buildEmptyPosSalesCategoryRows } from "@/lib/pos-categories";
 import { sleep } from "@/lib/utils";
 
 let orderSequence = 1001;
@@ -221,6 +222,10 @@ export async function fetchMockDailySummary(date: string): Promise<DailySummary>
 
   return {
     ...summary,
+    report_period: "DAY" as const,
+    range_start: date,
+    range_end: date,
+    sales_by_category: buildEmptyPosSalesCategoryRows(),
     sales_rows: buildMockDailySalesRows(date, summary),
     shift_rows: buildMockDailyShiftRows(date, summary.shift_discrepancies),
   };

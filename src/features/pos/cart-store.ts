@@ -3,6 +3,8 @@ import type { EntityId, Product } from "@/lib/contracts";
 
 export type CartLine = Product & {
   quantity: number;
+  trainer_id?: string;
+  trainer_name?: string;
 };
 
 export function addProductToCart(lines: CartLine[], product: Product) {
@@ -42,6 +44,20 @@ export const cartCountAtom = atom((get) =>
 export const addCartLineAtom = atom(null, (get, set, product: Product) => {
   set(cartLinesAtom, addProductToCart(get(cartLinesAtom), product));
 });
+
+export const setCartLineTrainerAtom = atom(
+  null,
+  (get, set, input: { productId: EntityId; trainerId?: string; trainerName?: string }) => {
+    set(
+      cartLinesAtom,
+      get(cartLinesAtom).map((line) =>
+        line.product_id === input.productId
+          ? { ...line, trainer_id: input.trainerId, trainer_name: input.trainerName }
+          : line,
+      ),
+    );
+  },
+);
 
 export const updateCartLineAtom = atom(
   null,

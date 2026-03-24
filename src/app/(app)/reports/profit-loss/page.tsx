@@ -1,102 +1,186 @@
 "use client";
 
+import { useEffect, useMemo, useState } from "react";
 import { RoleGuard } from "@/components/guards/role-guard";
-import { ReportPlaceholder } from "@/components/reports/report-placeholder";
+import { useAppAdapter } from "@/features/adapters/adapter-provider";
+import type { DailySummary } from "@/lib/contracts";
+import { formatCurrency, getErrorMessage } from "@/lib/utils";
 
-const profitLossComparisons = [
-  { label: "รายได้สมาชิก", current: 42000, previous: 39000, variance: 3000 },
-  { label: "รายได้บริการ", current: 33700, previous: 31200, variance: 2500 },
-  { label: "ค่าใช้จ่ายรวม", current: 21450, previous: 19980, variance: -1470 },
-  { label: "กำไรสุทธิ", current: 62750, previous: 58220, variance: 4530 },
-];
+function todayAsInput() {
+  return new Date().toISOString().slice(0, 10);
+}
 
-const maxPnLValue = Math.max(...profitLossComparisons.map((item) => Math.max(item.current, item.previous)));
+function firstDayOfMonthAsInput() {
+  const today = new Date();
+  return new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1)).toISOString().slice(0, 10);
+}
 
 export default function ProfitLossPage() {
+  const adapter = useAppAdapter();
+  const [startDate, setStartDate] = useState(firstDayOfMonthAsInput);
+  const [endDate, setEndDate] = useState(todayAsInput);
+  const [summary, setSummary] = useState<DailySummary | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    let isActive = true;
+
+    async function loadProfitAndLoss() {
+      setIsLoading(true);
+      setErrorMessage(null);
+
+      try {
+        const result = await adapter.getDailySummary({
+          period: "CUSTOM",
+          start_date: startDate,
+          end_date: endDate,
+        });
+
+        if (isActive) {
+          setSummary(result);
+        }
+      } catch (error) {
+        if (isActive) {
+          setSummary(null);
+          setErrorMessage(getErrorMessage(error, "ไม่สามารถโหลดงบกำไรขาดทุนได้"));
+        }
+      } finally {
+        if (isActive) {
+          setIsLoading(false);
+        }
+      }
+    }
+
+    void loadProfitAndLoss();
+
+    return () => {
+      isActive = false;
+    };
+  }, [adapter, startDate, endDate]);
+
+  const netProfit = summary?.total_sales ?? 0;
+  const totalExpenses = summary?.total_expenses ?? 0;
+  const operatingResult = summary ? summary.total_sales - summary.total_expenses : 0;
+  const isProfitable = operatingResult >= 0;
+
+  const paymentRows = useMemo(() => {
+    if (!summary) {
+      return [] as Array<{ label: string; value: number }>;
+    }
+
+    return [
+      { label: "เงินสด", value: summary.sales_by_method.CASH },
+      { label: "พร้อมเพย์", value: summary.sales_by_method.PROMPTPAY },
+      { label: "บัตรเครดิต", value: summary.sales_by_method.CREDIT_CARD },
+    ];
+  }, [summary]);
+
   return (
     <RoleGuard allowedRoles={["OWNER"]}>
-      <ReportPlaceholder
-        eyebrow="มุมมองบัญชีสำหรับเจ้าของ"
-        title="กำไรขาดทุน"
-        description="หน้านี้กำหนดรูปแบบการอ่านรายงานกำไรขาดทุนไว้ครบทั้งส่วนรายได้ ค่าใช้จ่าย และกำไรสุทธิ เพื่อให้ต่อข้อมูลจริงได้ทันทีเมื่อ contract พร้อม"
-        integrationStatus="โครงรายงานพร้อมเชื่อม P&L API"
-        demoNote="หน้ารายงานนี้เตรียมลำดับ section หลัก การเปรียบเทียบงวด และจุดส่งออกไว้แล้ว เพื่อรองรับ hierarchy จาก backend โดยไม่ต้องเปลี่ยนเลย์เอาต์อีก"
-        filters={[
-          "ตัวเลือกงวดเวลา",
-          "สลับเทียบงวดก่อนหน้า",
-          "ตัวแทนสาขาหรือหน่วยธุรกิจ",
-          "รูปแบบการจัดกลุ่มบัญชี",
-        ]}
-        metrics={[
-          { label: "รายได้รวม", value: "THB 84,200.00", tone: "accent" },
-          { label: "ค่าใช้จ่ายรวม", value: "THB 21,450.00", tone: "danger" },
-          { label: "กำไรสุทธิ", value: "THB 62,750.00", tone: "success" },
-        ]}
-        previewColumns={["หมวด", "งวดปัจจุบัน", "งวดก่อนหน้า", "% เปลี่ยนแปลง"]}
-        previewRows={[
-          ["รายได้ค่าสมาชิก", "42,000.00", "39,000.00", "+7.69%"],
-          ["รายได้จากบริการ", "33,700.00", "31,200.00", "+8.01%"],
-          ["ค่าใช้จ่ายดำเนินงาน", "21,450.00", "19,980.00", "+7.36%"],
-        ]}
-        waitingFor={[
-          "P&L API contract และลำดับชั้นของแถวรายงาน",
-          "กฎการรวมยอดรายได้และค่าใช้จ่ายเงินสดย่อยแบบ real-time",
-          "พฤติกรรม export และ print สำหรับงานตรวจบัญชี",
-        ]}
-      >
-        <section className="rounded-3xl border border-line bg-[#12100a] p-5 md:p-6">
-          <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
-            <div>
-              <p className="text-xs uppercase tracking-[0.14em] text-muted">กราฟเปรียบเทียบกำไรขาดทุน</p>
-              <h2 className="mt-2 text-2xl font-semibold text-foreground">เทียบงวดปัจจุบันกับงวดก่อนหน้าแบบอ่านเร็ว</h2>
+      <div className="space-y-6">
+        <section className="rounded-[28px] border border-line bg-surface-strong p-6 md:p-8">
+          <p className="text-xs uppercase tracking-[0.28em] text-muted">รายงานฐานข้อมูลจริง</p>
+          <h1 className="mt-3 text-3xl font-semibold text-foreground">กำไรขาดทุน</h1>
+          <p className="mt-3 max-w-3xl text-sm leading-7 text-muted">
+            หน้านี้คำนวณกำไรขาดทุนเบื้องต้นจากยอดขายและรายจ่ายจริงของระบบ Phase 1 โดยอิงข้อมูลจากฐานข้อมูลเดียวกับรายงานสรุปยอด
+          </p>
+
+          <div className="mt-6 grid gap-4 md:grid-cols-[1fr_1fr] xl:grid-cols-[1fr_1fr_auto] xl:items-end">
+            <label className="block">
+              <span className="text-sm font-medium text-foreground">วันเริ่มต้น</span>
+              <input
+                type="date"
+                aria-label="วันเริ่มต้น P&L"
+                value={startDate}
+                onChange={(event) => setStartDate(event.target.value)}
+                className="mt-2 w-full rounded-[20px] border border-line bg-[#fff8de] px-4 py-3 text-[#17130a] outline-none transition focus:border-accent"
+              />
+            </label>
+
+            <label className="block">
+              <span className="text-sm font-medium text-foreground">วันสิ้นสุด</span>
+              <input
+                type="date"
+                aria-label="วันสิ้นสุด P&L"
+                value={endDate}
+                onChange={(event) => setEndDate(event.target.value)}
+                className="mt-2 w-full rounded-[20px] border border-line bg-[#fff8de] px-4 py-3 text-[#17130a] outline-none transition focus:border-accent"
+              />
+            </label>
+
+            <div className="rounded-[20px] border border-line bg-background/70 px-4 py-3 text-sm text-muted">
+              อ่านข้อมูลจริงจาก {startDate} ถึง {endDate}
             </div>
-            <p className="max-w-2xl text-sm leading-6 text-muted">กำไรแสดงด้วยโทนเขียว ส่วนรายการที่กดกำไรลงหรือขาดทุนใช้โทนแดงเพื่อให้แยกได้ทันที</p>
-          </div>
-
-          <div className="mt-5 space-y-4">
-            {profitLossComparisons.map((item) => {
-              const currentWidth = `${(item.current / maxPnLValue) * 100}%`;
-              const previousWidth = `${(item.previous / maxPnLValue) * 100}%`;
-              const varianceClass = item.variance >= 0 ? "text-[#8dffbe]" : "text-[#ff9f9f]";
-              const currentBarClass = item.label === "ค่าใช้จ่ายรวม" ? "bg-[#d44949]" : item.label === "กำไรสุทธิ" ? "bg-[#2ea36a]" : "bg-[#f4cf3a]";
-
-              return (
-                <div key={item.label} className="rounded-[20px] border border-line bg-[#19150a] p-4">
-                  <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                    <p className={`text-base font-semibold ${item.label === "กำไรสุทธิ" ? "text-[#8dffbe]" : item.label === "ค่าใช้จ่ายรวม" ? "text-[#ff9f9f]" : "text-foreground"}`}>
-                      {item.label}
-                    </p>
-                    <p className={`text-sm font-semibold ${varianceClass}`}>
-                      {item.variance >= 0 ? "เพิ่มขึ้น" : "ลดลง"} {item.variance >= 0 ? "+" : ""}{item.variance.toLocaleString("th-TH")}
-                    </p>
-                  </div>
-
-                  <div className="mt-4 grid gap-3 md:grid-cols-2">
-                    <div>
-                      <div className="flex items-center justify-between text-sm text-muted">
-                        <span>งวดปัจจุบัน</span>
-                        <span>{item.current.toLocaleString("th-TH")}</span>
-                      </div>
-                      <div className="mt-2 h-3 overflow-hidden rounded-full bg-[#2a2411]">
-                        <div className={`h-full rounded-full ${currentBarClass}`} style={{ width: currentWidth }} />
-                      </div>
-                    </div>
-                    <div>
-                      <div className="flex items-center justify-between text-sm text-muted">
-                        <span>งวดก่อนหน้า</span>
-                        <span>{item.previous.toLocaleString("th-TH")}</span>
-                      </div>
-                      <div className="mt-2 h-3 overflow-hidden rounded-full bg-[#2a2411]">
-                        <div className="h-full rounded-full bg-[#7b6a2f]" style={{ width: previousWidth }} />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
           </div>
         </section>
-      </ReportPlaceholder>
+
+        {errorMessage ? (
+          <div className="rounded-[20px] border border-warning bg-warning-soft px-4 py-3 text-sm text-foreground">
+            {errorMessage}
+          </div>
+        ) : null}
+
+        {isLoading ? (
+          <div className="rounded-[28px] border border-dashed border-line bg-background/70 px-6 py-12 text-sm text-muted">
+            กำลังโหลดงบกำไรขาดทุน...
+          </div>
+        ) : summary ? (
+          <>
+            <section className="grid gap-4 md:grid-cols-3">
+              <article className="rounded-[28px] border border-line bg-surface-strong p-6">
+                <p className="text-xs uppercase tracking-[0.16em] text-muted">รายได้รวม</p>
+                <p className="mt-3 text-3xl font-semibold text-foreground">{formatCurrency(netProfit)}</p>
+                <p className="mt-3 text-sm leading-7 text-muted">ยอดขายรวมจากทุกวิธีชำระเงินในช่วงวันที่ที่เลือก</p>
+              </article>
+
+              <article className="rounded-[28px] border border-line bg-surface-strong p-6">
+                <p className="text-xs uppercase tracking-[0.16em] text-muted">รายจ่ายรวม</p>
+                <p className="mt-3 text-3xl font-semibold text-[#ff8e7a]">{formatCurrency(totalExpenses)}</p>
+                <p className="mt-3 text-sm leading-7 text-muted">รวม petty cash ที่บันทึกและโพสต์บัญชีแล้วในฐานข้อมูล</p>
+              </article>
+
+              <article className="rounded-[28px] border border-line bg-surface-strong p-6">
+                <p className="text-xs uppercase tracking-[0.16em] text-muted">ผลการดำเนินงาน</p>
+                <p className={`mt-3 text-3xl font-semibold ${isProfitable ? "text-[#8fe388]" : "text-[#ff8e7a]"}`}>
+                  {formatCurrency(operatingResult)}
+                </p>
+                <p className="mt-3 text-sm leading-7 text-muted">คำนวณจากรายได้รวมลบด้วยรายจ่ายรวมในช่วงเดียวกัน</p>
+              </article>
+            </section>
+
+            <section className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
+              <div className="rounded-[28px] border border-line bg-surface-strong p-6">
+                <p className="text-xs uppercase tracking-[0.16em] text-muted">โครงสร้างรายได้ตามวิธีชำระเงิน</p>
+                <div className="mt-4 space-y-3">
+                  {paymentRows.map((row) => (
+                    <div key={row.label} className="rounded-[20px] border border-line bg-background/70 px-4 py-4">
+                      <div className="flex items-center justify-between gap-4">
+                        <span className="text-sm text-muted">{row.label}</span>
+                        <span className="text-lg font-semibold text-foreground">{formatCurrency(row.value)}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="rounded-[28px] border border-line bg-surface-strong p-6">
+                <p className="text-xs uppercase tracking-[0.16em] text-muted">หมายเหตุการอ่านตัวเลข</p>
+                <ul className="mt-4 space-y-3 text-sm leading-7 text-muted">
+                  <li>รายงานนี้ใช้ข้อมูลจริงจาก daily summary API ที่อ่านจากฐานข้อมูลและ journal-backed flows</li>
+                  <li>ถ้าผลต่างปิดกะยังมีอยู่ ตัวเลข cash discrepancy จะแสดงอยู่ใน daily summary แยกจากกำไรขาดทุนนี้</li>
+                  <li>ผลการดำเนินงานเป็นภาพรวมเบื้องต้นของ Phase 1 ยังไม่รวมการจัดประเภทรายได้และค่าใช้จ่ายเชิงลึกแบบงบการเงินเต็มรูป</li>
+                </ul>
+
+                <div className="mt-5 rounded-[20px] border border-line bg-background/70 px-4 py-4">
+                  <p className="text-sm text-muted">Net Cash Flow</p>
+                  <p className="mt-2 text-2xl font-semibold text-foreground">{formatCurrency(summary.net_cash_flow)}</p>
+                </div>
+              </div>
+            </section>
+          </>
+        ) : null}
+      </div>
     </RoleGuard>
   );
 }

@@ -84,11 +84,13 @@ const mocked = vi.hoisted(() => {
 
   const txMock = {
     shift: {
-      findFirst: async ({ where }: { where: { staffId: string; status: "OPEN"; endTime: null } }) => {
+      findFirst: async ({ where }: { where: { staffId?: string; status: "OPEN"; endTime: null } }) => {
         const found = state.shifts
           .filter(
             (shift) =>
-              shift.staffId === where.staffId && shift.status === where.status && shift.endTime === null,
+              (!where.staffId || shift.staffId === where.staffId) &&
+              shift.status === where.status &&
+              shift.endTime === null,
           )
           .sort((a, b) => b.startTime.getTime() - a.startTime.getTime())[0];
 
@@ -266,8 +268,12 @@ const mocked = vi.hoisted(() => {
           },
           items: order.items.map((item) => ({
             quantity: item.quantity,
+            totalPrice: new Prisma.Decimal(
+              order.totalAmount * (item.quantity / Math.max(order.items.reduce((sum, current) => sum + current.quantity, 0), 1)),
+            ),
             product: {
               name: item.productName,
+              sku: item.productSku,
             },
           })),
         }));
@@ -348,6 +354,8 @@ const mocked = vi.hoisted(() => {
         return {
           id: target.id,
           staffId: target.staffId,
+          status: target.status,
+          endTime: target.endTime,
         };
       },
     },
@@ -560,6 +568,19 @@ describe("A-4 services", () => {
     expect(creditTotal).toBe(50);
   });
 
+  it("lets another logged-in user close the shared open shift", async () => {
+    const result = await closeActiveShiftWithDifference("u2", {
+      actual_cash: 910,
+      closing_note: "closed by admin",
+      responsible_name: "June Desk",
+    });
+
+    expect(result.status).toBe("CLOSED");
+    expect(result.shift_id).toBe("shift_1");
+    expect(result.responsible_name).toBe("June Desk");
+    expect(mocked.state.shifts.find((shift) => shift.id === "shift_1")?.status).toBe("CLOSED");
+  });
+
   it("returns daily summary totals grouped by payment method", async () => {
     const summary = await getDailySummaryByDate("2026-03-09");
 
@@ -585,6 +606,43 @@ describe("A-4 services", () => {
       responsible_name: "June Desk",
       difference: 20,
     });
+    expect(summary.sales_by_category).toEqual([
+      {
+        category: "COFFEE",
+        label: "กาแฟและเครื่องดื่ม",
+        total_amount: 500,
+        receipt_count: 1,
+        item_count: 2,
+      },
+      {
+        category: "MEMBERSHIP",
+        label: "สมาชิก",
+        total_amount: 700,
+        receipt_count: 1,
+        item_count: 1,
+      },
+      {
+        category: "FOOD",
+        label: "อาหารตามสั่ง",
+        total_amount: 0,
+        receipt_count: 0,
+        item_count: 0,
+      },
+      {
+        category: "TRAINING",
+        label: "บริการเทรน",
+        total_amount: 300,
+        receipt_count: 1,
+        item_count: 1,
+      },
+      {
+        category: "COUNTER",
+        label: "สินค้าเสริมหน้าเคาน์เตอร์",
+        total_amount: 0,
+        receipt_count: 0,
+        item_count: 0,
+      },
+    ]);
   });
 
   it("throws invalid date error when date format is invalid", async () => {
@@ -702,6 +760,21 @@ describe("A-4 services", () => {
         name: "Mineral Water",
         opening_stock: 3,
         sold_quantity: 3,
+        remaining_stock: 0,
+      },
+    ]);
+  });
+
+  it("lets cashier view the currently open shared shift inventory", async () => {
+    const rows = await getShiftInventorySummaryByShiftId("u2", "CASHIER", "shift_1");
+
+    expect(rows).toEqual([
+      {
+        product_id: "prod_water",
+        sku: "WATER-001",
+        name: "Mineral Water",
+        opening_stock: 2,
+        sold_quantity: 2,
         remaining_stock: 0,
       },
     ]);

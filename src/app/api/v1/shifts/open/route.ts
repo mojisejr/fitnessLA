@@ -6,7 +6,7 @@ import { resolveSessionFromRequest } from "@/lib/session";
 
 const openShiftSchema = z.object({
   starting_cash: z.number().min(0),
-  responsible_name: z.string().trim().min(1).max(120),
+  responsible_name: z.string().trim().min(1).max(120).optional(),
 });
 
 export async function POST(request: Request) {
@@ -33,11 +33,23 @@ export async function POST(request: Request) {
     );
   }
 
+  const providedName = parseResult.data.responsible_name;
+  if (providedName && providedName !== session.full_name) {
+    return NextResponse.json(
+      {
+        code: "RESPONSIBLE_NAME_MISMATCH",
+        message: "Responsible name does not match logged-in user",
+        details: { expected: session.full_name, received: providedName },
+      },
+      { status: 409 },
+    );
+  }
+
   try {
     const result = await openShiftWithJournal(
       session.user_id,
       parseResult.data.starting_cash,
-      parseResult.data.responsible_name,
+      session.full_name,
     );
 
     return NextResponse.json(
@@ -54,7 +66,7 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           code: "SHIFT_ALREADY_OPEN",
-          message: "พนักงานมีกะเปิดอยู่แล้ว",
+          message: "มีกะเปิดอยู่แล้วในระบบ",
         },
         { status: 409 },
       );

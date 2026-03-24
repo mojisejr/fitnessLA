@@ -2,17 +2,27 @@ import type {
   AdminUserRecord,
   ApiError,
   ChartOfAccountRecord,
+  CreateTrainerInput,
   DailySummary,
   ShiftSummary,
   EntityId,
   ExpenseResult,
+  IngredientRecord,
   MemberSubscriptionRecord,
   OrderResult,
   Product,
+  ProductRecipeRecord,
+  ProductRecipeItemRecord,
+  ProductStockAdjustmentRecord,
+  SalesEntryItem,
   ShiftInventorySummaryRow,
   ShiftCloseResult,
   ShiftOpenResult,
+  TrainingEnrollmentRecord,
+  TrainerRecord,
+  UpdateTrainingEnrollmentInput,
   UserSession,
+  RegisteredTrainerUserRecord,
 } from "@/lib/contracts";
 import {
   demoPassword,
@@ -21,25 +31,164 @@ import {
   mockProducts,
   mockUsersByRole,
 } from "@/lib/mock-data";
+import { buildEmptyPosSalesCategoryRows, getPosSalesCategoryFromProduct } from "@/lib/pos-categories";
 import { sleep } from "@/lib/utils";
 import type {
   AppAdapter,
   CreateAdminUserInput,
   CreateChartOfAccountInput,
+  CreateMemberInput,
+  CreateIngredientInput,
   CreateProductInput,
+  CreateProductStockAdjustmentInput,
+  ReplaceProductRecipeInput,
+  UpdateMemberInput,
+  UpdateIngredientInput,
   UpdateProductInput,
 } from "@/features/adapters/types";
-import { prependMemberRegistry, readMemberRegistry } from "@/features/members/member-registry";
+import { prependMemberRegistry, readMemberRegistry, writeMemberRegistry } from "@/features/members/member-registry";
+
+type MockTrainerWithAssignments = TrainerRecord & { assignments: TrainingEnrollmentRecord[] };
+type MockManagedUser = AdminUserRecord & { password: string };
+
+function findTrainerByUserId(userId: EntityId) {
+  return trainersState.find((trainer) => String(trainer.user_id) === String(userId));
+}
+
+function removeTrainingEnrollmentsFromState(enrollmentIds: EntityId[]) {
+  const normalizedIds = new Set(enrollmentIds.map((id) => String(id)));
+  const deletedAssignments: TrainingEnrollmentRecord[] = [];
+
+  trainersState = trainersState.map((trainer) => {
+    const assignments = trainer.assignments.filter((assignment) => {
+      if (!normalizedIds.has(String(assignment.enrollment_id))) {
+        return true;
+      }
+
+      deletedAssignments.push({ ...assignment });
+      return false;
+    });
+
+    return {
+      ...trainer,
+      assignments,
+      active_customer_count: assignments.filter((assignment) => assignment.status === "ACTIVE").length,
+    };
+  });
+
+  return deletedAssignments;
+}
 
 let orderSequence = 1001;
 let expenseSequence = 3001;
 let shiftSequence = 701;
 let productSequence = Math.max(...mockProducts.map((item) => Number(item.product_id))) + 1;
+let ingredientSequence = 1;
+let memberSequence = 1;
 let chartOfAccountsState = mockChartOfAccounts.map((item) => ({ ...item }));
 let productsState = mockProducts.map((item) => ({ ...item }));
-let managedUsersState: AdminUserRecord[] = [];
+let ingredientsState: IngredientRecord[] = [
+  {
+    ingredient_id: "ingredient-1",
+    name: "เมล็ดกาแฟคั่วเข้ม",
+    unit: "G",
+    purchase_quantity: 1000,
+    purchase_price: 690,
+    cost_per_unit: 0.69,
+    notes: "กาแฟ 1 กิโลกรัม",
+    is_active: true,
+  },
+  {
+    ingredient_id: "ingredient-2",
+    name: "นม Meiji",
+    unit: "ML",
+    purchase_quantity: 946,
+    purchase_price: 100,
+    cost_per_unit: 0.105708,
+    notes: null,
+    is_active: true,
+  },
+  {
+    ingredient_id: "ingredient-3",
+    name: "น้ำผึ้ง",
+    unit: "G",
+    purchase_quantity: 200,
+    purchase_price: 190,
+    cost_per_unit: 0.95,
+    notes: null,
+    is_active: true,
+  },
+];
+let productRecipeItemsState: ProductRecipeItemRecord[] = [];
+let productStockAdjustmentsState: ProductStockAdjustmentRecord[] = [];
+let productStockAdjustmentSequence = 1;
+let managedUsersState: MockManagedUser[] = [];
+let trainersState: MockTrainerWithAssignments[] = [];
 let shiftInventoryState = new Map<string, Map<string, { product_id: EntityId; opening_stock: number; sold_quantity: number }>>();
 let salesRowsState: DailySummary["sales_rows"] = [];
+let salesRowOverridesState = new Map<string, { items: SalesEntryItem[]; items_summary: string; total_amount: number }>();
+let deletedSalesOrderIdsState = new Set<string>();
+
+function roundMoney(amount: number) {
+  return Number(amount.toFixed(2));
+}
+
+function buildSummaryFromSalesItems(items: SalesEntryItem[]) {
+  return items.map((item) => `${item.product_name} x${item.quantity}`).join(", ");
+}
+
+function parseSummaryItems(itemsSummary: string, totalAmount: number, orderId: EntityId): SalesEntryItem[] {
+  const parts = itemsSummary
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  if (parts.length === 0) {
+    return [];
+  }
+
+  const parsed = parts.map((part, index) => {
+    const match = /^(.*) x(\d+)$/u.exec(part);
+    const productName = match?.[1]?.trim() || part;
+    const quantity = Number(match?.[2] ?? 1);
+    return {
+      order_item_id: `${String(orderId)}-item-${index + 1}`,
+      product_name: productName,
+      quantity,
+      unit_price: 0,
+      line_total: 0,
+    } satisfies SalesEntryItem;
+  });
+
+  const totalQuantity = parsed.reduce((sum, item) => sum + item.quantity, 0) || 1;
+  let remainingTotal = roundMoney(totalAmount);
+
+  return parsed.map((item, index) => {
+    const isLastItem = index === parsed.length - 1;
+    const lineTotal = isLastItem
+      ? roundMoney(remainingTotal)
+      : roundMoney((totalAmount * item.quantity) / totalQuantity);
+    remainingTotal = roundMoney(remainingTotal - lineTotal);
+    const unitPrice = item.quantity > 0 ? roundMoney(lineTotal / item.quantity) : 0;
+
+    return {
+      ...item,
+      unit_price: unitPrice,
+      line_total: roundMoney(unitPrice * item.quantity),
+    } satisfies SalesEntryItem;
+  });
+}
+
+function withSalesItems(row: DailySummary["sales_rows"][number]): DailySummary["sales_rows"][number] {
+  if (row.items?.length) {
+    return row;
+  }
+
+  return {
+    ...row,
+    items: parseSummaryItems(row.items_summary, row.total_amount, row.order_id),
+  };
+}
 
 function buildBaseDailyShiftRows(date: string, discrepancyTotal: number): DailySummary["shift_rows"] {
   const overage = Math.max(discrepancyTotal, 0);
@@ -73,6 +222,7 @@ function buildBaseDailySalesRows(date: string, summary: Pick<DailySummary, "sale
       order_number: `POS-${date.replaceAll("-", "")}-001`,
       sold_at: `${date}T09:15:00.000Z`,
       items_summary: "อเมริกาโน่เย็น x2, น้ำดื่ม x1",
+      items: parseSummaryItems("อเมริกาโน่เย็น x2, น้ำดื่ม x1", summary.sales_by_method.CASH, `MOCK-${date}-001`),
       cashier_name: "Pim Counter",
       responsible_name: "Pim Counter",
       customer_name: "ลูกค้าทั่วไป",
@@ -85,6 +235,7 @@ function buildBaseDailySalesRows(date: string, summary: Pick<DailySummary, "sale
       order_number: `POS-${date.replaceAll("-", "")}-002`,
       sold_at: `${date}T12:40:00.000Z`,
       items_summary: "สมาชิกรายเดือน x1",
+      items: parseSummaryItems("สมาชิกรายเดือน x1", summary.sales_by_method.PROMPTPAY, `MOCK-${date}-002`),
       cashier_name: "June Desk",
       responsible_name: "June Desk",
       customer_name: "Nok Member",
@@ -97,6 +248,7 @@ function buildBaseDailySalesRows(date: string, summary: Pick<DailySummary, "sale
       order_number: `POS-${date.replaceAll("-", "")}-003`,
       sold_at: `${date}T17:25:00.000Z`,
       items_summary: "เทรนเดี่ยว 1 ครั้ง x1",
+      items: parseSummaryItems("เทรนเดี่ยว 1 ครั้ง x1", summary.sales_by_method.CREDIT_CARD, `MOCK-${date}-003`),
       cashier_name: "Ton Front",
       responsible_name: "Ton Front",
       customer_name: "Mild Training",
@@ -115,8 +267,59 @@ function buildOrderItemsSummary(request: Parameters<AppAdapter["createOrder"]>[0
     .join(", ");
 }
 
+function applySalesRowOverrides(rows: DailySummary["sales_rows"]) {
+  return rows
+    .filter((row) => !deletedSalesOrderIdsState.has(String(row.order_id)))
+    .map((row) => {
+    const override = salesRowOverridesState.get(String(row.order_id));
+
+    if (!override) {
+      return withSalesItems(row);
+    }
+
+    return {
+      ...row,
+      items: override.items,
+      items_summary: override.items_summary,
+      total_amount: override.total_amount,
+    } satisfies DailySummary["sales_rows"][number];
+  });
+}
+
+function buildMockBaseSummary(date: string) {
+  const day = Number(date.split("-").at(-1) ?? 1);
+  const offset = day % 4;
+
+  return {
+    total_sales: mockDailySummary.total_sales + offset * 260,
+    sales_by_method: {
+      CASH: mockDailySummary.sales_by_method.CASH + offset * 120,
+      PROMPTPAY: mockDailySummary.sales_by_method.PROMPTPAY + offset * 70,
+      CREDIT_CARD: mockDailySummary.sales_by_method.CREDIT_CARD + offset * 70,
+    },
+    total_expenses: mockDailySummary.total_expenses + offset * 40,
+    net_cash_flow: mockDailySummary.net_cash_flow + offset * 80,
+    shift_discrepancies: mockDailySummary.shift_discrepancies + offset * 10,
+  };
+}
+
 function createError(code: string, message: string, details?: unknown): ApiError {
   return { code, message, details };
+}
+
+function validateMemberDates(input: Pick<CreateMemberInput, "started_at" | "expires_at">) {
+  const startedAt = new Date(input.started_at);
+  const expiresAt = new Date(input.expires_at);
+
+  if (Number.isNaN(startedAt.getTime()) || Number.isNaN(expiresAt.getTime())) {
+    throw createError("INVALID_DATE", "รูปแบบวันที่ไม่ถูกต้อง");
+  }
+
+  if (expiresAt <= startedAt) {
+    throw createError("EXPIRES_BEFORE_START", "วันหมดอายุต้องมาหลังวันเริ่มต้น");
+  }
+
+  return { startedAt, expiresAt };
 }
 
 function cloneSession(session: UserSession) {
@@ -127,8 +330,9 @@ function cloneChartOfAccount(account: ChartOfAccountRecord) {
   return { ...account };
 }
 
-function cloneManagedUser(user: AdminUserRecord) {
-  return { ...user };
+function cloneManagedUser(user: MockManagedUser) {
+  const { password: _password, ...safeUser } = user;
+  return { ...safeUser };
 }
 
 function calculateExpectedCash(startingCash: number) {
@@ -171,6 +375,55 @@ function ensureShiftInventory(shiftId: EntityId) {
 
 function cloneProduct(product: Product) {
   return { ...product };
+}
+
+function cloneIngredient(ingredient: IngredientRecord) {
+  return { ...ingredient };
+}
+
+function cloneRecipeItem(item: ProductRecipeItemRecord) {
+  return { ...item };
+}
+
+function cloneProductStockAdjustment(adjustment: ProductStockAdjustmentRecord) {
+  return { ...adjustment };
+}
+
+function normalizeFeaturedSlot(value: number | null | undefined) {
+  if (value == null) {
+    return null;
+  }
+
+  if (value === 1 || value === 2 || value === 3 || value === 4) {
+    return value;
+  }
+
+  throw createError("INVALID_FEATURED_SLOT", "ตำแหน่งสินค้าปักหมุดต้องอยู่ระหว่าง 1 ถึง 4");
+}
+
+function normalizeTagline(value?: string | null) {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : null;
+}
+
+function resolvePosCategory(input: Pick<Product, "sku" | "product_type"> & { pos_category?: Product["pos_category"] }) {
+  return getPosSalesCategoryFromProduct({
+    sku: input.sku,
+    product_type: input.product_type,
+    pos_category: input.pos_category ?? null,
+  });
+}
+
+function clearFeaturedSlotConflict(featuredSlot: 1 | 2 | 3 | 4 | null, excludedProductId?: EntityId) {
+  if (featuredSlot == null) {
+    return;
+  }
+
+  productsState = productsState.map((product) =>
+    product.featured_slot === featuredSlot && product.product_id !== excludedProductId
+      ? { ...product, featured_slot: null }
+      : product,
+  );
 }
 
 function resolveRevenueAccount(accountId: EntityId | undefined) {
@@ -240,6 +493,7 @@ function createMembershipRecords(request: Parameters<AppAdapter["createOrder"]>[
       member_code: `MBR-24${String(sequence).padStart(3, "0")}`,
       full_name: customerName,
       phone: request.customer_info?.tax_id?.trim() || "รออัปเดตเบอร์โทร",
+      is_active: true,
       membership_product_id: product.product_id,
       membership_name: product.name,
       membership_period: product.membership_period ?? "MONTHLY",
@@ -248,6 +502,7 @@ function createMembershipRecords(request: Parameters<AppAdapter["createOrder"]>[
       checked_in_at: null,
       renewed_at: null,
       renewal_status: "ACTIVE",
+      renewal_method: "NONE",
     } satisfies MemberSubscriptionRecord;
   });
 }
@@ -257,11 +512,49 @@ export function resetMockAdapterState() {
   expenseSequence = 3001;
   shiftSequence = 701;
   productSequence = Math.max(...mockProducts.map((item) => Number(item.product_id))) + 1;
+  ingredientSequence = 4;
   chartOfAccountsState = mockChartOfAccounts.map((item) => ({ ...item }));
   productsState = mockProducts.map((item) => ({ ...item }));
+  ingredientsState = [
+    {
+      ingredient_id: "ingredient-1",
+      name: "เมล็ดกาแฟคั่วเข้ม",
+      unit: "G",
+      purchase_quantity: 1000,
+      purchase_price: 690,
+      cost_per_unit: 0.69,
+      notes: "กาแฟ 1 กิโลกรัม",
+      is_active: true,
+    },
+    {
+      ingredient_id: "ingredient-2",
+      name: "นม Meiji",
+      unit: "ML",
+      purchase_quantity: 946,
+      purchase_price: 100,
+      cost_per_unit: 0.105708,
+      notes: null,
+      is_active: true,
+    },
+    {
+      ingredient_id: "ingredient-3",
+      name: "น้ำผึ้ง",
+      unit: "G",
+      purchase_quantity: 200,
+      purchase_price: 190,
+      cost_per_unit: 0.95,
+      notes: null,
+      is_active: true,
+    },
+  ];
+  productRecipeItemsState = [];
+  productStockAdjustmentsState = [];
+  productStockAdjustmentSequence = 1;
   managedUsersState = [];
   shiftInventoryState = new Map();
   salesRowsState = [];
+  salesRowOverridesState = new Map();
+  deletedSalesOrderIdsState = new Set();
 }
 
 export const mockAppAdapter: AppAdapter = {
@@ -271,6 +564,23 @@ export const mockAppAdapter: AppAdapter = {
     await sleep(220);
 
     const normalized = username.trim().toLowerCase();
+    const managedUser = managedUsersState.find((candidate) => candidate.username.toLowerCase() === normalized);
+
+    if (managedUser) {
+      if (password !== managedUser.password) {
+        throw createError("INVALID_CREDENTIALS", "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง");
+      }
+
+      return {
+        user_id: managedUser.user_id,
+        username: managedUser.username,
+        full_name: managedUser.full_name,
+        role: managedUser.role,
+        trainer_id: managedUser.role === "TRAINER" ? findTrainerByUserId(managedUser.user_id)?.trainer_id ?? null : null,
+        active_shift_id: null,
+      } satisfies UserSession;
+    }
+
     const match = Object.values(mockUsersByRole).find(
       (candidate) => candidate.username.toLowerCase() === normalized,
     );
@@ -294,7 +604,117 @@ export const mockAppAdapter: AppAdapter = {
 
   async listProducts() {
     await sleep(180);
-    return productsState.map((product) => ({ ...product } satisfies Product));
+    return productsState.map((product) => {
+      const recipeItems = productRecipeItemsState.filter((item) => String(item.product_id) === String(product.product_id));
+      const recipeTotalCost = recipeItems.length > 0 ? recipeItems.reduce((sum, item) => sum + item.line_cost, 0) : null;
+      return {
+        ...product,
+        recipe_total_cost: recipeTotalCost,
+        recipe_item_count: recipeItems.length,
+      } satisfies Product;
+    });
+  },
+
+  async listIngredients() {
+    await sleep(120);
+    return ingredientsState.filter((ingredient) => ingredient.is_active).map(cloneIngredient);
+  },
+
+  async createIngredient(input: CreateIngredientInput) {
+    await sleep(160);
+
+    if (!input.name.trim()) {
+      throw createError("INVALID_INGREDIENT", "กรุณาระบุชื่อวัตถุดิบ");
+    }
+
+    if (input.purchasePrice < 0) {
+      throw createError("INVALID_INGREDIENT_PRICE", "ราคาซื้อต้องเป็นศูนย์หรือมากกว่า");
+    }
+
+    if (input.purchaseQuantity <= 0) {
+      throw createError("INVALID_INGREDIENT_QUANTITY", "ปริมาณที่ซื้อต้องมากกว่า 0");
+    }
+
+    if (!["G", "ML", "PIECE"].includes(input.unit)) {
+      throw createError("INVALID_INGREDIENT_UNIT", "หน่วยวัตถุดิบไม่ถูกต้อง");
+    }
+
+    if (ingredientsState.some((ingredient) => ingredient.name.toLowerCase() === input.name.trim().toLowerCase())) {
+      throw createError("DUPLICATE_INGREDIENT_NAME", "ชื่อวัตถุดิบนี้มีอยู่แล้ว");
+    }
+
+    const nextIngredient: IngredientRecord = {
+      ingredient_id: `ingredient-${ingredientSequence}`,
+      name: input.name.trim(),
+      unit: input.unit,
+      purchase_quantity: Number(input.purchaseQuantity.toFixed(3)),
+      purchase_price: roundMoney(input.purchasePrice),
+      cost_per_unit: Number((input.purchasePrice / input.purchaseQuantity).toFixed(6)),
+      notes: input.notes?.trim() ? input.notes.trim() : null,
+      is_active: true,
+    };
+
+    ingredientSequence += 1;
+    ingredientsState = [...ingredientsState, nextIngredient];
+    return cloneIngredient(nextIngredient);
+  },
+
+  async updateIngredient(input: UpdateIngredientInput) {
+    await sleep(160);
+
+    const targetIngredient = ingredientsState.find((ingredient) => String(ingredient.ingredient_id) === String(input.ingredientId));
+    if (!targetIngredient) {
+      throw createError("INGREDIENT_NOT_FOUND", "ไม่พบวัตถุดิบที่ต้องการแก้ไข");
+    }
+
+    if (!input.name.trim()) {
+      throw createError("INVALID_INGREDIENT", "กรุณาระบุชื่อวัตถุดิบ");
+    }
+
+    if (input.purchasePrice < 0) {
+      throw createError("INVALID_INGREDIENT_PRICE", "ราคาซื้อต้องเป็นศูนย์หรือมากกว่า");
+    }
+
+    if (input.purchaseQuantity <= 0) {
+      throw createError("INVALID_INGREDIENT_QUANTITY", "ปริมาณที่ซื้อต้องมากกว่า 0");
+    }
+
+    if (!["G", "ML", "PIECE"].includes(input.unit)) {
+      throw createError("INVALID_INGREDIENT_UNIT", "หน่วยวัตถุดิบไม่ถูกต้อง");
+    }
+
+    if (ingredientsState.some((ingredient) => String(ingredient.ingredient_id) !== String(input.ingredientId) && ingredient.name.toLowerCase() === input.name.trim().toLowerCase())) {
+      throw createError("DUPLICATE_INGREDIENT_NAME", "ชื่อวัตถุดิบนี้มีอยู่แล้ว");
+    }
+
+    ingredientsState = ingredientsState.map((ingredient) =>
+      String(ingredient.ingredient_id) === String(input.ingredientId)
+        ? {
+            ...ingredient,
+            name: input.name.trim(),
+            unit: input.unit,
+            purchase_quantity: Number(input.purchaseQuantity.toFixed(3)),
+            purchase_price: roundMoney(input.purchasePrice),
+            cost_per_unit: Number((input.purchasePrice / input.purchaseQuantity).toFixed(6)),
+            notes: input.notes?.trim() ? input.notes.trim() : null,
+          }
+        : ingredient,
+    );
+
+    const updatedIngredient = ingredientsState.find((ingredient) => String(ingredient.ingredient_id) === String(input.ingredientId))!;
+    productRecipeItemsState = productRecipeItemsState.map((item) =>
+      String(item.ingredient_id) === String(updatedIngredient.ingredient_id)
+        ? {
+            ...item,
+            ingredient_name: updatedIngredient.name,
+            ingredient_unit: updatedIngredient.unit,
+            ingredient_cost_per_unit: updatedIngredient.cost_per_unit,
+            line_cost: Number((updatedIngredient.cost_per_unit * item.quantity).toFixed(6)),
+          }
+        : item,
+    );
+
+    return cloneIngredient(updatedIngredient);
   },
 
   async createProduct(input: CreateProductInput) {
@@ -308,18 +728,37 @@ export const mockAppAdapter: AppAdapter = {
       throw createError("INVALID_PRODUCT_PRICE", "ราคาสินค้าต้องเป็นศูนย์หรือมากกว่า");
     }
 
+    if (input.posCategory === "MEMBERSHIP" && input.productType !== "MEMBERSHIP") {
+      throw createError("INVALID_MEMBERSHIP_PRODUCT_CONTRACT", "สินค้าที่แสดงเป็นหมวดสมาชิกต้องเป็น MEMBERSHIP เท่านั้น");
+    }
+
+    if (input.productType === "MEMBERSHIP" && input.posCategory && input.posCategory !== "MEMBERSHIP") {
+      throw createError("INVALID_MEMBERSHIP_PRODUCT_CONTRACT", "สินค้าสมาชิกต้องใช้หมวดขาย POS เป็น MEMBERSHIP");
+    }
+
+    if (input.productType === "MEMBERSHIP") {
+      if (!input.membershipPeriod || !Number.isInteger(input.membershipDurationDays) || (input.membershipDurationDays ?? 0) <= 0) {
+        throw createError("MEMBERSHIP_METADATA_REQUIRED", "สินค้าสมาชิกต้องระบุรอบสมาชิกและจำนวนวันสมาชิกให้ครบ");
+      }
+    }
+
     if (productsState.some((product) => product.sku.toLowerCase() === input.sku.trim().toLowerCase())) {
       throw createError("DUPLICATE_PRODUCT_SKU", "SKU นี้ถูกใช้งานแล้ว");
     }
 
     const revenueAccount = resolveRevenueAccount(input.revenueAccountId);
+    const featuredSlot = normalizeFeaturedSlot(input.featuredSlot);
+    clearFeaturedSlotConflict(featuredSlot);
 
     const nextProduct: Product = {
       product_id: productSequence,
       sku: input.sku.trim(),
       name: input.name.trim(),
+      tagline: normalizeTagline(input.tagline),
       price: input.price,
       product_type: input.productType,
+      pos_category: input.posCategory ?? resolvePosCategory({ sku: input.sku.trim(), product_type: input.productType }),
+      featured_slot: featuredSlot,
       revenue_account_id: revenueAccount?.account_id,
       track_stock: input.productType === "GOODS",
       stock_on_hand: input.productType === "GOODS" ? (input.stockOnHand ?? 0) : null,
@@ -365,7 +804,35 @@ export const mockAppAdapter: AppAdapter = {
       throw createError("INVALID_PRODUCT_STOCK", "จำนวน stock ต้องเป็นศูนย์หรือมากกว่า");
     }
 
+    const nextPosCategory = input.posCategory ?? resolvePosCategory({
+      sku: input.sku.trim(),
+      product_type: targetProduct.product_type,
+      pos_category: targetProduct.pos_category,
+    });
+    const nextMembershipPeriod = targetProduct.product_type === "MEMBERSHIP"
+      ? (input.membershipPeriod ?? targetProduct.membership_period ?? "MONTHLY")
+      : null;
+    const nextMembershipDurationDays = targetProduct.product_type === "MEMBERSHIP"
+      ? (input.membershipDurationDays ?? targetProduct.membership_duration_days ?? 30)
+      : null;
+
+    if (nextPosCategory === "MEMBERSHIP" && targetProduct.product_type !== "MEMBERSHIP") {
+      throw createError("INVALID_MEMBERSHIP_PRODUCT_CONTRACT", "สินค้าที่แสดงเป็นหมวดสมาชิกต้องเป็น MEMBERSHIP เท่านั้น");
+    }
+
+    if (targetProduct.product_type === "MEMBERSHIP") {
+      if (nextPosCategory !== "MEMBERSHIP") {
+        throw createError("INVALID_MEMBERSHIP_PRODUCT_CONTRACT", "สินค้าสมาชิกต้องใช้หมวดขาย POS เป็น MEMBERSHIP");
+      }
+
+      if (!nextMembershipPeriod || !Number.isInteger(nextMembershipDurationDays) || (nextMembershipDurationDays ?? 0) <= 0) {
+        throw createError("MEMBERSHIP_METADATA_REQUIRED", "สินค้าสมาชิกต้องระบุรอบสมาชิกและจำนวนวันสมาชิกให้ครบ");
+      }
+    }
+
     const revenueAccount = resolveRevenueAccount(input.revenueAccountId);
+    const featuredSlot = normalizeFeaturedSlot(input.featuredSlot === undefined ? (targetProduct.featured_slot ?? null) : input.featuredSlot);
+    clearFeaturedSlotConflict(featuredSlot, input.productId);
 
     productsState = productsState.map((product) => {
       if (product.product_id !== input.productId) {
@@ -376,9 +843,14 @@ export const mockAppAdapter: AppAdapter = {
         ...product,
         name: input.name.trim(),
         sku: input.sku.trim(),
+        tagline: normalizeTagline(input.tagline),
         price: input.price,
+        pos_category: nextPosCategory,
+        featured_slot: featuredSlot,
         revenue_account_id: revenueAccount?.account_id,
         stock_on_hand: product.track_stock ? (input.stockOnHand ?? product.stock_on_hand ?? 0) : product.stock_on_hand,
+        membership_period: product.product_type === "MEMBERSHIP" ? nextMembershipPeriod : null,
+        membership_duration_days: product.product_type === "MEMBERSHIP" ? nextMembershipDurationDays : null,
       } satisfies Product;
     });
 
@@ -402,6 +874,187 @@ export const mockAppAdapter: AppAdapter = {
     }
 
     return cloneProduct(updatedProduct);
+  },
+
+  async deleteProducts(productIds) {
+    await sleep(180);
+
+    const normalizedProductIds = [...new Set(productIds.map((productId) => String(productId)))];
+    const deletedProducts = productsState
+      .filter((product) => normalizedProductIds.includes(String(product.product_id)))
+      .map((product) => ({
+        product_id: product.product_id,
+        sku: product.sku,
+        name: product.name,
+      }));
+
+    if (deletedProducts.length === 0) {
+      return {
+        deleted_count: 0,
+        deleted_products: [],
+      };
+    }
+
+    const deletedIdSet = new Set(deletedProducts.map((product) => String(product.product_id)));
+
+    productsState = productsState.filter((product) => !deletedIdSet.has(String(product.product_id)));
+    productRecipeItemsState = productRecipeItemsState.filter((item) => !deletedIdSet.has(String(item.product_id)));
+    productStockAdjustmentsState = productStockAdjustmentsState.filter((item) => !deletedIdSet.has(String(item.product_id)));
+
+    for (const shiftRows of shiftInventoryState.values()) {
+      for (const productId of deletedIdSet) {
+        shiftRows.delete(toProductKey(productId));
+      }
+    }
+
+    return {
+      deleted_count: deletedProducts.length,
+      deleted_products: deletedProducts,
+    };
+  },
+
+  async getProductRecipe(productId: EntityId) {
+    await sleep(120);
+
+    const product = productsState.find((candidate) => String(candidate.product_id) === String(productId));
+    if (!product) {
+      throw createError("PRODUCT_NOT_FOUND", "ไม่พบสินค้าที่ต้องการดูสูตร");
+    }
+
+    const items = productRecipeItemsState
+      .filter((item) => String(item.product_id) === String(productId))
+      .map(cloneRecipeItem);
+
+    return {
+      product_id: product.product_id,
+      product_name: product.name,
+      items,
+      total_cost: Number(items.reduce((sum, item) => sum + item.line_cost, 0).toFixed(6)),
+    } satisfies ProductRecipeRecord;
+  },
+
+  async replaceProductRecipe(input: ReplaceProductRecipeInput) {
+    await sleep(180);
+
+    const product = productsState.find((candidate) => String(candidate.product_id) === String(input.productId));
+    if (!product) {
+      throw createError("PRODUCT_NOT_FOUND", "ไม่พบสินค้าที่ต้องการแก้ไขสูตร");
+    }
+
+    const uniqueIngredientIds = new Set(input.items.map((item) => String(item.ingredientId)));
+    if (uniqueIngredientIds.size !== input.items.length) {
+      throw createError("DUPLICATE_RECIPE_INGREDIENT", "วัตถุดิบในสูตรซ้ำกัน");
+    }
+
+    if (input.items.some((item) => item.quantity <= 0)) {
+      throw createError("INVALID_RECIPE_QUANTITY", "ปริมาณวัตถุดิบในสูตรต้องมากกว่า 0");
+    }
+
+    const nextItems: ProductRecipeItemRecord[] = input.items.map((item, index) => {
+      const ingredient = ingredientsState.find((candidate) => String(candidate.ingredient_id) === String(item.ingredientId) && candidate.is_active);
+      if (!ingredient) {
+        throw createError("INGREDIENT_NOT_FOUND", "ไม่พบวัตถุดิบที่เลือก");
+      }
+
+      return {
+        recipe_item_id: `recipe-${String(input.productId)}-${index + 1}`,
+        product_id: product.product_id,
+        ingredient_id: ingredient.ingredient_id,
+        ingredient_name: ingredient.name,
+        ingredient_unit: ingredient.unit,
+        quantity: Number(item.quantity.toFixed(3)),
+        ingredient_cost_per_unit: ingredient.cost_per_unit,
+        line_cost: Number((ingredient.cost_per_unit * item.quantity).toFixed(6)),
+      } satisfies ProductRecipeItemRecord;
+    });
+
+    productRecipeItemsState = [
+      ...productRecipeItemsState.filter((item) => String(item.product_id) !== String(input.productId)),
+      ...nextItems,
+    ];
+
+    return {
+      product_id: product.product_id,
+      product_name: product.name,
+      items: nextItems.map(cloneRecipeItem),
+      total_cost: Number(nextItems.reduce((sum, item) => sum + item.line_cost, 0).toFixed(6)),
+    } satisfies ProductRecipeRecord;
+  },
+
+  async listProductStockAdjustments(productId?: EntityId) {
+    await sleep(120);
+
+    return productStockAdjustmentsState
+      .filter((adjustment) => productId === undefined || String(adjustment.product_id) === String(productId))
+      .map(cloneProductStockAdjustment);
+  },
+
+  async addProductStockAdjustment(input: CreateProductStockAdjustmentInput) {
+    await sleep(160);
+
+    const targetProduct = productsState.find((product) => product.product_id === input.productId);
+
+    if (!targetProduct) {
+      throw createError("PRODUCT_NOT_FOUND", "ไม่พบสินค้าที่ต้องการเติมสต็อก");
+    }
+
+    if (!targetProduct.track_stock) {
+      throw createError("PRODUCT_STOCK_NOT_TRACKED", "สินค้านี้ไม่ได้ติดตาม stock");
+    }
+
+    if (!Number.isInteger(input.addedQuantity) || input.addedQuantity === 0) {
+      throw createError("INVALID_STOCK_ADDITION", "จำนวนที่เติมต้องมากกว่า 0");
+    }
+
+    const previousStock = targetProduct.stock_on_hand ?? 0;
+    const newStock = previousStock + input.addedQuantity;
+
+    if (newStock < 0) {
+      throw createError("INSUFFICIENT_STOCK", "สต็อกคงเหลือไม่พอสำหรับการตัดออก");
+    }
+
+    productsState = productsState.map((product) =>
+      product.product_id === input.productId
+        ? {
+            ...product,
+            stock_on_hand: newStock,
+          }
+        : product,
+    );
+
+    for (const shiftRows of shiftInventoryState.values()) {
+      const row = shiftRows.get(toProductKey(targetProduct.product_id));
+
+      if (!row) {
+        shiftRows.set(toProductKey(targetProduct.product_id), {
+          product_id: targetProduct.product_id,
+          opening_stock: newStock,
+          sold_quantity: 0,
+        });
+        continue;
+      }
+
+      row.opening_stock = newStock + row.sold_quantity;
+    }
+
+    const nextAdjustment: ProductStockAdjustmentRecord = {
+      adjustment_id: `stock-adjust-${productStockAdjustmentSequence}`,
+      product_id: targetProduct.product_id,
+      product_name: targetProduct.name,
+      product_sku: targetProduct.sku,
+      previous_stock: previousStock,
+      added_quantity: input.addedQuantity,
+      new_stock: newStock,
+      note: input.note?.trim() ? input.note.trim() : null,
+      created_by_user_id: "mock-user",
+      created_by_name: input.performedByName?.trim() || "Mock Inventory Manager",
+      created_at: new Date().toISOString(),
+    };
+
+    productStockAdjustmentSequence += 1;
+    productStockAdjustmentsState = [nextAdjustment, ...productStockAdjustmentsState];
+
+    return cloneProductStockAdjustment(nextAdjustment);
   },
 
   async getShiftInventorySummary(shiftId: EntityId) {
@@ -557,6 +1210,17 @@ export const mockAppAdapter: AppAdapter = {
         order_number: `POS-${new Date().getFullYear()}-${String(currentSequence).padStart(4, "0")}`,
         sold_at: purchasedAt,
         items_summary: buildOrderItemsSummary(request),
+        items: request.items.map((line, index) => {
+          const product = productsState.find((candidate) => candidate.product_id === line.product_id);
+          const unitPrice = product?.price ?? 0;
+          return {
+            order_item_id: `${currentSequence}-item-${index + 1}`,
+            product_name: product?.name ?? `สินค้า ${line.product_id}`,
+            quantity: line.quantity,
+            unit_price: unitPrice,
+            line_total: roundMoney(unitPrice * line.quantity),
+          } satisfies SalesEntryItem;
+        }),
         cashier_name: "แคชเชียร์หน้าร้าน",
         responsible_name: "แคชเชียร์หน้าร้าน",
         customer_name: request.customer_info?.name?.trim() || null,
@@ -597,26 +1261,140 @@ export const mockAppAdapter: AppAdapter = {
     } satisfies ExpenseResult;
   },
 
-  async getDailySummary(date) {
+  async updateSalesEntry(orderId, input) {
+    await sleep(180);
+
+    if (!Array.isArray(input.items)) {
+      throw createError("INVALID_ORDER_ITEMS_SUMMARY", "กรุณาระบุรายการที่ขาย");
+    }
+
+    if (
+      input.items.some(
+        (item) =>
+          !item.order_item_id ||
+          !Number.isInteger(item.quantity) ||
+          item.quantity < 0 ||
+          !Number.isFinite(item.unit_price) ||
+          item.unit_price < 0,
+      )
+    ) {
+      throw createError("INVALID_ORDER_TOTAL", "ข้อมูลจำนวนหรือราคาต่อหน่วยไม่ถูกต้อง");
+    }
+
+    const items = input.items
+      .filter((item) => item.quantity > 0)
+      .map((item) => {
+      const lineTotal = roundMoney(item.quantity * item.unit_price);
+      const existingRow = salesRowsState.find((row) => String(row.order_id) === String(orderId));
+      const existingItem = existingRow?.items?.find((candidate) => String(candidate.order_item_id) === String(item.order_item_id));
+      return {
+        order_item_id: String(item.order_item_id),
+        product_name: existingItem?.product_name ?? `สินค้า ${item.order_item_id}`,
+        quantity: item.quantity,
+        unit_price: roundMoney(item.unit_price),
+        line_total: lineTotal,
+      } satisfies SalesEntryItem;
+      });
+
+    if (items.length === 0) {
+      throw createError("INVALID_ORDER_ITEMS_SUMMARY", "บิลต้องมีอย่างน้อย 1 รายการ");
+    }
+
+    const itemsSummary = buildSummaryFromSalesItems(items);
+    const normalizedTotal = roundMoney(items.reduce((sum, item) => sum + item.line_total, 0));
+    const orderKey = String(orderId);
+    const appendedIndex = salesRowsState.findIndex((row) => String(row.order_id) === orderKey);
+
+    if (appendedIndex >= 0) {
+      salesRowsState[appendedIndex] = {
+        ...salesRowsState[appendedIndex],
+        items,
+        items_summary: itemsSummary,
+        total_amount: normalizedTotal,
+      };
+      salesRowOverridesState.delete(orderKey);
+
+      return {
+        order_id: salesRowsState[appendedIndex].order_id,
+        items,
+        items_summary: itemsSummary,
+        total_amount: normalizedTotal,
+      };
+    }
+
+    salesRowOverridesState.set(orderKey, {
+      items,
+      items_summary: itemsSummary,
+      total_amount: normalizedTotal,
+    });
+
+    return {
+      order_id: orderId,
+      items,
+      items_summary: itemsSummary,
+      total_amount: normalizedTotal,
+    };
+  },
+
+  async deleteSalesEntry(orderId) {
+    await sleep(180);
+
+    const orderKey = String(orderId);
+    const targetRow = salesRowsState.find((row) => String(row.order_id) === orderKey)
+      ?? (() => {
+        const match = /^MOCK-(\d{4}-\d{2}-\d{2})-\d+$/u.exec(orderKey);
+        if (!match) {
+          return undefined;
+        }
+
+        const date = match[1];
+        const baseSummary = buildMockBaseSummary(date);
+        return buildBaseDailySalesRows(date, baseSummary).find((row) => String(row.order_id) === orderKey);
+      })();
+
+    if (!targetRow) {
+      throw createError("ORDER_NOT_FOUND", "ไม่พบบิลขายที่ต้องการลบ");
+    }
+
+    salesRowsState = salesRowsState.filter((row) => String(row.order_id) !== orderKey);
+    salesRowOverridesState.delete(orderKey);
+    deletedSalesOrderIdsState.add(orderKey);
+
+    return {
+      order_id: targetRow.order_id,
+      order_number: targetRow.order_number,
+    };
+  },
+
+  async deleteSalesEntries(orderIds) {
+    await sleep(180);
+
+    const normalizedOrderIds = Array.from(new Set(orderIds.map((orderId) => String(orderId)).filter(Boolean)));
+    if (normalizedOrderIds.length === 0) {
+      throw createError("ORDER_IDS_REQUIRED", "ต้องเลือกรายการขายอย่างน้อย 1 บิล");
+    }
+
+    const deletedOrders = [] as Array<{ order_id: EntityId; order_number: string }>;
+    for (const orderId of normalizedOrderIds) {
+      const deleted = await this.deleteSalesEntry(orderId);
+      deletedOrders.push(deleted);
+    }
+
+    return {
+      deleted_count: deletedOrders.length,
+      deleted_orders: deletedOrders,
+    };
+  },
+
+  async getDailySummary(query) {
     await sleep(220);
 
-    const day = Number(date.split("-").at(-1) ?? 1);
-    const offset = day % 4;
-
-    const baseSummary = {
-      total_sales: mockDailySummary.total_sales + offset * 260,
-      sales_by_method: {
-        CASH: mockDailySummary.sales_by_method.CASH + offset * 120,
-        PROMPTPAY: mockDailySummary.sales_by_method.PROMPTPAY + offset * 70,
-        CREDIT_CARD: mockDailySummary.sales_by_method.CREDIT_CARD + offset * 70,
-      },
-      total_expenses: mockDailySummary.total_expenses + offset * 40,
-      net_cash_flow: mockDailySummary.net_cash_flow + offset * 80,
-      shift_discrepancies: mockDailySummary.shift_discrepancies + offset * 10,
-    };
+    const date = query.date ?? query.start_date ?? new Date().toISOString().slice(0, 10);
+    const baseSummary = buildMockBaseSummary(date);
 
     const appendedRows = salesRowsState.filter((row) => row.sold_at.slice(0, 10) === date);
-    const appendedByMethod = appendedRows.reduce(
+    const combinedRows = applySalesRowOverrides([...appendedRows, ...buildBaseDailySalesRows(date, baseSummary)]);
+    const salesByMethod = combinedRows.reduce(
       (summary, row) => {
         summary[row.payment_method] += row.total_amount;
         return summary;
@@ -625,22 +1403,26 @@ export const mockAppAdapter: AppAdapter = {
     );
 
     return {
-      total_sales: Number((baseSummary.total_sales + appendedRows.reduce((sum, row) => sum + row.total_amount, 0)).toFixed(2)),
+      report_period: query.period,
+      range_start: date,
+      range_end: query.end_date ?? date,
+      total_sales: Number(combinedRows.reduce((sum, row) => sum + row.total_amount, 0).toFixed(2)),
       sales_by_method: {
-        CASH: Number((baseSummary.sales_by_method.CASH + appendedByMethod.CASH).toFixed(2)),
-        PROMPTPAY: Number((baseSummary.sales_by_method.PROMPTPAY + appendedByMethod.PROMPTPAY).toFixed(2)),
-        CREDIT_CARD: Number((baseSummary.sales_by_method.CREDIT_CARD + appendedByMethod.CREDIT_CARD).toFixed(2)),
+        CASH: Number(salesByMethod.CASH.toFixed(2)),
+        PROMPTPAY: Number(salesByMethod.PROMPTPAY.toFixed(2)),
+        CREDIT_CARD: Number(salesByMethod.CREDIT_CARD.toFixed(2)),
       },
+      sales_by_category: buildEmptyPosSalesCategoryRows(),
       total_expenses: baseSummary.total_expenses,
-      net_cash_flow: Number((baseSummary.net_cash_flow + appendedByMethod.CASH).toFixed(2)),
+      net_cash_flow: Number((salesByMethod.CASH - baseSummary.total_expenses).toFixed(2)),
       shift_discrepancies: baseSummary.shift_discrepancies,
       shift_rows: buildBaseDailyShiftRows(date, baseSummary.shift_discrepancies),
-      sales_rows: [...appendedRows, ...buildBaseDailySalesRows(date, baseSummary)],
+      sales_rows: combinedRows,
     } satisfies DailySummary;
   },
 
   async getShiftSummary(date, responsibleName) {
-    const daily = await this.getDailySummary(date);
+    const daily = await this.getDailySummary({ period: "DAY", date });
     const trimmed = responsibleName?.trim();
     const salesRows =
       trimmed && trimmed.length > 0
@@ -767,21 +1549,359 @@ export const mockAppAdapter: AppAdapter = {
     await sleep(180);
 
     if (
-      managedUsersState.some((user) => user.username === input.username || user.email === input.email) ||
+      managedUsersState.some((user) => user.username === input.username) ||
       Object.values(mockUsersByRole).some((user) => user.username === input.username)
     ) {
       throw createError("DUPLICATE_USERNAME", "ชื่อผู้ใช้นี้ถูกใช้งานแล้ว");
     }
 
-    const nextUser: AdminUserRecord = {
+    const nextUser: MockManagedUser = {
       user_id: `mock-user-${managedUsersState.length + 1}`,
       full_name: input.full_name,
+      phone: input.phone.trim(),
       username: input.username,
-      email: input.email,
       role: input.role,
+      scheduled_start_time: input.scheduled_start_time?.trim() || null,
+      scheduled_end_time: input.scheduled_end_time?.trim() || null,
+      allowed_machine_ip: input.allowed_machine_ip?.trim() || null,
+      password: input.password,
     };
 
     managedUsersState = [nextUser, ...managedUsersState];
     return cloneManagedUser(nextUser);
+  },
+
+  async listRegisteredTrainerUsers() {
+    await sleep(120);
+    return managedUsersState
+      .filter((user) => user.role === "TRAINER" && !findTrainerByUserId(user.user_id))
+      .map<RegisteredTrainerUserRecord>((user) => ({
+        user_id: user.user_id,
+        username: user.username,
+        full_name: user.full_name,
+        phone: user.phone ?? null,
+      }));
+  },
+
+  async listTrainers() {
+    await sleep(120);
+    return trainersState.map((trainer) => ({
+      ...trainer,
+      assignments: trainer.assignments.map((assignment) => ({ ...assignment })),
+    }));
+  },
+
+  async createTrainer(input: CreateTrainerInput) {
+    await sleep(120);
+    const nextNumber = trainersState.length + 1;
+
+    const linkedUserId = input.user_id ? String(input.user_id) : null;
+    const linkedUser = linkedUserId
+      ? managedUsersState.find((user) => String(user.user_id) === linkedUserId)
+      : null;
+
+    if (linkedUserId && !linkedUser) {
+      throw createError("TRAINER_USER_NOT_FOUND", "ไม่พบผู้ใช้เทรนเนอร์ที่เลือก");
+    }
+
+    if (linkedUser && linkedUser.role !== "TRAINER") {
+      throw createError("TRAINER_ROLE_REQUIRED", "ผู้ใช้ที่เลือกต้องเป็น role เทรนเนอร์");
+    }
+
+    if (linkedUser && findTrainerByUserId(linkedUser.user_id)) {
+      throw createError("TRAINER_USER_ALREADY_LINKED", "ผู้ใช้เทรนเนอร์นี้ถูกผูกในระบบแล้ว");
+    }
+
+    const nextTrainer: MockTrainerWithAssignments = {
+      trainer_id: `mock-trainer-${nextNumber}`,
+      trainer_code: `TR${String(nextNumber).padStart(3, "0")}`,
+      user_id: linkedUser?.user_id ?? null,
+      username: linkedUser?.username ?? null,
+      full_name: linkedUser?.full_name ?? input.full_name.trim(),
+      nickname: input.nickname?.trim() || null,
+      phone: linkedUser?.phone ?? (input.phone?.trim() || null),
+      is_active: true,
+      active_customer_count: 0,
+      assignments: [],
+    };
+
+    trainersState = [nextTrainer, ...trainersState];
+    return { ...nextTrainer, assignments: [] };
+  },
+
+  async deleteTrainer(trainerId: EntityId) {
+    await sleep(120);
+    const target = trainersState.find((trainer) => String(trainer.trainer_id) === String(trainerId));
+
+    if (!target) {
+      throw createError("TRAINER_NOT_FOUND", "ไม่พบเทรนเนอร์ที่ต้องการลบ");
+    }
+
+    trainersState = trainersState.filter((trainer) => String(trainer.trainer_id) !== String(trainerId));
+    trainersState = trainersState.map((trainer) => ({
+      ...trainer,
+      assignments: trainer.assignments.map((assignment) =>
+        String(assignment.trainer_id) === String(trainerId)
+          ? {
+              ...assignment,
+              trainer_id: null,
+              trainer_name: null,
+              status: assignment.status === "ACTIVE" ? "UNASSIGNED" : assignment.status,
+              updated_at: new Date().toISOString(),
+            }
+          : assignment,
+      ),
+    }));
+
+    return {
+      trainer_id: target.trainer_id,
+      full_name: target.full_name,
+    };
+  },
+
+  async toggleTrainerActive(trainerId: EntityId) {
+    await sleep(120);
+    const target = trainersState.find((trainer) => String(trainer.trainer_id) === String(trainerId));
+
+    if (!target) {
+      throw createError("TRAINER_NOT_FOUND", "ไม่พบเทรนเนอร์ที่ต้องการปรับสถานะ");
+    }
+
+    if (target.is_active && target.assignments.some((assignment) => assignment.status === "ACTIVE")) {
+      throw createError("TRAINER_HAS_ACTIVE_ASSIGNMENTS", "ยังมีลูกเทรนที่ใช้งานอยู่ จึงยังปิดใช้งานเทรนเนอร์ไม่ได้");
+    }
+
+    let updatedTrainer: TrainerRecord | null = null;
+    trainersState = trainersState.map((trainer) => {
+      if (String(trainer.trainer_id) !== String(trainerId)) {
+        return trainer;
+      }
+
+      updatedTrainer = {
+        trainer_id: trainer.trainer_id,
+        trainer_code: trainer.trainer_code,
+        full_name: trainer.full_name,
+        nickname: trainer.nickname,
+        phone: trainer.phone,
+        is_active: !trainer.is_active,
+        active_customer_count: trainer.active_customer_count,
+      };
+
+      return {
+        ...trainer,
+        is_active: !trainer.is_active,
+      };
+    });
+
+    if (!updatedTrainer) {
+      throw createError("TRAINER_NOT_FOUND", "ไม่พบเทรนเนอร์ที่ต้องการปรับสถานะ");
+    }
+
+    return updatedTrainer;
+  },
+
+  async deleteTrainingEnrollment(enrollmentId: EntityId) {
+    await sleep(120);
+    const deletedAssignments = removeTrainingEnrollmentsFromState([enrollmentId]);
+    const deletedAssignment = deletedAssignments[0];
+
+    if (!deletedAssignment) {
+      throw createError("TRAINING_ENROLLMENT_NOT_FOUND", "ไม่พบรายการลูกเทรนที่ต้องการลบ");
+    }
+
+    return {
+      enrollment_id: deletedAssignment.enrollment_id,
+      customer_name: deletedAssignment.customer_name,
+      package_name: deletedAssignment.package_name,
+    };
+  },
+
+  async deleteTrainingEnrollments(enrollmentIds: EntityId[]) {
+    await sleep(120);
+    const normalizedIds = Array.from(new Set(enrollmentIds.map((id) => String(id)).filter(Boolean)));
+
+    if (normalizedIds.length === 0) {
+      throw createError("TRAINING_ENROLLMENT_IDS_REQUIRED", "ต้องเลือกรายการลูกเทรนอย่างน้อย 1 รายการ");
+    }
+
+    const deletedAssignments = removeTrainingEnrollmentsFromState(normalizedIds);
+
+    if (deletedAssignments.length !== normalizedIds.length) {
+      throw createError("TRAINING_ENROLLMENT_NOT_FOUND", "ไม่พบรายการลูกเทรนที่ต้องการลบบางรายการ");
+    }
+
+    return {
+      deleted_count: deletedAssignments.length,
+      deleted_enrollments: deletedAssignments.map((assignment) => ({
+        enrollment_id: assignment.enrollment_id,
+        customer_name: assignment.customer_name,
+        package_name: assignment.package_name,
+      })),
+    };
+  },
+
+  async updateTrainingEnrollment(enrollmentId: EntityId, input: UpdateTrainingEnrollmentInput) {
+    await sleep(120);
+    let updatedAssignment: TrainingEnrollmentRecord | null = null;
+
+    trainersState = trainersState.map((trainer) => {
+      const assignments = trainer.assignments.map((assignment) => {
+        if (String(assignment.enrollment_id) !== String(enrollmentId)) {
+          return assignment;
+        }
+
+        let closedAt = assignment.closed_at;
+        if (input.status === "CLOSED") {
+          closedAt = assignment.closed_at ?? new Date().toISOString();
+        } else if (input.status) {
+          closedAt = null;
+        }
+
+        updatedAssignment = {
+          ...assignment,
+          sessions_remaining:
+            input.sessions_remaining === undefined ? assignment.sessions_remaining : input.sessions_remaining,
+          status: input.status ?? assignment.status,
+          schedule_entries:
+            input.schedule_entries === undefined
+              ? assignment.schedule_entries
+              : input.schedule_entries.map((entry) => ({ ...entry, note: entry.note ?? null })),
+          close_reason:
+            input.close_reason === undefined ? assignment.close_reason : input.close_reason,
+          closed_at: closedAt,
+          updated_at: new Date().toISOString(),
+        };
+
+        return updatedAssignment;
+      });
+
+      return {
+        ...trainer,
+        assignments,
+        active_customer_count: assignments.filter((assignment) => assignment.status === "ACTIVE").length,
+      };
+    });
+
+    if (!updatedAssignment) {
+      throw createError("TRAINING_ENROLLMENT_NOT_FOUND", "ไม่พบรายการลูกเทรนที่ต้องการแก้ไข");
+    }
+
+    return updatedAssignment as TrainingEnrollmentRecord;
+  },
+
+  async createMember(input: CreateMemberInput) {
+    await sleep(200);
+
+    const fullName = input.full_name.trim();
+    if (!fullName) {
+      throw createError("MEMBER_NAME_REQUIRED", "ต้องระบุชื่อสมาชิก");
+    }
+
+    const { startedAt, expiresAt } = validateMemberDates(input);
+    const currentSequence = memberSequence;
+    memberSequence += 1;
+
+    const createdMember: MemberSubscriptionRecord = {
+      member_id: `member-manual-${currentSequence}`,
+      member_code: `MBR-MANUAL-${String(currentSequence).padStart(4, "0")}`,
+      full_name: fullName,
+      phone: input.phone?.trim() || "รออัปเดตเบอร์โทร",
+      is_active: true,
+      membership_product_id: `special-membership-${currentSequence}`,
+      membership_name: input.membership_name.trim(),
+      membership_period: input.membership_period,
+      started_at: startedAt.toISOString(),
+      expires_at: expiresAt.toISOString(),
+      checked_in_at: null,
+      renewed_at: null,
+      renewal_status: "ACTIVE",
+      renewal_method: "NONE",
+    };
+
+    prependMemberRegistry([createdMember]);
+    return createdMember;
+  },
+
+  async updateMember(memberId: EntityId, input: UpdateMemberInput) {
+    await sleep(200);
+
+    const registry = readMemberRegistry();
+    const targetIndex = registry.findIndex((member) => String(member.member_id) === String(memberId));
+    if (targetIndex < 0) {
+      throw createError("MEMBER_NOT_FOUND", "ไม่พบสมาชิกที่ต้องการแก้ไข");
+    }
+
+    const { startedAt, expiresAt } = validateMemberDates(input);
+    const updatedMember: MemberSubscriptionRecord = {
+      ...registry[targetIndex],
+      started_at: startedAt.toISOString(),
+      expires_at: expiresAt.toISOString(),
+    };
+
+    registry.splice(targetIndex, 1, updatedMember);
+    writeMemberRegistry(registry);
+    return updatedMember;
+  },
+
+  async deleteMember(memberId: EntityId) {
+    await sleep(200);
+
+    const registry = readMemberRegistry();
+    const targetIndex = registry.findIndex((member) => String(member.member_id) === String(memberId));
+    if (targetIndex < 0) {
+      throw createError("MEMBER_NOT_FOUND", "ไม่พบสมาชิกที่ต้องการลบ");
+    }
+
+    const [removedMember] = registry.splice(targetIndex, 1);
+    writeMemberRegistry(registry);
+
+    return {
+      member_id: removedMember.member_id,
+      full_name: removedMember.full_name,
+    };
+  },
+
+  async renewMember(memberId) {
+    await sleep(200);
+    const registry = readMemberRegistry();
+    const member = registry.find((m) => String(m.member_id) === String(memberId));
+    if (!member) {
+      throw createError("MEMBER_NOT_FOUND", "ไม่พบสมาชิกที่ต้องการต่ออายุ");
+    }
+    if (!member.is_active) {
+      throw createError("MEMBER_INACTIVE", "สมาชิกที่ปิดใช้งานไม่สามารถต่ออายุได้");
+    }
+    return { ...member, renewal_status: "RENEWED" as const, renewal_method: "EXTEND_FROM_PREVIOUS_END" as const };
+  },
+
+  async toggleMemberActive(memberId) {
+    await sleep(200);
+    const registry = readMemberRegistry();
+    const targetIndex = registry.findIndex((member) => String(member.member_id) === String(memberId));
+    if (targetIndex < 0) {
+      throw createError("MEMBER_NOT_FOUND", "ไม่พบสมาชิกที่ต้องการปรับสถานะ");
+    }
+
+    const updatedMember = {
+      ...registry[targetIndex],
+      is_active: !registry[targetIndex]?.is_active,
+    } satisfies MemberSubscriptionRecord;
+
+    registry.splice(targetIndex, 1, updatedMember);
+    writeMemberRegistry(registry);
+    return updatedMember;
+  },
+
+  async restartMember(memberId) {
+    await sleep(200);
+    const registry = readMemberRegistry();
+    const member = registry.find((m) => String(m.member_id) === String(memberId));
+    if (!member) {
+      throw createError("MEMBER_NOT_FOUND", "ไม่พบสมาชิกที่ต้องการเริ่มรอบใหม่");
+    }
+    if (!member.is_active) {
+      throw createError("MEMBER_INACTIVE", "สมาชิกที่ปิดใช้งานไม่สามารถเริ่มรอบใหม่ได้");
+    }
+    return { ...member, renewal_status: "ACTIVE" as const, renewal_method: "RESTART_FROM_NEW_START" as const };
   },
 };

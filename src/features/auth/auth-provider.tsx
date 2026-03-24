@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import type { Role, ShiftCloseResult, ShiftOpenResult, UserSession, MockShiftRecord } from "@/lib/contracts";
+import { createAppError } from "@/lib/utils";
 import { useAppAdapter } from "@/features/adapters/adapter-provider";
 import { demoPassword, mockUsersByRole } from "@/lib/mock-data";
 import { authClient } from "@/lib/auth-client";
@@ -149,11 +150,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const openShift = async (startingCash: number, responsibleName: string) => {
     if (!session) {
-      throw { code: "UNAUTHENTICATED", message: "กรุณาเข้าสู่ระบบก่อนเปิดกะ" };
+      throw createAppError({ code: "UNAUTHENTICATED", message: "กรุณาเข้าสู่ระบบก่อนเปิดกะ" });
     }
 
     if (activeShift) {
-      throw { code: "SHIFT_ALREADY_OPEN", message: "มีกะที่เปิดอยู่แล้ว" };
+      throw createAppError({ code: "SHIFT_ALREADY_OPEN", message: "มีกะที่เปิดอยู่แล้ว" });
     }
 
     const result = await adapter.openShift(startingCash, responsibleName);
@@ -175,7 +176,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const closeShift = async (actualCash: number, closingNote?: string, responsibleName?: string) => {
     if (!session || !activeShift) {
-      throw { code: "NO_ACTIVE_SHIFT", message: "กรุณาเปิดกะก่อนปิดกะ" };
+      throw createAppError({ code: "NO_ACTIVE_SHIFT", message: "กรุณาเปิดกะก่อนปิดกะ" });
     }
 
     const resolvedResponsibleName = responsibleName?.trim() || activeShift.responsible_name || session.full_name;

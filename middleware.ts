@@ -6,15 +6,24 @@ const protectedPrefixes = [
   "/pos",
   "/expenses",
   "/members",
+  "/trainers",
   "/coa",
   "/admin",
   "/reports",
 ];
 
+function isRealAdapterMode() {
+  return process.env.NEXT_PUBLIC_APP_ADAPTER === "real";
+}
+
 function hasSessionCookie(request: NextRequest): boolean {
   return request.cookies
     .getAll()
-    .some((cookie) => cookie.name === "better-auth.session_token" || cookie.name.startsWith("better-auth.session_token."));
+    .some(
+      (cookie) =>
+        cookie.name.includes("better-auth") &&
+        (cookie.name.includes("session_token") || cookie.name.includes("session_data")),
+    );
 }
 
 export function middleware(request: NextRequest) {
@@ -22,6 +31,10 @@ export function middleware(request: NextRequest) {
   const isProtectedRoute = protectedPrefixes.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
 
   if (!isProtectedRoute) {
+    return NextResponse.next();
+  }
+
+  if (!isRealAdapterMode()) {
     return NextResponse.next();
   }
 

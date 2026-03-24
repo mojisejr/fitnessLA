@@ -11,6 +11,7 @@
 - login ด้วย Better-Auth session cookie บน local
 - ทดสอบ route guard และ session persistence
 - ทดสอบ core operational flow: open shift -> create/edit product -> checkout membership -> verify members -> close shift
+- ทดสอบ cash-sensitive checkout flow: membership CASH และ PT CASH หลังเปิดกะ
 - ทดสอบ COA / GL เป็น extended verification หลัง flow หลักผ่านแล้ว
 
 ## Current Ground Truth
@@ -24,6 +25,7 @@
 - members page ใน real mode อ่าน backend/API truth แล้ว
 - membership checkout สร้าง member record จริงใน `member_subscriptions`
 - product create/update รองรับ `stock_on_hand`, `membership_period`, และ `membership_duration_days`
+- สินค้าที่แสดงเป็น membership ต้องถูกบันทึกเป็น `product_type: MEMBERSHIP` และ `pos_category: MEMBERSHIP` เท่านั้น
 
 ## 1. Pre-flight Checklist
 
@@ -46,6 +48,10 @@ BETTER_AUTH_URL="http://localhost:3000"
 NEXT_PUBLIC_BETTER_AUTH_URL="http://localhost:3000/api/auth"
 NEXT_PUBLIC_APP_ADAPTER="real"
 FITNESSLA_SEED_PASSWORD="ChangeMe123!"
+PLAYWRIGHT_REAL_OWNER_USERNAME="owner"
+PLAYWRIGHT_REAL_OWNER_PASSWORD="ChangeMe123!"
+PLAYWRIGHT_REAL_ADMIN_USERNAME="admin"
+PLAYWRIGHT_REAL_ADMIN_PASSWORD="ChangeMe123!"
 ```
 
 หมายเหตุสำคัญ:
@@ -54,6 +60,7 @@ FITNESSLA_SEED_PASSWORD="ChangeMe123!"
 - `BETTER_AUTH_URL` ใช้ค่าฐาน URL ของแอปตามที่โค้ด server อ่านอยู่ตอนนี้
 - `NEXT_PUBLIC_BETTER_AUTH_URL` ควรชี้ไป auth route โดยตรง
 - ถ้าไม่กำหนด `FITNESSLA_SEED_PASSWORD` ระบบจะ fallback เป็น `ChangeMe123!`
+- ถ้าจะ rerun permanent smoke ด้วยบัญชีจริง ให้ตั้ง `PLAYWRIGHT_REAL_OWNER_USERNAME`, `PLAYWRIGHT_REAL_OWNER_PASSWORD`, `PLAYWRIGHT_REAL_ADMIN_USERNAME`, `PLAYWRIGHT_REAL_ADMIN_PASSWORD`
 
 ## 3. One-Time Setup
 
@@ -85,6 +92,12 @@ npm run dev
 
 ```text
 http://localhost:3000/login
+```
+
+ถ้าจะรัน permanent rerun smoke ให้เปิดแอปค้างไว้ใน terminal หนึ่ง แล้วรันคำสั่งนี้ในอีก terminal:
+
+```powershell
+npm run test:browser:smoke:real-account
 ```
 
 หน้า login ที่อยู่ใน real mode ควรแสดงข้อความว่ากำลังเข้าสู่ระบบแบบ real auth ไม่ใช่ mock
@@ -149,10 +162,19 @@ http://localhost:3000/login
   - `stock_on_hand` ถ้าเป็น `GOODS`
   - `revenue_account_id`
 
+ถ้าจะทดสอบเส้นทางสมาชิกใหม่โดยตรง ให้สร้างสินค้าแบบนี้อย่างน้อย 1 รายการ:
+
+- `product_type: MEMBERSHIP`
+- `pos_category: MEMBERSHIP`
+- `membership_period`
+- `membership_duration_days`
+- ไม่ต้องใส่ `stock_on_hand`
+
 ผลที่คาดหวัง:
 
 - request `POST /api/v1/products` สำเร็จ
 - ไม่มี contract error เรื่อง revenue account หรือ stock payload
+- ถ้า payload ส่ง `pos_category: MEMBERSHIP` แต่ `product_type` ไม่ใช่ `MEMBERSHIP` ระบบต้อง reject ทันที
 
 ### Step 4: Edit Product In POS
 
@@ -175,17 +197,51 @@ http://localhost:3000/login
 
 - request `POST /api/v1/orders` สำเร็จ
 - ได้ `order_number` และ `tax_doc_number`
+- ควรมีอย่างน้อย 1 รอบที่ใช้ `payment_method: CASH` เพื่อยืนยันว่า flow อัปเดต `expected_cash` ได้โดยไม่ชน transaction timeout
 - ถ้า payload ไม่ถูกต้อง backend จะคืน named errors เช่น `INSUFFICIENT_STOCK`, `MEMBERSHIP_CUSTOMER_REQUIRED`, `MEMBERSHIP_SINGLE_QUANTITY`, `SHIFT_NOT_OPEN`
+
+### Step 5A: Checkout PT Package With Cash
+
+- เพิ่ม PT package ลงตะกร้า
+- เลือก trainer ที่ active
+- ใส่ `customer_info.name`
+- เลือก `payment_method: CASH`
+- ยืนยัน checkout
+
+ผลที่คาดหวัง:
+
+- request `POST /api/v1/orders` สำเร็จ
+- enrollment ถูกสร้างตาม package ที่ซื้อ
+- ไม่มี 500 หรือ `expired transaction` ใน server logs
 
 ### Step 6: Verify Members Page
 
 - เปิด `/members`
 - ยืนยันว่า member ที่เกิดจาก membership checkout ปรากฏใน list หลัง reload/refetch
 
+ข้อกำหนด regression ใหม่:
+
+- อย่างน้อย 1 รอบ ต้องใช้ membership product ที่เพิ่งสร้างใหม่ใน Step 3 ไม่ใช่ใช้แต่ membership product จาก seed
+- member record ที่เกิดขึ้นต้องโผล่ใน `/members` ได้ทันทีหลัง reload โดยไม่ต้องแก้ SKU หรือแก้ row ในฐานข้อมูลเอง
+
 ผลที่คาดหวัง:
 
 - request `GET /api/v1/members` ได้ `200`
 - เห็น member code และ membership period ตรงกับสินค้าที่ขาย
+
+## 7A. Legacy Contract Audit
+
+ก่อนจะสรุปว่าระบบพร้อม production-safe ให้รัน:
+
+```powershell
+npm run db:audit:membership-product-contract
+```
+
+สิ่งที่ต้องดูจากผลลัพธ์:
+
+- `displayMembershipButWrongType` ควรเป็น `0`
+- `membershipTypeMissingMetadata` ควรเป็น `0` หรือมี remediation plan ที่ผ่านอนุมัติแล้ว
+- ถ้าพบ `skuSuggestsMembershipButWrongType` ให้ใช้เป็น evidence list สำหรับ cleanup แยก phase ห้าม mutate production ทันทีจาก script นี้
 
 ### Step 7: Close Shift
 

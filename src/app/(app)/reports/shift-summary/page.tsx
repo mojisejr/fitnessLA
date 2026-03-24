@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { RoleGuard } from "@/components/guards/role-guard";
 import { useAppAdapter } from "@/features/adapters/adapter-provider";
-import type { PaymentMethod, ShiftSummary } from "@/lib/contracts";
+import { useAuth } from "@/features/auth/auth-provider";
+import type { PaymentMethod, SalesEntryItem, ShiftSummary } from "@/lib/contracts";
 import { formatCurrency, formatDateTime, getErrorMessage } from "@/lib/utils";
 
 const paymentMethodLabel: Record<PaymentMethod, string> = {
@@ -16,18 +17,72 @@ function todayAsInput() {
   return new Date().toISOString().slice(0, 10);
 }
 
+function computeDraftTotal(items: SalesEntryItem[]) {
+  return items.reduce((sum, item) => sum + item.quantity * item.unit_price, 0);
+}
+
+function increaseDraftItem(items: SalesEntryItem[], targetIndex: number) {
+  return items.map((item, index) =>
+    index === targetIndex
+      ? { ...item, quantity: item.quantity + 1, line_total: (item.quantity + 1) * item.unit_price }
+      : item,
+  );
+}
+
+function decreaseDraftItem(items: SalesEntryItem[], targetIndex: number) {
+  return items.flatMap((item, index) => {
+    if (index !== targetIndex) {
+      return item;
+    }
+
+    const nextQuantity = item.quantity - 1;
+    if (nextQuantity <= 0) {
+      return [];
+    }
+
+    return {
+      ...item,
+      quantity: nextQuantity,
+      line_total: nextQuantity * item.unit_price,
+    };
+  });
+}
+
 export default function ShiftSummaryPage() {
   const adapter = useAppAdapter();
+  const { session } = useAuth();
   const [date, setDate] = useState(todayAsInput);
   const [summary, setSummary] = useState<ShiftSummary | null>(null);
   const [responsibleFilter, setResponsibleFilter] = useState("ALL");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
+  const [draftItems, setDraftItems] = useState<SalesEntryItem[]>([]);
+  const [saveErrorMessage, setSaveErrorMessage] = useState<string | null>(null);
+  const [saveSuccessMessage, setSaveSuccessMessage] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+
+  const canEditSales = session?.role === "OWNER";
+
+  async function loadSummary() {
+    setIsLoading(true);
+    setErrorMessage(null);
+
+    try {
+      const result = await adapter.getShiftSummary(date);
+      setSummary(result);
+    } catch (error) {
+      setSummary(null);
+      setErrorMessage(getErrorMessage(error, "ไม่สามารถโหลดสรุปกะของวันที่เลือกได้"));
+    } finally {
+      setIsLoading(false);
+    }
+  }
 
   useEffect(() => {
     let isActive = true;
 
-    async function loadSummary() {
+    async function loadSummarySafely() {
       setIsLoading(true);
       setErrorMessage(null);
 
@@ -48,12 +103,46 @@ export default function ShiftSummaryPage() {
       }
     }
 
-    void loadSummary();
+    void loadSummarySafely();
 
     return () => {
       isActive = false;
     };
   }, [adapter, date]);
+
+  async function handleSaveSale(orderId: string) {
+    if (draftItems.length === 0) {
+      setSaveErrorMessage("กรุณาระบุรายการที่ขาย");
+      return;
+    }
+
+    if (draftItems.some((item) => item.quantity <= 0 || item.unit_price < 0 || !Number.isFinite(item.unit_price))) {
+      setSaveErrorMessage("ข้อมูลจำนวนหรือราคาต่อหน่วยไม่ถูกต้อง");
+      return;
+    }
+
+    setIsSaving(true);
+    setSaveErrorMessage(null);
+    setSaveSuccessMessage(null);
+
+    try {
+      await adapter.updateSalesEntry(orderId, {
+        items: draftItems.map((item) => ({
+          order_item_id: item.order_item_id,
+          quantity: item.quantity,
+          unit_price: item.unit_price,
+        })),
+      });
+      await loadSummary();
+      setEditingOrderId(null);
+      setDraftItems([]);
+      setSaveSuccessMessage("อัปเดตรายการขายเรียบร้อยแล้ว");
+    } catch (error) {
+      setSaveErrorMessage(getErrorMessage(error, "ไม่สามารถแก้ไขรายการขายได้"));
+    } finally {
+      setIsSaving(false);
+    }
+  }
 
   const responsibleOptions = useMemo(() => {
     if (!summary) {
@@ -340,6 +429,17 @@ export default function ShiftSummaryPage() {
                 <p className="text-sm text-muted">ทุกแถวด้านล่างเป็น source data ของตัวเลขด้านบน</p>
               </div>
 
+              {saveErrorMessage ? (
+                <div className="mt-4 rounded-[20px] border border-warning bg-warning-soft px-4 py-3 text-sm text-foreground">
+                  {saveErrorMessage}
+                </div>
+              ) : null}
+              {saveSuccessMessage ? (
+                <div className="mt-4 rounded-[20px] border border-line bg-accent-soft px-4 py-3 text-sm text-foreground">
+                  {saveSuccessMessage}
+                </div>
+              ) : null}
+
               {filteredRows.length > 0 ? (
                 <div className="mt-5 overflow-x-auto rounded-3xl border border-line bg-[#161510]">
                   <table className="min-w-full divide-y divide-line text-sm">
@@ -350,6 +450,7 @@ export default function ShiftSummaryPage() {
                         <th className="px-4 py-3 text-left font-semibold text-muted">ผู้รับผิดชอบ</th>
                         <th className="px-4 py-3 text-left font-semibold text-muted">รับชำระ</th>
                         <th className="px-4 py-3 text-left font-semibold text-muted">ยอดเงิน</th>
+                        {canEditSales ? <th className="px-4 py-3 text-left font-semibold text-muted">จัดการ</th> : null}
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-line">
@@ -359,10 +460,113 @@ export default function ShiftSummaryPage() {
                             <p>{formatDateTime(row.sold_at)}</p>
                             <p className="mt-1 text-xs text-muted">{row.order_number}</p>
                           </td>
-                          <td className="px-4 py-4 text-[#f3e8ba]">{row.items_summary}</td>
+                          <td className="px-4 py-4 text-[#f3e8ba]">
+                            {editingOrderId === String(row.order_id) ? (
+                              <div className="space-y-2">
+                                {draftItems.map((item, index) => (
+                                  <div key={String(item.order_item_id)} className="flex flex-wrap items-center gap-3 rounded-2xl border border-line/60 bg-[#12110c] px-3 py-2 text-[#f3e8ba]">
+                                    <div className="min-w-0 flex-1">
+                                      <p className="truncate font-semibold leading-6">{item.product_name} x{item.quantity}</p>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setDraftItems((current) => decreaseDraftItem(current, index));
+                                        }}
+                                        aria-label={`ลดสินค้า ${item.product_name}`}
+                                        className="flex h-8 w-8 items-center justify-center rounded-full border border-line bg-white text-base font-semibold text-[#17130a] transition hover:border-accent hover:bg-[#f5edc9]"
+                                      >
+                                        -
+                                      </button>
+                                      <span aria-label={`จำนวน ${item.product_name}`} className="min-w-5 text-center text-sm font-semibold">{item.quantity}</span>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setDraftItems((current) => increaseDraftItem(current, index));
+                                        }}
+                                        aria-label={`เพิ่มสินค้า ${item.product_name}`}
+                                        className="flex h-8 w-8 items-center justify-center rounded-full border border-[#2e7d32] bg-[#2e7d32] text-base font-semibold text-white transition hover:bg-[#256628]"
+                                      >
+                                        +
+                                      </button>
+                                    </div>
+                                    <div className="text-sm font-semibold text-[#f3e8ba]">
+                                      <p className="text-xs text-muted">ราคาต่อหน่วย</p>
+                                      <p>{formatCurrency(item.unit_price)}</p>
+                                    </div>
+                                    <div className="text-sm font-semibold text-[#f3e8ba]">
+                                      <p className="text-xs text-muted">รวม</p>
+                                      <p>{formatCurrency(item.quantity * item.unit_price)}</p>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <div className="space-y-2">
+                                {(row.items ?? []).length > 0 ? (row.items ?? []).map((item) => (
+                                  <div key={String(item.order_item_id)} className="flex items-center justify-between gap-4 rounded-2xl border border-line/60 px-3 py-2">
+                                    <span>{item.product_name} x{item.quantity}</span>
+                                    <span className="text-sm text-muted">{formatCurrency(item.line_total)}</span>
+                                  </div>
+                                )) : row.items_summary}
+                              </div>
+                            )}
+                          </td>
                           <td className="px-4 py-4 text-[#f3e8ba]">{row.responsible_name ?? row.cashier_name}</td>
                           <td className="px-4 py-4 text-[#f3e8ba]">{paymentMethodLabel[row.payment_method]}</td>
-                          <td className="px-4 py-4 text-[#f3e8ba]">{formatCurrency(row.total_amount)}</td>
+                          <td className="px-4 py-4 text-[#f3e8ba]">
+                            {editingOrderId === String(row.order_id) ? (
+                              <div>
+                                <p className="text-xs text-muted">ยอดรวมจากรายการ</p>
+                                <p className="mt-1 font-semibold text-[#f3e8ba]">{formatCurrency(computeDraftTotal(draftItems))}</p>
+                              </div>
+                            ) : (
+                              formatCurrency(row.total_amount)
+                            )}
+                          </td>
+                          {canEditSales ? (
+                            <td className="px-4 py-4 text-[#f3e8ba]">
+                              {editingOrderId === String(row.order_id) ? (
+                                <div className="flex gap-2">
+                                  <button
+                                    type="button"
+                                    disabled={isSaving}
+                                    onClick={() => void handleSaveSale(String(row.order_id))}
+                                    className="rounded-full bg-accent px-4 py-2 text-xs font-semibold text-black transition hover:bg-accent-strong disabled:cursor-not-allowed disabled:opacity-60"
+                                  >
+                                    {isSaving ? "กำลังบันทึก..." : "บันทึก"}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={isSaving}
+                                    onClick={() => {
+                                      setEditingOrderId(null);
+                                      setDraftItems([]);
+                                      setSaveErrorMessage(null);
+                                    }}
+                                    className="rounded-full border border-line px-4 py-2 text-xs font-semibold text-foreground transition hover:border-accent hover:bg-accent-soft disabled:cursor-not-allowed disabled:opacity-60"
+                                  >
+                                    ยกเลิก
+                                  </button>
+                                </div>
+                              ) : (
+                                <button
+                                  type="button"
+                                  disabled={!row.items || row.items.length === 0}
+                                  onClick={() => {
+                                    setEditingOrderId(String(row.order_id));
+                                    setDraftItems((row.items ?? []).map((item) => ({ ...item })));
+                                    setSaveErrorMessage(null);
+                                    setSaveSuccessMessage(null);
+                                  }}
+                                  className="rounded-full border border-line px-4 py-2 text-xs font-semibold text-foreground transition hover:border-accent hover:bg-accent-soft disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                  แก้ไข
+                                </button>
+                              )}
+                            </td>
+                          ) : null}
                         </tr>
                       ))}
                     </tbody>

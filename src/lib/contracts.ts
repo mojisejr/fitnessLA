@@ -1,10 +1,12 @@
-export type Role = "OWNER" | "ADMIN" | "CASHIER";
+export type Role = "OWNER" | "ADMIN" | "CASHIER" | "TRAINER";
 
 export type EntityId = string | number;
 
 export type PaymentMethod = "CASH" | "PROMPTPAY" | "CREDIT_CARD";
 
 export type ProductType = "GOODS" | "SERVICE" | "MEMBERSHIP";
+
+export type IngredientUnit = "G" | "ML" | "PIECE";
 
 export type MembershipPeriod = "DAILY" | "MONTHLY" | "QUARTERLY" | "SEMIANNUAL" | "YEARLY";
 
@@ -21,7 +23,121 @@ export interface UserSession {
   username: string;
   full_name: string;
   role: Role;
+  trainer_id?: EntityId | null;
   active_shift_id: EntityId | null;
+  scheduled_start_time?: string | null;
+  scheduled_end_time?: string | null;
+  allowed_machine_ip?: string | null;
+}
+
+export type AttendanceArrivalStatus = "EARLY" | "ON_TIME" | "LATE" | "UNSCHEDULED";
+
+export type AttendanceDepartureStatus = "PENDING" | "ON_TIME" | "EARLY_LEAVE" | "OVERTIME";
+
+export type AttendanceSummaryPeriod = "DAY" | "WEEK" | "MONTH" | "CUSTOM";
+
+export type AttendanceSummaryStatus = "NO_RECORD" | "ON_TIME" | "EARLY" | "LATE" | "MIXED";
+
+export interface StaffAttendanceRecord {
+  attendance_id: EntityId;
+  user_id: EntityId;
+  full_name: string;
+  username: string;
+  role: Role;
+  work_date: string;
+  scheduled_start_time: string | null;
+  scheduled_end_time: string | null;
+  checked_in_at: string | null;
+  checked_out_at: string | null;
+  arrival_status: AttendanceArrivalStatus;
+  departure_status: AttendanceDepartureStatus;
+  late_minutes: number;
+  early_arrival_minutes: number;
+  overtime_minutes: number;
+  early_leave_minutes: number;
+  machine_ip: string | null;
+  note?: string | null;
+}
+
+export interface ManagedStaffUserRecord extends AdminUserRecord {
+  scheduled_start_time: string | null;
+  scheduled_end_time: string | null;
+  allowed_machine_ip: string | null;
+  latest_attendance: StaffAttendanceRecord | null;
+}
+
+export interface DeleteManagedUserResult {
+  user_id: EntityId;
+  full_name: string;
+  username: string;
+  role: Extract<Role, "ADMIN" | "CASHIER" | "TRAINER">;
+}
+
+export interface BulkDeleteManagedUsersResult {
+  deleted_count: number;
+  deleted_users: DeleteManagedUserResult[];
+}
+
+export interface StaffAttendanceSummaryRecord {
+  user_id: EntityId;
+  full_name: string;
+  username: string;
+  role: Extract<Role, "ADMIN" | "CASHIER">;
+  scheduled_start_time: string | null;
+  scheduled_end_time: string | null;
+  attendance_days: number;
+  checked_in_days: number;
+  checked_out_days: number;
+  on_time_days: number;
+  late_days: number;
+  early_days: number;
+  late_minutes_total: number;
+  early_arrival_minutes_total: number;
+  overtime_minutes_total: number;
+  early_leave_minutes_total: number;
+  summary_status: AttendanceSummaryStatus;
+  latest_work_date: string | null;
+  latest_checked_in_at: string | null;
+  latest_checked_out_at: string | null;
+  latest_arrival_status: AttendanceArrivalStatus | null;
+  latest_departure_status: AttendanceDepartureStatus | null;
+}
+
+export interface AttendanceSummaryReport {
+  period: AttendanceSummaryPeriod;
+  range_start: string;
+  range_end: string;
+  summary_rows: StaffAttendanceSummaryRecord[];
+  filtered_attendance_rows: StaffAttendanceRecord[];
+}
+
+export interface AttendanceDeviceRecord {
+  device_id: EntityId;
+  label: string;
+  registered_ip: string | null;
+  user_agent: string | null;
+  approved_by_user_id: EntityId;
+  approved_by_name: string;
+  is_active: boolean;
+  last_seen_at: string | null;
+  created_at: string;
+}
+
+export interface AttendanceDeviceStatusRecord {
+  current_ip: string | null;
+  current_user_agent: string | null;
+  current_device_authorized: boolean;
+  active_device: AttendanceDeviceRecord | null;
+}
+
+export interface AttendanceStatusRecord {
+  today: StaffAttendanceRecord | null;
+  current_ip: string | null;
+  device_allowed: boolean;
+  can_check_in: boolean;
+  can_check_out: boolean;
+  has_active_shift: boolean;
+  active_device: AttendanceDeviceRecord | null;
 }
 
 export interface ShiftOpenResult {
@@ -44,13 +160,47 @@ export interface Product {
   product_id: EntityId;
   sku: string;
   name: string;
+  tagline?: string | null;
   price: number;
   product_type: ProductType;
+  pos_category?: PosSalesCategory | null;
+  featured_slot?: 1 | 2 | 3 | 4 | null;
   revenue_account_id?: EntityId;
   track_stock?: boolean;
   stock_on_hand?: number | null;
   membership_period?: MembershipPeriod | null;
   membership_duration_days?: number | null;
+  recipe_total_cost?: number | null;
+  recipe_item_count?: number;
+}
+
+export interface IngredientRecord {
+  ingredient_id: EntityId;
+  name: string;
+  unit: IngredientUnit;
+  purchase_quantity: number;
+  purchase_price: number;
+  cost_per_unit: number;
+  notes?: string | null;
+  is_active: boolean;
+}
+
+export interface ProductRecipeItemRecord {
+  recipe_item_id: EntityId;
+  product_id: EntityId;
+  ingredient_id: EntityId;
+  ingredient_name: string;
+  ingredient_unit: IngredientUnit;
+  quantity: number;
+  ingredient_cost_per_unit: number;
+  line_cost: number;
+}
+
+export interface ProductRecipeRecord {
+  product_id: EntityId;
+  product_name: string;
+  items: ProductRecipeItemRecord[];
+  total_cost: number;
 }
 
 export interface CreateOrderRequest {
@@ -58,6 +208,8 @@ export interface CreateOrderRequest {
   items: {
     product_id: EntityId;
     quantity: number;
+    trainer_id?: EntityId;
+    service_start_date?: string;
   }[];
   payment_method: PaymentMethod;
   customer_info?: {
@@ -74,6 +226,29 @@ export interface OrderResult {
   status: "COMPLETED";
 }
 
+export interface SalesEntryItem {
+  order_item_id: EntityId;
+  product_name: string;
+  quantity: number;
+  unit_price: number;
+  line_total: number;
+}
+
+export interface UpdateSalesEntryInput {
+  items: Array<{
+    order_item_id: EntityId;
+    quantity: number;
+    unit_price: number;
+  }>;
+}
+
+export interface SalesEntryUpdateResult {
+  order_id: EntityId;
+  items_summary: string;
+  total_amount: number;
+  items: SalesEntryItem[];
+}
+
 export interface ExpenseResult {
   expense_id: EntityId;
   status: "POSTED";
@@ -85,6 +260,7 @@ export interface DailySalesRow {
   order_number: string;
   sold_at: string;
   items_summary: string;
+  items?: SalesEntryItem[];
   cashier_name: string;
   responsible_name?: string;
   customer_name: string | null;
@@ -102,12 +278,16 @@ export interface DailyShiftRow {
 }
 
 export interface DailySummary {
+  report_period: ReportPeriod;
+  range_start: string;
+  range_end: string;
   total_sales: number;
   sales_by_method: {
     CASH: number;
     PROMPTPAY: number;
     CREDIT_CARD: number;
   };
+  sales_by_category: SalesByCategoryRow[];
   total_expenses: number;
   net_cash_flow: number;
   shift_discrepancies: number;
@@ -147,6 +327,7 @@ export interface MemberSubscriptionRecord {
   member_code: string;
   full_name: string;
   phone: string;
+  is_active: boolean;
   membership_product_id: EntityId;
   membership_name: string;
   membership_period: MembershipPeriod;
@@ -155,6 +336,8 @@ export interface MemberSubscriptionRecord {
   checked_in_at: string | null;
   renewed_at: string | null;
   renewal_status: "ACTIVE" | "EXPIRES_TODAY" | "EXPIRED_NOT_RENEWED" | "RENEWED";
+  renewal_method: RenewalMethod;
+  training_summary?: MemberTrainingSummary;
 }
 
 export type MemberMutationResult = MemberSubscriptionRecord;
@@ -166,6 +349,20 @@ export interface ShiftInventorySummaryRow {
   opening_stock: number;
   sold_quantity: number;
   remaining_stock: number;
+}
+
+export interface ProductStockAdjustmentRecord {
+  adjustment_id: EntityId;
+  product_id: EntityId;
+  product_name: string;
+  product_sku: string;
+  previous_stock: number;
+  added_quantity: number;
+  new_stock: number;
+  note?: string | null;
+  created_by_user_id: EntityId;
+  created_by_name: string;
+  created_at: string;
 }
 
 export interface MockExpenseAccount {
@@ -190,8 +387,12 @@ export interface AdminUserRecord {
   user_id: EntityId;
   username: string;
   full_name: string;
-  email: string;
+  phone?: string | null;
+  email?: string;
   role: Role;
+  scheduled_start_time?: string | null;
+  scheduled_end_time?: string | null;
+  allowed_machine_ip?: string | null;
 }
 
 export interface MockPendingUser {
@@ -209,4 +410,113 @@ export interface MockShiftRecord {
   opened_at: string;
   starting_cash: number;
   responsible_name?: string;
+}
+
+// --- Report Types ---
+
+export type ReportPeriod = "DAY" | "WEEK" | "MONTH" | "CUSTOM";
+
+export type PosSalesCategory =
+  | "COFFEE"
+  | "MEMBERSHIP"
+  | "FOOD"
+  | "TRAINING"
+  | "COUNTER";
+
+export interface SalesByCategoryRow {
+  category: PosSalesCategory;
+  label: string;
+  total_amount: number;
+  receipt_count: number;
+  item_count: number;
+}
+
+// --- Members/Trainer Types ---
+
+export type RenewalMethod =
+  | "NONE"
+  | "EXTEND_FROM_PREVIOUS_END"
+  | "RESTART_FROM_NEW_START";
+
+export type TrainingStatus = "NONE" | "ACTIVE" | "EXPIRED" | "UNASSIGNED" | "CLOSED";
+
+export interface MemberTrainingSummary {
+  training_status: TrainingStatus;
+  trainer_id?: EntityId | null;
+  trainer_name?: string | null;
+  training_package_name?: string | null;
+  training_package_sku?: string | null;
+  training_started_at?: string | null;
+  training_expires_at?: string | null;
+}
+
+// --- Trainer Records ---
+
+export interface TrainerRecord {
+  trainer_id: EntityId;
+  trainer_code: string;
+  user_id?: EntityId | null;
+  username?: string | null;
+  full_name: string;
+  nickname?: string | null;
+  phone?: string | null;
+  is_active: boolean;
+  active_customer_count: number;
+}
+
+export interface RegisteredTrainerUserRecord {
+  user_id: EntityId;
+  username: string;
+  full_name: string;
+  phone?: string | null;
+}
+
+export type TrainingScheduleDay =
+  | "MONDAY"
+  | "TUESDAY"
+  | "WEDNESDAY"
+  | "THURSDAY"
+  | "FRIDAY"
+  | "SATURDAY"
+  | "SUNDAY";
+
+export interface TrainingScheduleEntry {
+  day_of_week: TrainingScheduleDay;
+  start_time: string;
+  end_time: string;
+  note?: string | null;
+}
+
+export interface TrainingEnrollmentRecord {
+  enrollment_id: EntityId;
+  trainer_id: EntityId | null;
+  trainer_name: string | null;
+  customer_name: string;
+  member_id: EntityId | null;
+  package_name: string;
+  package_sku: string;
+  started_at: string;
+  expires_at: string | null;
+  session_limit?: number | null;
+  sessions_remaining?: number | null;
+  price: number;
+  status: "ACTIVE" | "EXPIRED" | "UNASSIGNED" | "CLOSED";
+  schedule_entries: TrainingScheduleEntry[];
+  closed_at?: string | null;
+  close_reason?: string | null;
+  updated_at: string;
+}
+
+export interface CreateTrainerInput {
+  user_id?: EntityId;
+  full_name: string;
+  nickname?: string;
+  phone?: string;
+}
+
+export interface UpdateTrainingEnrollmentInput {
+  sessions_remaining?: number | null;
+  status?: "ACTIVE" | "EXPIRED" | "UNASSIGNED" | "CLOSED";
+  close_reason?: string | null;
+  schedule_entries?: TrainingScheduleEntry[];
 }

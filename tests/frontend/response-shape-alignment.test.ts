@@ -111,12 +111,31 @@ describe("real-app-adapter — response shape alignment", () => {
 
   it("4B-3: getDailySummary returns full DailySummary shape", async () => {
     const mockResponse = {
+      report_period: "DAY",
+      range_start: "2026-03-10",
+      range_end: "2026-03-10",
       total_sales: 15000,
       sales_by_method: {
         CASH: 8000,
         PROMPTPAY: 5000,
         CREDIT_CARD: 2000,
       },
+      sales_by_category: [
+        {
+          category: "COFFEE",
+          label: "กาแฟและเครื่องดื่ม",
+          total_amount: 0,
+          receipt_count: 0,
+          item_count: 0,
+        },
+        {
+          category: "MEMBERSHIP",
+          label: "สมาชิก",
+          total_amount: 0,
+          receipt_count: 0,
+          item_count: 0,
+        },
+      ],
       total_expenses: 1200,
       net_cash_flow: 13800,
       shift_discrepancies: -50,
@@ -147,12 +166,16 @@ describe("real-app-adapter — response shape alignment", () => {
     };
     mockFetchOk(mockResponse);
 
-    const result = await realAppAdapter.getDailySummary("2026-03-10");
+    const result = await realAppAdapter.getDailySummary({ period: "DAY", date: "2026-03-10" });
 
+    expect(result.report_period).toBe("DAY");
+    expect(result.range_start).toBe("2026-03-10");
+    expect(result.range_end).toBe("2026-03-10");
     expect(result.total_sales).toBe(15000);
     expect(result.sales_by_method.CASH).toBe(8000);
     expect(result.sales_by_method.PROMPTPAY).toBe(5000);
     expect(result.sales_by_method.CREDIT_CARD).toBe(2000);
+    expect(result.sales_by_category[0]?.category).toBe("COFFEE");
     expect(result.total_expenses).toBe(1200);
     expect(result.net_cash_flow).toBe(13800);
     expect(result.shift_discrepancies).toBe(-50);
@@ -348,8 +371,11 @@ describe("real-app-adapter — response shape alignment", () => {
       sku: "MEM-001",
       name: "Monthly Membership",
       price: 1500,
-      productType: "SERVICE",
+      productType: "MEMBERSHIP",
+      posCategory: "MEMBERSHIP",
       revenueAccountId: "coa-4101",
+      membershipPeriod: "MONTHLY",
+      membershipDurationDays: 30,
     });
 
     expect(result).toMatchObject({
@@ -382,7 +408,10 @@ describe("real-app-adapter — response shape alignment", () => {
       sku: "MEM-001",
       name: "Monthly Membership Plus",
       price: 1800,
+      posCategory: "MEMBERSHIP",
       revenueAccountId: "coa-4102",
+      membershipPeriod: "MONTHLY",
+      membershipDurationDays: 30,
     });
 
     expect(result).toMatchObject({

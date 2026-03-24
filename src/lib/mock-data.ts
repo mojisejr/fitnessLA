@@ -6,6 +6,7 @@ import type {
   Role,
   UserSession,
 } from "@/lib/contracts";
+import { buildEmptyPosSalesCategoryRows } from "@/lib/pos-categories";
 
 export const demoPassword = "demo1234";
 
@@ -15,6 +16,7 @@ export const mockUsersByRole: Record<Role, UserSession> = {
     username: "owner",
     full_name: "Lalin Charoen",
     role: "OWNER",
+    trainer_id: null,
     active_shift_id: null,
   },
   ADMIN: {
@@ -22,6 +24,7 @@ export const mockUsersByRole: Record<Role, UserSession> = {
     username: "admin",
     full_name: "Niran Ops Lead",
     role: "ADMIN",
+    trainer_id: null,
     active_shift_id: null,
   },
   CASHIER: {
@@ -29,6 +32,15 @@ export const mockUsersByRole: Record<Role, UserSession> = {
     username: "cashier",
     full_name: "Pim Counter",
     role: "CASHIER",
+    trainer_id: null,
+    active_shift_id: null,
+  },
+  TRAINER: {
+    user_id: 4,
+    username: "trainer",
+    full_name: "Nok Trainer",
+    role: "TRAINER",
+    trainer_id: null,
     active_shift_id: null,
   },
 };
@@ -38,18 +50,23 @@ export const mockProducts: Product[] = [
     product_id: 101,
     sku: "WATER-01",
     name: "Mineral Water",
+    tagline: "ขวดเล็กแช่เย็นพร้อมขาย",
     price: 25,
     product_type: "GOODS",
+    pos_category: "COFFEE",
     revenue_account_id: 6,
     track_stock: true,
     stock_on_hand: 18,
+    featured_slot: 1,
   },
   {
     product_id: 102,
     sku: "COFFEE-01",
     name: "Iced Americano",
+    tagline: "สูตรเข้มขายดีหน้าเคาน์เตอร์",
     price: 50,
     product_type: "GOODS",
+    pos_category: "COFFEE",
     revenue_account_id: 6,
     track_stock: true,
     stock_on_hand: 20,
@@ -58,17 +75,22 @@ export const mockProducts: Product[] = [
     product_id: 103,
     sku: "SHAKE-01",
     name: "Protein Shake",
+    tagline: "เครื่องดื่มโปรตีนพร้อมขาย",
     price: 95,
     product_type: "GOODS",
+    pos_category: "COFFEE",
     track_stock: true,
     stock_on_hand: 6,
+    featured_slot: 2,
   },
   {
     product_id: 104,
     sku: "DAYPASS",
     name: "Daily Pass",
+    tagline: "เข้าใช้ได้ 1 วันทันที",
     price: 80,
     product_type: "MEMBERSHIP",
+    pos_category: "MEMBERSHIP",
     revenue_account_id: 10,
     membership_period: "DAILY",
     membership_duration_days: 1,
@@ -77,11 +99,14 @@ export const mockProducts: Product[] = [
     product_id: 105,
     sku: "MEM-MONTH",
     name: "Monthly Membership",
+    tagline: "แพ็กเกจยอดนิยมสำหรับลูกค้าใหม่",
     price: 1500,
     product_type: "MEMBERSHIP",
+    pos_category: "MEMBERSHIP",
     revenue_account_id: 10,
     membership_period: "MONTHLY",
     membership_duration_days: 30,
+    featured_slot: 3,
   },
   {
     product_id: 106,
@@ -107,9 +132,12 @@ export const mockProducts: Product[] = [
     product_id: 108,
     sku: "PT-01",
     name: "Personal Training Session",
+    tagline: "เทรนเดี่ยว 1 ครั้งพร้อมเลือกเทรนเนอร์",
     price: 500,
     product_type: "SERVICE",
+    pos_category: "TRAINING",
     revenue_account_id: 7,
+    featured_slot: 4,
   },
   {
     product_id: 109,
@@ -296,6 +324,7 @@ export const mockProducts: Product[] = [
     price: 4500,
     product_type: "SERVICE",
     revenue_account_id: 7,
+    membership_duration_days: 30,
   },
   {
     product_id: 128,
@@ -304,6 +333,7 @@ export const mockProducts: Product[] = [
     price: 8000,
     product_type: "SERVICE",
     revenue_account_id: 7,
+    membership_duration_days: 60,
   },
   {
     product_id: 129,
@@ -312,6 +342,7 @@ export const mockProducts: Product[] = [
     price: 7000,
     product_type: "SERVICE",
     revenue_account_id: 7,
+    membership_duration_days: 30,
   },
   {
     product_id: 130,
@@ -320,6 +351,7 @@ export const mockProducts: Product[] = [
     price: 12900,
     product_type: "SERVICE",
     revenue_account_id: 7,
+    membership_duration_days: 30,
   },
 ];
 
@@ -439,6 +471,10 @@ export const mockPendingUsers: MockPendingUser[] = [
 ];
 
 export const mockDailySummary: DailySummary = {
+  report_period: "DAY",
+  range_start: "2026-03-14",
+  range_end: "2026-03-14",
+  sales_by_category: buildEmptyPosSalesCategoryRows(),
   total_sales: 8420,
   sales_by_method: {
     CASH: 3120,

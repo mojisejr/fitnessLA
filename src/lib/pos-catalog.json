@@ -1,0 +1,408 @@
+[
+  {
+    "sku": "WATER-01",
+    "name": "Mineral Water",
+    "price": 25,
+    "productType": "GOODS",
+    "revenueCode": "4010"
+  },
+  {
+    "sku": "DAYPASS",
+    "name": "สมาชิกรายวัน",
+    "price": 80,
+    "productType": "MEMBERSHIP",
+    "revenueCode": "4020",
+    "membershipPeriod": "DAILY",
+    "membershipDurationDays": 1
+  },
+  {
+    "sku": "MEM-MONTH",
+    "name": "สมาชิก 1 เดือน",
+    "price": 1500,
+    "productType": "MEMBERSHIP",
+    "revenueCode": "4020",
+    "membershipPeriod": "MONTHLY",
+    "membershipDurationDays": 30
+  },
+  {
+    "sku": "MEM-3MONTH",
+    "name": "สมาชิก 3 เดือน",
+    "price": 3900,
+    "productType": "MEMBERSHIP",
+    "revenueCode": "4020",
+    "membershipPeriod": "QUARTERLY",
+    "membershipDurationDays": 90
+  },
+  {
+    "sku": "MEM-6MONTH",
+    "name": "สมาชิก 6 เดือน",
+    "price": 7500,
+    "productType": "MEMBERSHIP",
+    "revenueCode": "4020",
+    "membershipPeriod": "SEMIANNUAL",
+    "membershipDurationDays": 180
+  },
+  {
+    "sku": "MEM-YEAR",
+    "name": "สมาชิก 1 ปี",
+    "price": 9900,
+    "productType": "MEMBERSHIP",
+    "revenueCode": "4020",
+    "membershipPeriod": "YEARLY",
+    "membershipDurationDays": 365
+  },
+  {
+    "sku": "SAUNA-01",
+    "name": "ซาวน่า",
+    "price": 100,
+    "productType": "SERVICE",
+    "revenueCode": "4010"
+  },
+  {
+    "sku": "SHAKE-01",
+    "name": "Protein Shake",
+    "price": 95,
+    "productType": "GOODS",
+    "revenueCode": "4010"
+  },
+  {
+    "sku": "TOWEL-01",
+    "name": "Towel Service",
+    "price": 40,
+    "productType": "SERVICE",
+    "revenueCode": "4010"
+  },
+  {
+    "sku": "PT-01",
+    "name": "เทรนเดี่ยว 1 ครั้ง",
+    "price": 500,
+    "productType": "SERVICE",
+    "revenueCode": "4010"
+  },
+  {
+    "sku": "PT-10",
+    "name": "เทรน 10 ครั้ง",
+    "price": 4500,
+    "productType": "SERVICE",
+    "revenueCode": "4010",
+    "membershipDurationDays": 30
+  },
+  {
+    "sku": "PT-20",
+    "name": "เทรน 20 ครั้ง",
+    "price": 8000,
+    "productType": "SERVICE",
+    "revenueCode": "4010",
+    "membershipDurationDays": 60
+  },
+  {
+    "sku": "PT-MONTH",
+    "name": "เทรนรายเดือน ไม่จำกัดครั้ง",
+    "price": 7000,
+    "productType": "SERVICE",
+    "revenueCode": "4010",
+    "membershipDurationDays": 30
+  },
+  {
+    "sku": "PT-COUPLE",
+    "name": "เทรนคู่รายเดือน ไม่จำกัดครั้ง",
+    "price": 12900,
+    "productType": "SERVICE",
+    "revenueCode": "4010",
+    "membershipDurationDays": 30
+  },
+  {
+    "sku": "COFFEE-01",
+    "name": "อเมริกาโน่เย็น คั่วเข้ม",
+    "price": 50,
+    "productType": "GOODS",
+    "revenueCode": "4010"
+  },
+  {
+    "sku": "COFFEE-02",
+    "name": "อเมริกาโน่เย็น คั่วกลาง",
+    "price": 50,
+    "productType": "GOODS",
+    "revenueCode": "4010"
+  },
+  {
+    "sku": "COFFEE-03",
+    "name": "อเมริกาโน่เย็น คั่วอ่อน",
+    "price": 60,
+    "productType": "GOODS",
+    "revenueCode": "4010"
+  },
+  {
+    "sku": "COFFEE-11",
+    "name": "อเมริกาโน่ร้อน คั่วเข้ม",
+    "price": 45,
+    "productType": "GOODS",
+    "revenueCode": "4010"
+  },
+  {
+    "sku": "COFFEE-22",
+    "name": "อเมริกาโน่ร้อน คั่วกลาง",
+    "price": 50,
+    "productType": "GOODS",
+    "revenueCode": "4010"
+  },
+  {
+    "sku": "COFFEE-23",
+    "name": "อเมริกาโน่ร้อน คั่วอ่อน",
+    "price": 60,
+    "productType": "GOODS",
+    "revenueCode": "4010"
+  },
+  {
+    "sku": "COFFEE-12",
+    "name": "เอสเปรสโซ่ร้อน",
+    "price": 55,
+    "productType": "GOODS",
+    "revenueCode": "4010"
+  },
+  {
+    "sku": "COFFEE-13",
+    "name": "เอสเปรสโซ่เย็น",
+    "price": 60,
+    "productType": "GOODS",
+    "revenueCode": "4010"
+  },
+  {
+    "sku": "COFFEE-14",
+    "name": "ลาเต้ร้อน",
+    "price": 55,
+    "productType": "GOODS",
+    "revenueCode": "4010"
+  },
+  {
+    "sku": "COFFEE-15",
+    "name": "ลาเต้เย็น",
+    "price": 60,
+    "productType": "GOODS",
+    "revenueCode": "4010"
+  },
+  {
+    "sku": "COFFEE-16",
+    "name": "คาปูชิโน่ร้อน",
+    "price": 60,
+    "productType": "GOODS",
+    "revenueCode": "4010"
+  },
+  {
+    "sku": "COFFEE-17",
+    "name": "คาปูชิโน่เย็น",
+    "price": 65,
+    "productType": "GOODS",
+    "revenueCode": "4010"
+  },
+  {
+    "sku": "COFFEE-18",
+    "name": "อเมริกาโน่มะพร้าว",
+    "price": 100,
+    "productType": "GOODS",
+    "revenueCode": "4010"
+  },
+  {
+    "sku": "COFFEE-19",
+    "name": "ลาเต้โอรีโอ้",
+    "price": 75,
+    "productType": "GOODS",
+    "revenueCode": "4010"
+  },
+  {
+    "sku": "COFFEE-20",
+    "name": "ฮันนี่มิลค์ร้อน",
+    "price": 45,
+    "productType": "GOODS",
+    "revenueCode": "4010"
+  },
+  {
+    "sku": "COFFEE-21",
+    "name": "ฮันนี่มิลค์เย็น",
+    "price": 50,
+    "productType": "GOODS",
+    "revenueCode": "4010"
+  },
+  {
+    "sku": "COFFEE-24",
+    "name": "เพิ่มเมล็ดคั่วอ่อน",
+    "price": 10,
+    "productType": "GOODS",
+    "revenueCode": "4010"
+  },
+  {
+    "sku": "COFFEE-25",
+    "name": "เพิ่มน้ำผึ้ง",
+    "price": 10,
+    "productType": "GOODS",
+    "revenueCode": "4010"
+  },
+  {
+    "sku": "FOOD-01",
+    "name": "กะเพราหมูสับ ไข่ดาว",
+    "price": 70,
+    "productType": "GOODS",
+    "revenueCode": "4010"
+  },
+  {
+    "sku": "FOOD-02",
+    "name": "กะเพราไก่ ไข่ดาว",
+    "price": 70,
+    "productType": "GOODS",
+    "revenueCode": "4010"
+  },
+  {
+    "sku": "FOOD-03",
+    "name": "ข้าวลาบหมู ไข่ดาว",
+    "price": 70,
+    "productType": "GOODS",
+    "revenueCode": "4010"
+  },
+  {
+    "sku": "FOOD-04",
+    "name": "ข้าวลาบไก่ ไข่ดาว",
+    "price": 70,
+    "productType": "GOODS",
+    "revenueCode": "4010"
+  },
+  {
+    "sku": "FOOD-05",
+    "name": "ข้าวผัดหมู ไข่ดาว",
+    "price": 70,
+    "productType": "GOODS",
+    "revenueCode": "4010"
+  },
+  {
+    "sku": "FOOD-06",
+    "name": "ข้าวผัดไก่ ไข่ดาว",
+    "price": 70,
+    "productType": "GOODS",
+    "revenueCode": "4010"
+  },
+  {
+    "sku": "FOOD-07",
+    "name": "ข้าวผัดแหนมไข่ ไข่ดาว",
+    "price": 70,
+    "productType": "GOODS",
+    "revenueCode": "4010"
+  },
+  {
+    "sku": "FOOD-08",
+    "name": "ข้าวผัดไข่ ไข่ดาว",
+    "price": 70,
+    "productType": "GOODS",
+    "revenueCode": "4010"
+  },
+  {
+    "sku": "FOOD-09",
+    "name": "ผัดผักรวม ไก่-หมู ไข่ดาว",
+    "price": 70,
+    "productType": "GOODS",
+    "revenueCode": "4010"
+  },
+  {
+    "sku": "FOOD-10",
+    "name": "ผัดบล็อกโคลี่ ไก่-หมู ไข่ดาว",
+    "price": 70,
+    "productType": "GOODS",
+    "revenueCode": "4010"
+  },
+  {
+    "sku": "FOOD-11",
+    "name": "ไก่ผัดขิง ไข่ดาว",
+    "price": 70,
+    "productType": "GOODS",
+    "revenueCode": "4010"
+  },
+  {
+    "sku": "FOOD-12",
+    "name": "ผัดซีอิ๊ว หมู-ไก่-ไข่",
+    "price": 70,
+    "productType": "GOODS",
+    "revenueCode": "4010"
+  },
+  {
+    "sku": "FOOD-13",
+    "name": "ข้าวไข่เจียวหมูสับ",
+    "price": 50,
+    "productType": "GOODS",
+    "revenueCode": "4010"
+  },
+  {
+    "sku": "FOOD-14",
+    "name": "ผัดผักบุ้งไฟแดง ไข่ดาว",
+    "price": 70,
+    "productType": "GOODS",
+    "revenueCode": "4010"
+  },
+  {
+    "sku": "FOOD-15",
+    "name": "ผัดคะน้าไฟแดง ไข่ดาว",
+    "price": 70,
+    "productType": "GOODS",
+    "revenueCode": "4010"
+  },
+  {
+    "sku": "FOOD-16",
+    "name": "ไก่ทอดกระเทียม ไข่ดาว",
+    "price": 70,
+    "productType": "GOODS",
+    "revenueCode": "4010"
+  },
+  {
+    "sku": "FOOD-17",
+    "name": "หมูทอดกระเทียม ไข่ดาว",
+    "price": 70,
+    "productType": "GOODS",
+    "revenueCode": "4010"
+  },
+  {
+    "sku": "FOOD-18",
+    "name": "ไข่เยี่ยวม้ากะเพรากรอบ ไข่ดาว",
+    "price": 70,
+    "productType": "GOODS",
+    "revenueCode": "4010"
+  },
+  {
+    "sku": "FOOD-19",
+    "name": "ต้มแซ่บหมู-ไก่ ไข่ดาว",
+    "price": 80,
+    "productType": "GOODS",
+    "revenueCode": "4010"
+  },
+  {
+    "sku": "FOOD-20",
+    "name": "แกงอ่อมไก่-หมู ไข่ดาว",
+    "price": 80,
+    "productType": "GOODS",
+    "revenueCode": "4010"
+  },
+  {
+    "sku": "FOOD-21",
+    "name": "ผัดพริกแกงหมู-ไก่ ไข่ดาว",
+    "price": 70,
+    "productType": "GOODS",
+    "revenueCode": "4010"
+  },
+  {
+    "sku": "FOOD-22",
+    "name": "ผัดไทย หมู-ไก่",
+    "price": 70,
+    "productType": "GOODS",
+    "revenueCode": "4010"
+  },
+  {
+    "sku": "FOOD-23",
+    "name": "เพิ่มไข่ดาว",
+    "price": 10,
+    "productType": "GOODS",
+    "revenueCode": "4010"
+  },
+  {
+    "sku": "FOOD-24",
+    "name": "เพิ่มพิเศษอาหารจานเดียว",
+    "price": 10,
+    "productType": "GOODS",
+    "revenueCode": "4010"
+  }
+]

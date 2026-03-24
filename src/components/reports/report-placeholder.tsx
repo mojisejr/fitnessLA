@@ -4,7 +4,7 @@ type ReportPlaceholderProps = {
   eyebrow: string;
   title: string;
   description: string;
-  waitingFor: string[];
+  waitingFor?: string[];
   filters: string[];
   integrationStatus?: string;
   demoNote?: string;
@@ -126,14 +126,16 @@ export function ReportPlaceholder({
             </table>
           </div>
 
-          <div className="mt-5 rounded-3xl border border-dashed border-line bg-background p-6">
-            <p className="text-sm font-semibold text-foreground">รายการที่ยังรอข้อมูลเพิ่ม</p>
-            <ul className="mt-3 space-y-2 text-sm leading-7 text-muted">
-              {waitingFor.map((item) => (
-                <li key={item}>{item}</li>
-              ))}
-            </ul>
-          </div>
+          {waitingFor && waitingFor.length > 0 ? (
+            <div className="mt-5 rounded-3xl border border-dashed border-line bg-background p-6">
+              <p className="text-sm font-semibold text-foreground">รายการที่ยังรอข้อมูลเพิ่ม</p>
+              <ul className="mt-3 space-y-2 text-sm leading-7 text-muted">
+                {waitingFor.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
 
           {children ? <div className="mt-5">{children}</div> : null}
         </div>

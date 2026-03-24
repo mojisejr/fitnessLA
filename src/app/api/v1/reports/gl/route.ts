@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { getGeneralLedgerReport } from "@/features/operations/services";
+import { generalLedgerEnabled } from "@/lib/feature-flags";
 import { resolveSessionFromRequest } from "@/lib/session";
 
 function isValidDateInput(value: string | null): value is string {
@@ -38,6 +39,16 @@ function toCsv(rows: Awaited<ReturnType<typeof getGeneralLedgerReport>>): string
 }
 
 export async function GET(request: Request) {
+  if (!generalLedgerEnabled) {
+    return NextResponse.json(
+      {
+        code: "FEATURE_DISABLED",
+        message: "รายงาน General Ledger ถูกปิดใช้งานชั่วคราว",
+      },
+      { status: 404 },
+    );
+  }
+
   const session = await resolveSessionFromRequest(request);
   if (!session) {
     return NextResponse.json(

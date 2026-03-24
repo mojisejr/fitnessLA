@@ -20,7 +20,7 @@ export async function GET(request: Request) {
     return NextResponse.json(
       {
         code: "SHIFT_NOT_FOUND",
-        message: "ยังไม่มีกะเปิดสำหรับผู้ใช้งานนี้",
+        message: "ยังไม่มีกะเปิดในระบบ",
       },
       { status: 404 },
     );

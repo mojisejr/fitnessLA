@@ -3,8 +3,18 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { createProduct, listProducts } from "@/features/operations/services";
-import { canManageUsers, toAppRole } from "@/lib/roles";
+import { canManageProducts, toAppRole } from "@/lib/roles";
 import { resolveSessionFromRequest } from "@/lib/session";
+
+function invalidProductResponse(message: string) {
+  return NextResponse.json(
+    {
+      code: "VALIDATION_ERROR",
+      message,
+    },
+    { status: 400 },
+  );
+}
 
 function isUniqueConstraintError(error: unknown) {
   return (
@@ -21,8 +31,11 @@ function isUniqueConstraintError(error: unknown) {
 const createProductSchema = z.object({
   sku: z.string().trim().min(1).max(64),
   name: z.string().trim().min(1).max(200),
+  tagline: z.string().trim().max(240).nullable().optional(),
   price: z.number().nonnegative(),
   product_type: z.enum(["GOODS", "SERVICE", "MEMBERSHIP"]),
+  pos_category: z.enum(["COFFEE", "MEMBERSHIP", "FOOD", "TRAINING", "COUNTER"]).nullable().optional(),
+  featured_slot: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]).nullable().optional(),
   revenue_account_id: z.string().trim().min(1).optional(),
   stock_on_hand: z.number().int().nonnegative().nullable().optional(),
   membership_period: z.enum(["DAILY", "MONTHLY", "QUARTERLY", "SEMIANNUAL", "YEARLY"]).nullable().optional(),
@@ -70,7 +83,7 @@ export async function POST(request: Request) {
     );
   }
 
-  if (!canManageUsers(requesterRole)) {
+  if (!canManageProducts(requesterRole)) {
     return NextResponse.json(
       {
         code: "FORBIDDEN",
@@ -80,7 +93,15 @@ export async function POST(request: Request) {
     );
   }
 
-  const parseResult = createProductSchema.safeParse(await request.json());
+  let requestBody: unknown;
+
+  try {
+    requestBody = await request.json();
+  } catch {
+    return invalidProductResponse("ข้อมูลสินค้าไม่ถูกต้อง");
+  }
+
+  const parseResult = createProductSchema.safeParse(requestBody);
   if (!parseResult.success) {
     return NextResponse.json(
       {
@@ -96,6 +117,14 @@ export async function POST(request: Request) {
     const created = await createProduct(parseResult.data);
     return NextResponse.json(created, { status: 201 });
   } catch (error) {
+    if (error instanceof Error && error.message === "INVALID_PRODUCT") {
+      return invalidProductResponse("กรุณาระบุ SKU และชื่อสินค้าให้ครบถ้วน");
+    }
+
+    if (error instanceof Error && error.message === "INVALID_PRODUCT_PRICE") {
+      return invalidProductResponse("ราคาสินค้าต้องเป็นศูนย์หรือมากกว่า");
+    }
+
     if (isUniqueConstraintError(error)) {
       return NextResponse.json(
         {
@@ -135,6 +164,48 @@ export async function POST(request: Request) {
         { status: 400 },
       );
     }
+
+    if (error instanceof Error && error.message === "INVALID_POS_CATEGORY") {
+      return NextResponse.json(
+        {
+          code: "INVALID_POS_CATEGORY",
+          message: "หมวดขาย POS ที่เลือกไม่ถูกต้อง",
+        },
+        { status: 400 },
+      );
+    }
+
+    if (error instanceof Error && error.message === "INVALID_MEMBERSHIP_PRODUCT_CONTRACT") {
+      return NextResponse.json(
+        {
+          code: "INVALID_MEMBERSHIP_PRODUCT_CONTRACT",
+          message: "สินค้าที่แสดงเป็นหมวดสมาชิกต้องบันทึกเป็น MEMBERSHIP และใช้หมวดขาย POS เป็น MEMBERSHIP เท่านั้น",
+        },
+        { status: 400 },
+      );
+    }
+
+    if (error instanceof Error && error.message === "MEMBERSHIP_METADATA_REQUIRED") {
+      return NextResponse.json(
+        {
+          code: "MEMBERSHIP_METADATA_REQUIRED",
+          message: "สินค้าสมาชิกต้องระบุรอบสมาชิกและจำนวนวันสมาชิกให้ครบถ้วน",
+        },
+        { status: 400 },
+      );
+    }
+
+    if (error instanceof Error && error.message === "INVALID_FEATURED_SLOT") {
+      return NextResponse.json(
+        {
+          code: "INVALID_FEATURED_SLOT",
+          message: "ตำแหน่งสินค้าปักหมุดต้องอยู่ระหว่าง 1 ถึง 4",
+        },
+        { status: 400 },
+      );
+    }
+
+    console.error("POST /api/v1/products failed", error);
 
     return NextResponse.json(
       {

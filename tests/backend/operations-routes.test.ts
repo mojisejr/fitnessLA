@@ -5,6 +5,8 @@ import { GET as activeShiftGET } from "../../src/app/api/v1/shifts/active/route"
 import { GET as shiftInventorySummaryGET } from "../../src/app/api/v1/shifts/[shiftId]/inventory-summary/route";
 import { POST as openShiftPOST } from "../../src/app/api/v1/shifts/open/route";
 import { POST as createOrderPOST } from "../../src/app/api/v1/orders/route";
+import { DELETE as orderDELETE, PATCH as orderPATCH } from "../../src/app/api/v1/orders/[orderId]/route";
+import { POST as ordersBulkDeletePOST } from "../../src/app/api/v1/orders/bulk-delete/route";
 import { POST as createExpensePOST } from "../../src/app/api/v1/expenses/route";
 import { POST as closeShiftPOST } from "../../src/app/api/v1/shifts/close/route";
 import { GET as dailySummaryGET } from "../../src/app/api/v1/reports/daily-summary/route";
@@ -17,6 +19,9 @@ const mockGetActiveShiftByStaff = vi.fn();
 const mockGetShiftInventorySummaryByShiftId = vi.fn();
 const mockOpenShiftWithJournal = vi.fn();
 const mockCreateOrderWithJournal = vi.fn();
+const mockUpdateOrderSale = vi.fn();
+const mockDeleteOrderSale = vi.fn();
+const mockDeleteOrderSales = vi.fn();
 const mockPostExpenseWithJournal = vi.fn();
 const mockCloseActiveShiftWithDifference = vi.fn();
 const mockGetDailySummaryByDate = vi.fn();
@@ -34,6 +39,9 @@ vi.mock("../../src/features/operations/services", () => ({
     mockGetShiftInventorySummaryByShiftId(...args),
   openShiftWithJournal: (...args: unknown[]) => mockOpenShiftWithJournal(...args),
   createOrderWithJournal: (...args: unknown[]) => mockCreateOrderWithJournal(...args),
+  updateOrderSale: (...args: unknown[]) => mockUpdateOrderSale(...args),
+  deleteOrderSale: (...args: unknown[]) => mockDeleteOrderSale(...args),
+  deleteOrderSales: (...args: unknown[]) => mockDeleteOrderSales(...args),
   postExpenseWithJournal: (...args: unknown[]) => mockPostExpenseWithJournal(...args),
   closeActiveShiftWithDifference: (...args: unknown[]) =>
     mockCloseActiveShiftWithDifference(...args),
@@ -190,7 +198,7 @@ describe("A-2 operations routes", () => {
   });
 
   it("opens shift and returns journal reference", async () => {
-    mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "CASHIER" });
+    mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "CASHIER", full_name: "Pim Counter" });
     mockOpenShiftWithJournal.mockResolvedValue({
       shift_id: "shift_1",
       opened_at: "2026-03-08T16:00:00.000Z",
@@ -209,11 +217,80 @@ describe("A-2 operations routes", () => {
 
     expect(response.status).toBe(201);
     expect(mockOpenShiftWithJournal).toHaveBeenCalledWith("u1", 500, "Pim Counter");
+    // Note: R3 means responsible_name must match session.full_name. The API always uses session.full_name.
     expect(body).toMatchObject({
       shift_id: "shift_1",
       journal_entry_id: "journal_1",
       responsible_name: "Persisted Pim",
     });
+  });
+
+  it("deletes order sale for owner", async () => {
+    mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "OWNER" });
+    mockDeleteOrderSale.mockResolvedValue({ order_id: "ord_1", order_number: "ORD-2026-0035" });
+
+    const response = await orderDELETE(
+      new Request("http://localhost/api/v1/orders/ord_1", { method: "DELETE" }),
+      { params: Promise.resolve({ orderId: "ord_1" }) },
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toEqual({ order_id: "ord_1", order_number: "ORD-2026-0035" });
+    expect(mockDeleteOrderSale).toHaveBeenCalledWith("ord_1");
+  });
+
+  it("rejects order sale deletion for admin", async () => {
+    mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "ADMIN" });
+
+    const response = await orderDELETE(
+      new Request("http://localhost/api/v1/orders/ord_1", { method: "DELETE" }),
+      { params: Promise.resolve({ orderId: "ord_1" }) },
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(body.code).toBe("FORBIDDEN");
+    expect(mockDeleteOrderSale).not.toHaveBeenCalled();
+  });
+
+  it("bulk deletes order sales for owner", async () => {
+    mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "OWNER" });
+    mockDeleteOrderSales.mockResolvedValue({
+      deleted_count: 2,
+      deleted_orders: [
+        { order_id: "ord_1", order_number: "ORD-2026-0035" },
+        { order_id: "ord_2", order_number: "ORD-2026-0034" },
+      ],
+    });
+
+    const response = await ordersBulkDeletePOST(
+      new Request("http://localhost/api/v1/orders/bulk-delete", {
+        method: "POST",
+        body: JSON.stringify({ order_ids: ["ord_1", "ord_2"] }),
+      }),
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.deleted_count).toBe(2);
+    expect(mockDeleteOrderSales).toHaveBeenCalledWith(["ord_1", "ord_2"]);
+  });
+
+  it("bulk delete order sales returns 403 for admin", async () => {
+    mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "ADMIN" });
+
+    const response = await ordersBulkDeletePOST(
+      new Request("http://localhost/api/v1/orders/bulk-delete", {
+        method: "POST",
+        body: JSON.stringify({ order_ids: ["ord_1"] }),
+      }),
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(body.code).toBe("FORBIDDEN");
+    expect(mockDeleteOrderSales).not.toHaveBeenCalled();
   });
 
   it("creates order with 201", async () => {
@@ -310,6 +387,83 @@ describe("A-2 operations routes", () => {
     expect(body.code).toBe("INSUFFICIENT_STOCK");
   });
 
+  it("lets owner update sale rows", async () => {
+    mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "OWNER" });
+    mockUpdateOrderSale.mockResolvedValue({
+      order_id: "o1",
+      items: [
+        {
+          order_item_id: "item-1",
+          product_name: "Protein Shake",
+          quantity: 1,
+          unit_price: 999,
+          line_total: 999,
+        },
+      ],
+      items_summary: "แก้รายการขายแล้ว x1",
+      total_amount: 999,
+    });
+
+    const response = await orderPATCH(
+      new Request("http://localhost/api/v1/orders/o1", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          items: [
+            {
+              order_item_id: "item-1",
+              quantity: 1,
+              unit_price: 999,
+            },
+          ],
+        }),
+      }),
+      { params: Promise.resolve({ orderId: "o1" }) },
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(mockUpdateOrderSale).toHaveBeenCalledWith({
+      order_id: "o1",
+      items: [
+        {
+          order_item_id: "item-1",
+          quantity: 1,
+          unit_price: 999,
+        },
+      ],
+    });
+    expect(body).toMatchObject({
+      order_id: "o1",
+      total_amount: 999,
+    });
+  });
+
+  it("blocks admin from updating sale rows", async () => {
+    mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "ADMIN" });
+
+    const response = await orderPATCH(
+      new Request("http://localhost/api/v1/orders/o1", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          items: [
+            {
+              order_item_id: "item-1",
+              quantity: 1,
+              unit_price: 999,
+            },
+          ],
+        }),
+      }),
+      { params: Promise.resolve({ orderId: "o1" }) },
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(body.code).toBe("FORBIDDEN");
+  });
+
   it("creates expense with 201", async () => {
     mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "CASHIER" });
     mockPostExpenseWithJournal.mockResolvedValue({
@@ -339,7 +493,7 @@ describe("A-2 operations routes", () => {
   });
 
   it("closes shift and returns discrepancy payload", async () => {
-    mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "CASHIER" });
+    mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "CASHIER", full_name: "Pim Counter" });
     mockCloseActiveShiftWithDifference.mockResolvedValue({
       shift_id: "shift_1",
       expected_cash: 2600,
@@ -505,40 +659,20 @@ describe("A-2 operations routes", () => {
     });
   });
 
-  it("returns GL CSV report for owner", async () => {
+  it("returns 404 when general ledger feature is disabled", async () => {
     mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "OWNER" });
-    mockGetGeneralLedgerReport.mockResolvedValue([
-      {
-        date: "2026-03-09",
-        account_code: "1010",
-        account_name: "Cash",
-        debit: 3000,
-        credit: 0,
-        description: "Order ORD-2026-0001",
-      },
-      {
-        date: "2026-03-09",
-        account_code: "4010",
-        account_name: "General Revenue",
-        debit: 0,
-        credit: 3000,
-        description: "Order ORD-2026-0001",
-      },
-    ]);
 
     const response = await generalLedgerGET(
       new Request("http://localhost/api/v1/reports/gl?start_date=2026-03-09&end_date=2026-03-09"),
     );
-    const body = await response.text();
+    const body = await response.json();
 
-    expect(response.status).toBe(200);
-    expect(response.headers.get("Content-Type")).toContain("text/csv");
-    expect(body).toContain("Date,Account Code,Account Name,Debit,Credit,Description");
-    expect(body).toContain("2026-03-09,1010,Cash,3000.00,0.00,Order ORD-2026-0001");
-    expect(body).toContain("2026-03-09,4010,General Revenue,0.00,3000.00,Order ORD-2026-0001");
+    expect(response.status).toBe(404);
+    expect(body.code).toBe("FEATURE_DISABLED");
+    expect(mockGetGeneralLedgerReport).not.toHaveBeenCalled();
   });
 
-  it("returns 400 when GL date params are invalid", async () => {
+  it("returns 404 before validating GL params when feature is disabled", async () => {
     mockResolveSessionFromRequest.mockResolvedValue({ user_id: "u1", role: "ADMIN" });
 
     const response = await generalLedgerGET(
@@ -546,7 +680,8 @@ describe("A-2 operations routes", () => {
     );
     const body = await response.json();
 
-    expect(response.status).toBe(400);
-    expect(body.code).toBe("VALIDATION_ERROR");
+    expect(response.status).toBe(404);
+    expect(body.code).toBe("FEATURE_DISABLED");
+    expect(mockGetGeneralLedgerReport).not.toHaveBeenCalled();
   });
 });

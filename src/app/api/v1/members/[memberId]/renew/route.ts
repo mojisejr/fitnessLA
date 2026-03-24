@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { renewMember } from "@/features/operations/services";
+import { canManageMembers } from "@/lib/roles";
 import { resolveSessionFromRequest } from "@/lib/session";
 
 type RouteContext = {
@@ -18,6 +19,16 @@ export async function POST(request: Request, context: RouteContext) {
         message: "ต้องยืนยันตัวตนก่อนต่ออายุสมาชิก",
       },
       { status: 401 },
+    );
+  }
+
+  if (!canManageMembers(session.role)) {
+    return NextResponse.json(
+      {
+        code: "FORBIDDEN",
+        message: "สิทธิ์ไม่เพียงพอสำหรับต่ออายุสมาชิก",
+      },
+      { status: 403 },
     );
   }
 
@@ -43,6 +54,16 @@ export async function POST(request: Request, context: RouteContext) {
           message: "ไม่พบสมาชิกที่ต้องการต่ออายุ",
         },
         { status: 404 },
+      );
+    }
+
+    if (error instanceof Error && error.message === "MEMBER_INACTIVE") {
+      return NextResponse.json(
+        {
+          code: "MEMBER_INACTIVE",
+          message: "สมาชิกที่ปิดใช้งานไม่สามารถต่ออายุได้",
+        },
+        { status: 409 },
       );
     }
 

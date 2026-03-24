@@ -72,7 +72,10 @@ export async function POST(request: Request) {
         return NextResponse.json(
           {
             code: error.message,
-            message: "ไม่สามารถบันทึกรายจ่ายในกะนี้ได้",
+            message:
+              error.message === "SHIFT_OWNER_MISMATCH"
+                ? "กะที่เลือกไม่ใช่กะเปิดปัจจุบันของระบบ"
+                : "ไม่สามารถบันทึกรายจ่ายในกะนี้ได้",
           },
           { status: 409 },
         );

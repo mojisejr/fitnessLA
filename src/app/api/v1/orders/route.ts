@@ -11,6 +11,8 @@ const createOrderSchema = z.object({
       z.object({
         product_id: z.string().min(1),
         quantity: z.number().int().positive(),
+        trainer_id: z.string().min(1).optional(),
+        service_start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
       }),
     )
     .min(1),
@@ -66,7 +68,7 @@ export async function POST(request: Request) {
         return NextResponse.json(
           {
             code: "SHIFT_OWNER_MISMATCH",
-            message: "กะนี้เป็นของผู้ใช้อื่นหรือ session ปัจจุบันไม่ตรงกับกะที่เลือก",
+            message: "กะที่เลือกไม่ใช่กะเปิดปัจจุบันของระบบ",
           },
           { status: 409 },
         );
@@ -111,6 +113,27 @@ export async function POST(request: Request) {
                 ? "บิลสมาชิกต้องระบุชื่อลูกค้าเพื่อสร้างข้อมูลสมาชิก"
                 : "แพ็กเกจสมาชิกซื้อได้ครั้งละ 1 รายการเท่านั้น",
           },
+          { status: 400 },
+        );
+      }
+
+      if (error.message === "TRAINER_REQUIRED") {
+        return NextResponse.json(
+          { code: "TRAINER_REQUIRED", message: "สินค้า PT ต้องเลือกเทรนเนอร์" },
+          { status: 400 },
+        );
+      }
+
+      if (error.message === "TRAINER_NOT_FOUND") {
+        return NextResponse.json(
+          { code: "TRAINER_NOT_FOUND", message: "ไม่พบเทรนเนอร์ที่เลือกหรือไม่ active" },
+          { status: 404 },
+        );
+      }
+
+      if (error.message === "TRAINING_SINGLE_QUANTITY") {
+        return NextResponse.json(
+          { code: "TRAINING_SINGLE_QUANTITY", message: "แพ็กเกจ PT ซื้อได้ครั้งละ 1 รายการเท่านั้น" },
           { status: 400 },
         );
       }

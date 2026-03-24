@@ -24,8 +24,15 @@ model User {
 
   // Custom: Bio-Identity for fitnessLA
   username  String  @unique
+  phone     String?
   role      String  @default("STAFF") // ADMIN, OWNER, STAFF
   isActive  Boolean @default(true)
+  scheduledStartTime String?
+  scheduledEndTime   String?
+  allowedMachineIp   String?
+  attendanceLogs     StaffAttendance[]
+  approvedAttendanceDevices AttendanceDevice[] @relation("AttendanceDeviceApprovedBy")
+  trainerProfile     Trainer?  @relation("TrainerUser")
 
   @@map("user")
 }
@@ -148,12 +155,58 @@ model Shift {
   @@map("shifts")
 }
 
+model StaffAttendance {
+  id                  String   @id @default(cuid())
+  userId              String
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workDate            DateTime
+  scheduledStartTime  String?
+  scheduledEndTime    String?
+  checkedInAt         DateTime?
+  checkedOutAt        DateTime?
+  arrivalStatus       String   @default("UNSCHEDULED") // EARLY, ON_TIME, LATE, UNSCHEDULED
+  departureStatus     String   @default("PENDING") // PENDING, ON_TIME, EARLY_LEAVE, OVERTIME
+  lateMinutes         Int      @default(0)
+  earlyArrivalMinutes Int      @default(0)
+  overtimeMinutes     Int      @default(0)
+  earlyLeaveMinutes   Int      @default(0)
+  machineIp           String?
+  note                String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@unique([userId, workDate])
+  @@index([workDate])
+  @@map("staff_attendance_logs")
+}
+
+model AttendanceDevice {
+  id                 String   @id @default(cuid())
+  label              String
+  tokenHash          String   @unique
+  registeredIp       String?
+  userAgent          String?
+  approvedByUserId   String
+  approvedByUserName String
+  approvedBy         User     @relation("AttendanceDeviceApprovedBy", fields: [approvedByUserId], references: [id], onDelete: Cascade)
+  isActive           Boolean  @default(true)
+  lastSeenAt         DateTime?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([isActive, updatedAt])
+  @@map("attendance_devices")
+}
+
 model Product {
   id               String         @id @default(cuid())
   sku              String         @unique
   name             String
+  tagline          String?
   price            Decimal        @db.Decimal(12, 2)
   productType      String
+  posCategoryCode  String?
+  featuredSlot     Int?
   isActive         Boolean        @default(true)
   trackStock       Boolean        @default(false)
   stockOnHand      Int?
@@ -163,10 +216,73 @@ model Product {
   revenueAccount   ChartOfAccount? @relation(fields: [revenueAccountId], references: [id])
   orderItems       OrderItem[]
   memberSubscriptions MemberSubscription[]
+  trainingEnrollments TrainingServiceEnrollment[]
+  stockAdjustments ProductStockAdjustment[]
+  recipeItems      ProductRecipeItem[]
   createdAt        DateTime       @default(now())
   updatedAt        DateTime       @updatedAt
 
   @@map("products")
+}
+
+model Ingredient {
+  id               String             @id @default(cuid())
+  name             String             @unique
+  unit             String
+  purchaseQuantity Decimal            @db.Decimal(12, 3)
+  purchasePrice    Decimal            @db.Decimal(12, 2)
+  notes            String?
+  isActive         Boolean            @default(true)
+  recipeItems      ProductRecipeItem[]
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+
+  @@map("ingredients")
+}
+
+model ProductRecipeItem {
+  id           String     @id @default(cuid())
+  productId    String
+  product      Product    @relation(fields: [productId], references: [id], onDelete: Cascade)
+  ingredientId String
+  ingredient   Ingredient @relation(fields: [ingredientId], references: [id], onDelete: Restrict)
+  quantity     Decimal    @db.Decimal(12, 3)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@unique([productId, ingredientId])
+  @@index([ingredientId])
+  @@map("product_recipe_items")
+}
+
+model ProductStockAdjustment {
+  id                String   @id @default(cuid())
+  productId         String
+  product           Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  previousStock     Int
+  addedQuantity     Int
+  newStock          Int
+  note              String?
+  createdByUserId   String
+  createdByUserName String
+  createdAt         DateTime @default(now())
+
+  @@index([productId, createdAt])
+  @@index([createdByUserId])
+  @@map("product_stock_adjustments")
+}
+
+model PosCategory {
+  code         String   @id
+  label        String
+  description  String?
+  displayOrder Int      @default(0)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([displayOrder])
+  @@map("pos_categories")
 }
 
 model MemberSubscription {
@@ -176,11 +292,14 @@ model MemberSubscription {
   phone                  String
   membershipProductId    String
   membershipProduct      Product  @relation(fields: [membershipProductId], references: [id])
+  isActive               Boolean  @default(true)
   startedAt              DateTime
   expiresAt              DateTime
   checkedInAt            DateTime?
   renewedAt              DateTime?
   renewalStatus          String   @default("ACTIVE")
+  renewalMethod          String   @default("NONE") // NONE, EXTEND_FROM_PREVIOUS_END, RESTART_FROM_NEW_START
+  trainingEnrollments    TrainingServiceEnrollment[]
   createdAt              DateTime @default(now())
   updatedAt              DateTime @updatedAt
 
@@ -194,11 +313,13 @@ model Order {
   shift         Shift         @relation(fields: [shiftId], references: [id])
   paymentMethod String // CASH, PROMPTPAY, CREDIT_CARD
   totalAmount   Decimal       @db.Decimal(12, 2)
+  itemsSummaryOverride String?
   customerName  String?
   customerTaxId String?
   status        String        @default("COMPLETED")
   items         OrderItem[]
   taxDocuments  TaxDocument[]
+  trainingEnrollments TrainingServiceEnrollment[]
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
 
@@ -214,6 +335,7 @@ model OrderItem {
   quantity   Int
   unitPrice  Decimal  @db.Decimal(12, 2)
   totalPrice Decimal  @db.Decimal(12, 2)
+  trainingEnrollments TrainingServiceEnrollment[]
   createdAt  DateTime @default(now())
 
   @@map("order_items")
@@ -251,4 +373,55 @@ model Expense {
   updatedAt        DateTime       @updatedAt
 
   @@map("expenses")
+}
+
+// --- Trainer Domain ---
+
+model Trainer {
+  id          String   @id @default(cuid())
+  trainerCode String   @unique
+  userId      String?  @unique
+  user        User?    @relation("TrainerUser", fields: [userId], references: [id], onDelete: SetNull)
+  fullName    String
+  nickname    String?
+  phone       String?
+  isActive    Boolean  @default(true)
+  enrollments TrainingServiceEnrollment[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("trainers")
+}
+
+model TrainingServiceEnrollment {
+  id                     String              @id @default(cuid())
+  orderId                String
+  order                  Order               @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  orderItemId            String
+  orderItem              OrderItem           @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  memberSubscriptionId   String?
+  memberSubscription     MemberSubscription? @relation(fields: [memberSubscriptionId], references: [id])
+  trainerId              String?
+  trainer                Trainer?            @relation(fields: [trainerId], references: [id])
+  packageProductId       String
+  packageProduct         Product             @relation(fields: [packageProductId], references: [id])
+  customerNameSnapshot   String
+  packageNameSnapshot    String
+  packageSkuSnapshot     String
+  startedAt              DateTime
+  expiresAt              DateTime?
+  sessionLimit           Int?
+  sessionsRemaining      Int?
+  priceSnapshot          Decimal             @db.Decimal(12, 2)
+  status                 String              @default("ACTIVE")
+  scheduleEntries        Json?
+  closedAt               DateTime?
+  closeReason            String?
+  createdAt              DateTime            @default(now())
+  updatedAt              DateTime            @updatedAt
+
+  @@index([trainerId])
+  @@index([memberSubscriptionId])
+  @@index([orderId])
+  @@map("training_service_enrollments")
 }

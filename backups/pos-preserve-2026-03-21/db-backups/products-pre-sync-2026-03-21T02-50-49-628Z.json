@@ -1,0 +1,76 @@
+{
+  "exportedAt": "2026-03-21T02:50:49.629Z",
+  "rowCount": 5,
+  "products": [
+    {
+      "id": "cmmzkdz320005kphw6n680a1c",
+      "sku": "K1514",
+      "name": "คอร์สเทรนอะลูมิไร้",
+      "price": 13000,
+      "productType": "GOODS",
+      "isActive": true,
+      "stockOnHand": 9,
+      "revenueAccountId": "cmmz5mv4c0003ashwbvfkd389",
+      "revenueAccountCode": "4020",
+      "revenueAccountName": "Cash Overage",
+      "createdAt": "2026-03-21T00:03:01.982Z",
+      "updatedAt": "2026-03-21T00:03:43.951Z"
+    },
+    {
+      "id": "cmmz5mv9l0007ashwonn1352v",
+      "sku": "MEM-001",
+      "name": "Monthly Membership",
+      "price": 1200,
+      "productType": "MEMBERSHIP",
+      "isActive": true,
+      "stockOnHand": null,
+      "revenueAccountId": null,
+      "revenueAccountCode": null,
+      "revenueAccountName": null,
+      "createdAt": "2026-03-20T17:10:02.697Z",
+      "updatedAt": "2026-03-20T17:10:02.697Z"
+    },
+    {
+      "id": "cmmz5mv870006ashw2p5ebjzf",
+      "sku": "PT-001",
+      "name": "Personal Training Session",
+      "price": 1500,
+      "productType": "SERVICE",
+      "isActive": true,
+      "stockOnHand": null,
+      "revenueAccountId": null,
+      "revenueAccountCode": null,
+      "revenueAccountName": null,
+      "createdAt": "2026-03-20T17:10:02.647Z",
+      "updatedAt": "2026-03-20T17:10:02.647Z"
+    },
+    {
+      "id": "cmmz5mvay0008ashwam58yu9z",
+      "sku": "SNK-001",
+      "name": "Protein Snack",
+      "price": 85,
+      "productType": "GOODS",
+      "isActive": true,
+      "stockOnHand": null,
+      "revenueAccountId": null,
+      "revenueAccountCode": null,
+      "revenueAccountName": null,
+      "createdAt": "2026-03-20T17:10:02.746Z",
+      "updatedAt": "2026-03-20T17:10:02.746Z"
+    },
+    {
+      "id": "cmmz5r58s00052xhwbqqwtuih",
+      "sku": "SNK-002",
+      "name": "Smoke Snack Plus",
+      "price": 29,
+      "productType": "GOODS",
+      "isActive": true,
+      "stockOnHand": 150,
+      "revenueAccountId": "cmmz5mv350002ashwn7qs1rv4",
+      "revenueAccountCode": "4010",
+      "revenueAccountName": "Service Revenue",
+      "createdAt": "2026-03-20T17:13:22.252Z",
+      "updatedAt": "2026-03-21T00:03:22.479Z"
+    }
+  ]
+}
