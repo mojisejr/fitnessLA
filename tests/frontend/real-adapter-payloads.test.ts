@@ -301,6 +301,55 @@ describe("real-app-adapter — request payload shapes", () => {
     });
   });
 
+  it("2C-7k: createProduct POSTs explicit membership metadata for membership products", async () => {
+    spyFetch({ product_id: "prod-2" });
+
+    await realAppAdapter.createProduct({
+      sku: "MEM-QTR-01",
+      name: "Quarterly Membership",
+      price: 3900,
+      productType: "MEMBERSHIP",
+      posCategory: "MEMBERSHIP",
+      membershipPeriod: "QUARTERLY",
+      membershipDurationDays: 90,
+    });
+
+    const [url, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/v1/products");
+    expect(init.method).toBe("POST");
+    const payload = JSON.parse(init.body as string);
+    expect(payload).toMatchObject({
+      product_type: "MEMBERSHIP",
+      pos_category: "MEMBERSHIP",
+      membership_period: "QUARTERLY",
+      membership_duration_days: 90,
+    });
+    expect(payload).not.toHaveProperty("stock_on_hand");
+  });
+
+  it("2C-7l: updateProduct PATCHes membership metadata for membership products", async () => {
+    spyFetch({ product_id: "prod-2" });
+
+    await realAppAdapter.updateProduct({
+      productId: "prod-2",
+      sku: "MEM-QTR-01",
+      name: "Quarterly Membership Plus",
+      price: 4200,
+      posCategory: "MEMBERSHIP",
+      membershipPeriod: "QUARTERLY",
+      membershipDurationDays: 95,
+    });
+
+    const [url, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/v1/products/prod-2");
+    expect(init.method).toBe("PATCH");
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      pos_category: "MEMBERSHIP",
+      membership_period: "QUARTERLY",
+      membership_duration_days: 95,
+    });
+  });
+
   // ── 2D: Expenses ───────────────────────────────────────────────────────
 
   it("2D-8: createExpense with file sends FormData with receipt_file field", async () => {

@@ -728,6 +728,20 @@ export const mockAppAdapter: AppAdapter = {
       throw createError("INVALID_PRODUCT_PRICE", "ราคาสินค้าต้องเป็นศูนย์หรือมากกว่า");
     }
 
+    if (input.posCategory === "MEMBERSHIP" && input.productType !== "MEMBERSHIP") {
+      throw createError("INVALID_MEMBERSHIP_PRODUCT_CONTRACT", "สินค้าที่แสดงเป็นหมวดสมาชิกต้องเป็น MEMBERSHIP เท่านั้น");
+    }
+
+    if (input.productType === "MEMBERSHIP" && input.posCategory && input.posCategory !== "MEMBERSHIP") {
+      throw createError("INVALID_MEMBERSHIP_PRODUCT_CONTRACT", "สินค้าสมาชิกต้องใช้หมวดขาย POS เป็น MEMBERSHIP");
+    }
+
+    if (input.productType === "MEMBERSHIP") {
+      if (!input.membershipPeriod || !Number.isInteger(input.membershipDurationDays) || (input.membershipDurationDays ?? 0) <= 0) {
+        throw createError("MEMBERSHIP_METADATA_REQUIRED", "สินค้าสมาชิกต้องระบุรอบสมาชิกและจำนวนวันสมาชิกให้ครบ");
+      }
+    }
+
     if (productsState.some((product) => product.sku.toLowerCase() === input.sku.trim().toLowerCase())) {
       throw createError("DUPLICATE_PRODUCT_SKU", "SKU นี้ถูกใช้งานแล้ว");
     }
@@ -790,8 +804,34 @@ export const mockAppAdapter: AppAdapter = {
       throw createError("INVALID_PRODUCT_STOCK", "จำนวน stock ต้องเป็นศูนย์หรือมากกว่า");
     }
 
+    const nextPosCategory = input.posCategory ?? resolvePosCategory({
+      sku: input.sku.trim(),
+      product_type: targetProduct.product_type,
+      pos_category: targetProduct.pos_category,
+    });
+    const nextMembershipPeriod = targetProduct.product_type === "MEMBERSHIP"
+      ? (input.membershipPeriod ?? targetProduct.membership_period ?? "MONTHLY")
+      : null;
+    const nextMembershipDurationDays = targetProduct.product_type === "MEMBERSHIP"
+      ? (input.membershipDurationDays ?? targetProduct.membership_duration_days ?? 30)
+      : null;
+
+    if (nextPosCategory === "MEMBERSHIP" && targetProduct.product_type !== "MEMBERSHIP") {
+      throw createError("INVALID_MEMBERSHIP_PRODUCT_CONTRACT", "สินค้าที่แสดงเป็นหมวดสมาชิกต้องเป็น MEMBERSHIP เท่านั้น");
+    }
+
+    if (targetProduct.product_type === "MEMBERSHIP") {
+      if (nextPosCategory !== "MEMBERSHIP") {
+        throw createError("INVALID_MEMBERSHIP_PRODUCT_CONTRACT", "สินค้าสมาชิกต้องใช้หมวดขาย POS เป็น MEMBERSHIP");
+      }
+
+      if (!nextMembershipPeriod || !Number.isInteger(nextMembershipDurationDays) || (nextMembershipDurationDays ?? 0) <= 0) {
+        throw createError("MEMBERSHIP_METADATA_REQUIRED", "สินค้าสมาชิกต้องระบุรอบสมาชิกและจำนวนวันสมาชิกให้ครบ");
+      }
+    }
+
     const revenueAccount = resolveRevenueAccount(input.revenueAccountId);
-  const featuredSlot = normalizeFeaturedSlot(input.featuredSlot === undefined ? (targetProduct.featured_slot ?? null) : input.featuredSlot);
+    const featuredSlot = normalizeFeaturedSlot(input.featuredSlot === undefined ? (targetProduct.featured_slot ?? null) : input.featuredSlot);
     clearFeaturedSlotConflict(featuredSlot, input.productId);
 
     productsState = productsState.map((product) => {
@@ -805,14 +845,12 @@ export const mockAppAdapter: AppAdapter = {
         sku: input.sku.trim(),
         tagline: normalizeTagline(input.tagline),
         price: input.price,
-        pos_category: input.posCategory ?? resolvePosCategory({
-          sku: input.sku.trim(),
-          product_type: product.product_type,
-          pos_category: product.pos_category,
-        }),
+        pos_category: nextPosCategory,
         featured_slot: featuredSlot,
         revenue_account_id: revenueAccount?.account_id,
         stock_on_hand: product.track_stock ? (input.stockOnHand ?? product.stock_on_hand ?? 0) : product.stock_on_hand,
+        membership_period: product.product_type === "MEMBERSHIP" ? nextMembershipPeriod : null,
+        membership_duration_days: product.product_type === "MEMBERSHIP" ? nextMembershipDurationDays : null,
       } satisfies Product;
     });
 

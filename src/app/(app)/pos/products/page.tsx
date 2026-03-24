@@ -13,7 +13,8 @@ import { formatCurrency, formatDateTime, getErrorCode, getErrorMessage } from "@
 type SellCategory = "ALL" | keyof typeof POS_CATEGORY_LABEL;
 type PosEditorCategory = Exclude<SellCategory, "ALL">;
 type FeaturedSlot = 1 | 2 | 3 | 4;
-type EditableProductType = "GOODS" | "SERVICE";
+type EditableProductType = Product["product_type"];
+type MembershipPeriod = NonNullable<Product["membership_period"]>;
 type StockAdjustmentDirection = "INCREASE" | "DECREASE";
 type InlineRestockDraft = {
     quantity: string;
@@ -42,6 +43,22 @@ const featuredSlotChoices: Array<{ value: "" | `${FeaturedSlot}`; label: string 
     { value: "3", label: "ช่องด่วน 3" },
     { value: "4", label: "ช่องด่วน 4" },
 ];
+
+const membershipPeriodChoices: Array<{ value: MembershipPeriod; label: string }> = [
+    { value: "DAILY", label: "รายวัน" },
+    { value: "MONTHLY", label: "รายเดือน" },
+    { value: "QUARTERLY", label: "3 เดือน" },
+    { value: "SEMIANNUAL", label: "6 เดือน" },
+    { value: "YEARLY", label: "รายปี" },
+];
+
+const defaultMembershipDurationDaysByPeriod: Record<MembershipPeriod, string> = {
+    DAILY: "1",
+    MONTHLY: "30",
+    QUARTERLY: "90",
+    SEMIANNUAL: "180",
+    YEARLY: "365",
+};
 
 const ingredientUnitLabel: Record<IngredientRecord["unit"], string> = {
     G: "กรัม",
@@ -122,6 +139,8 @@ export default function PosProductsPage() {
     const [editStockOnHand, setEditStockOnHand] = useState("");
     const [editPosCategory, setEditPosCategory] = useState<PosEditorCategory>("COUNTER");
     const [editFeaturedSlot, setEditFeaturedSlot] = useState<"" | `${FeaturedSlot}`>("");
+    const [editMembershipPeriod, setEditMembershipPeriod] = useState<MembershipPeriod>("MONTHLY");
+    const [editMembershipDurationDays, setEditMembershipDurationDays] = useState("30");
     const [selectedRevenueAccountId, setSelectedRevenueAccountId] = useState("");
     const [chartOfAccounts, setChartOfAccounts] = useState<ChartOfAccountRecord[]>([]);
     const [revenueAccountsLoading, setRevenueAccountsLoading] = useState(true);
@@ -163,6 +182,9 @@ export default function PosProductsPage() {
         () => products.find((product) => String(product.product_id) === selectedProductId) ?? null,
         [products, selectedProductId],
     );
+
+    const effectiveEditorProductType = isCreateMode ? newProductType : selectedProduct?.product_type ?? "GOODS";
+    const isMembershipEditor = effectiveEditorProductType === "MEMBERSHIP";
 
     const revenueAccounts = useMemo(
         () => chartOfAccounts.filter((account) => account.account_type === "REVENUE" && account.is_active),
@@ -387,6 +409,8 @@ export default function PosProductsPage() {
         setEditStockOnHand(selectedProduct.track_stock ? String(selectedProduct.stock_on_hand ?? 0) : "");
         setEditPosCategory(getSellCategory(selectedProduct));
         setEditFeaturedSlot(selectedProduct.featured_slot ? String(selectedProduct.featured_slot) as `${FeaturedSlot}` : "");
+        setEditMembershipPeriod(selectedProduct.membership_period ?? "MONTHLY");
+        setEditMembershipDurationDays(String(selectedProduct.membership_duration_days ?? defaultMembershipDurationDaysByPeriod[selectedProduct.membership_period ?? "MONTHLY"]));
         setSelectedRevenueAccountId(selectedProduct.revenue_account_id === undefined ? "" : String(selectedProduct.revenue_account_id));
     }, [isCreateMode, selectedProduct]);
 
@@ -434,6 +458,8 @@ export default function PosProductsPage() {
         setEditStockOnHand("0");
         setEditPosCategory(getDefaultPosCategory("GOODS", ""));
         setEditFeaturedSlot("");
+        setEditMembershipPeriod("MONTHLY");
+        setEditMembershipDurationDays(defaultMembershipDurationDaysByPeriod.MONTHLY);
         setSelectedRevenueAccountId("");
         setEditorMessage(null);
         setEditorError(null);
@@ -711,6 +737,7 @@ export default function PosProductsPage() {
 
         const parsedPrice = Number(editPrice);
         const parsedStockOnHand = Number(editStockOnHand);
+        const parsedMembershipDurationDays = Number(editMembershipDurationDays);
 
         if (Number.isNaN(parsedPrice) || parsedPrice < 0) {
             setEditorError("ราคาสินค้าต้องเป็นศูนย์หรือมากกว่า");
@@ -720,6 +747,18 @@ export default function PosProductsPage() {
         if (isCreateMode && newProductType === "GOODS" && (Number.isNaN(parsedStockOnHand) || parsedStockOnHand < 0)) {
             setEditorError("จำนวน stock ต้องเป็นศูนย์หรือมากกว่า");
             return;
+        }
+
+        if (isMembershipEditor) {
+            if (!editMembershipPeriod) {
+                setEditorError("กรุณาเลือกรอบสมาชิก");
+                return;
+            }
+
+            if (!Number.isInteger(parsedMembershipDurationDays) || parsedMembershipDurationDays <= 0) {
+                setEditorError("จำนวนวันสมาชิกต้องเป็นจำนวนเต็มมากกว่า 0");
+                return;
+            }
         }
 
         setEditorError(null);
@@ -738,6 +777,8 @@ export default function PosProductsPage() {
                     featuredSlot: editFeaturedSlot ? Number(editFeaturedSlot) as FeaturedSlot : null,
                     revenueAccountId: selectedRevenueAccountId || undefined,
                     stockOnHand: newProductType === "GOODS" ? parsedStockOnHand : null,
+                    membershipPeriod: newProductType === "MEMBERSHIP" ? editMembershipPeriod : null,
+                    membershipDurationDays: newProductType === "MEMBERSHIP" ? parsedMembershipDurationDays : null,
                 });
 
                 await refreshProducts();
@@ -754,6 +795,8 @@ export default function PosProductsPage() {
                     posCategory: editPosCategory,
                     featuredSlot: editFeaturedSlot ? Number(editFeaturedSlot) as FeaturedSlot : null,
                     revenueAccountId: selectedRevenueAccountId || undefined,
+                    membershipPeriod: selectedProduct.product_type === "MEMBERSHIP" ? editMembershipPeriod : null,
+                    membershipDurationDays: selectedProduct.product_type === "MEMBERSHIP" ? parsedMembershipDurationDays : null,
                 });
 
                 await refreshProducts();
@@ -772,6 +815,10 @@ export default function PosProductsPage() {
                 setEditorError("บัญชีที่เลือกไม่ใช่หมวดรายได้ จึงไม่สามารถผูกกับสินค้าได้");
             } else if (errorCode === "INVALID_POS_CATEGORY") {
                 setEditorError("หมวดขาย POS ที่เลือกไม่ถูกต้อง");
+            } else if (errorCode === "INVALID_MEMBERSHIP_PRODUCT_CONTRACT") {
+                setEditorError("สินค้าที่แสดงเป็นหมวดสมาชิกต้องบันทึกเป็น MEMBERSHIP และใช้หมวดขาย POS เป็น MEMBERSHIP เท่านั้น");
+            } else if (errorCode === "MEMBERSHIP_METADATA_REQUIRED") {
+                setEditorError("สินค้าสมาชิกต้องระบุรอบสมาชิกและจำนวนวันสมาชิกให้ครบถ้วน");
             } else if (errorCode === "INVALID_FEATURED_SLOT") {
                 setEditorError("ตำแหน่งสินค้าปักหมุดต้องอยู่ระหว่าง 1 ถึง 4 เท่านั้น");
             } else if (errorCode === "VALIDATION_ERROR" && validationErrorMessage) {
@@ -1245,15 +1292,20 @@ export default function PosProductsPage() {
                                             setNewProductType(nextProductType);
                                             setEditPosCategory(getDefaultPosCategory(nextProductType, editSku));
                                             setEditStockOnHand(nextProductType === "GOODS" ? editStockOnHand || "0" : "");
+                                            if (nextProductType === "MEMBERSHIP") {
+                                                setEditMembershipPeriod("MONTHLY");
+                                                setEditMembershipDurationDays(defaultMembershipDurationDaysByPeriod.MONTHLY);
+                                            }
                                         }}
                                         className="mt-2 w-full rounded-[18px] border border-line bg-[#fff8de] px-4 py-3 text-[#17130a] outline-none transition focus:border-accent"
                                     >
                                         <option value="GOODS">สินค้า</option>
                                         <option value="SERVICE">บริการ</option>
+                                        <option value="MEMBERSHIP">สมาชิก</option>
                                     </select>
                                 ) : (
                                     <div className="mt-2 rounded-[18px] border border-line bg-[#161510] px-4 py-3 text-sm text-foreground">
-                                        {selectedProduct ? selectedProduct.name : "เลือกสินค้าจากตารางด้านซ้าย"}
+                                        {selectedProduct ? `${selectedProduct.name} · ${selectedProduct.product_type}` : "เลือกสินค้าจากตารางด้านซ้าย"}
                                     </div>
                                 )}
                             </label>
@@ -1305,6 +1357,9 @@ export default function PosProductsPage() {
                                     {!isCreateMode && selectedProduct?.track_stock ? (
                                         <p className="mt-2 text-xs leading-6 text-muted">ถ้าต้องการเพิ่ม stock ให้ใช้ปุ่ม + เติมสินค้า ในคอลัมน์คงเหลือของตารางด้านซ้าย</p>
                                     ) : null}
+                                    {isMembershipEditor ? (
+                                        <p className="mt-2 text-xs leading-6 text-muted">สินค้าสมาชิกไม่ติดตามสต็อก และจะใช้ metadata รอบสมาชิกแทน</p>
+                                    ) : null}
                                 </label>
                                 <label className="block">
                                     <span className="text-sm font-medium text-foreground">ปักหมุดขายดี</span>
@@ -1340,6 +1395,7 @@ export default function PosProductsPage() {
                                         aria-label="หมวดขาย POS"
                                         value={editPosCategory}
                                         onChange={(event) => setEditPosCategory(event.target.value as PosEditorCategory)}
+                                        disabled={isMembershipEditor}
                                         className="mt-2 w-full rounded-[18px] border border-line bg-[#fff8de] px-4 py-3 text-[#17130a] outline-none transition focus:border-accent"
                                     >
                                         {(Object.keys(POS_CATEGORY_LABEL) as PosEditorCategory[]).map((category) => (
@@ -1350,6 +1406,40 @@ export default function PosProductsPage() {
                                     </select>
                                 </label>
                             </div>
+
+                            {isMembershipEditor ? (
+                                <div className="grid gap-4 sm:grid-cols-2">
+                                    <label className="block">
+                                        <span className="text-sm font-medium text-foreground">รอบสมาชิก</span>
+                                        <select
+                                            aria-label="รอบสมาชิก"
+                                            value={editMembershipPeriod}
+                                            onChange={(event) => {
+                                                const nextPeriod = event.target.value as MembershipPeriod;
+                                                setEditMembershipPeriod(nextPeriod);
+                                                setEditMembershipDurationDays(defaultMembershipDurationDaysByPeriod[nextPeriod]);
+                                            }}
+                                            className="mt-2 w-full rounded-[18px] border border-line bg-[#fff8de] px-4 py-3 text-[#17130a] outline-none transition focus:border-accent"
+                                        >
+                                            {membershipPeriodChoices.map((choice) => (
+                                                <option key={choice.value} value={choice.value}>
+                                                    {choice.label}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </label>
+                                    <label className="block">
+                                        <span className="text-sm font-medium text-foreground">จำนวนวันสมาชิก</span>
+                                        <input
+                                            aria-label="จำนวนวันสมาชิก"
+                                            inputMode="numeric"
+                                            value={editMembershipDurationDays}
+                                            onChange={(event) => setEditMembershipDurationDays(event.target.value)}
+                                            className="mt-2 w-full rounded-[18px] border border-line bg-[#fff8de] px-4 py-3 text-[#17130a] outline-none transition focus:border-accent"
+                                        />
+                                    </label>
+                                </div>
+                            ) : null}
 
                             <div className="rounded-3xl border border-line bg-background/70 p-4">
                                 <div className="flex flex-col gap-2">

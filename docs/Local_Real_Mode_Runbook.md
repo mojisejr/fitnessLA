@@ -25,6 +25,7 @@
 - members page ใน real mode อ่าน backend/API truth แล้ว
 - membership checkout สร้าง member record จริงใน `member_subscriptions`
 - product create/update รองรับ `stock_on_hand`, `membership_period`, และ `membership_duration_days`
+- สินค้าที่แสดงเป็น membership ต้องถูกบันทึกเป็น `product_type: MEMBERSHIP` และ `pos_category: MEMBERSHIP` เท่านั้น
 
 ## 1. Pre-flight Checklist
 
@@ -161,10 +162,19 @@ npm run test:browser:smoke:real-account
   - `stock_on_hand` ถ้าเป็น `GOODS`
   - `revenue_account_id`
 
+ถ้าจะทดสอบเส้นทางสมาชิกใหม่โดยตรง ให้สร้างสินค้าแบบนี้อย่างน้อย 1 รายการ:
+
+- `product_type: MEMBERSHIP`
+- `pos_category: MEMBERSHIP`
+- `membership_period`
+- `membership_duration_days`
+- ไม่ต้องใส่ `stock_on_hand`
+
 ผลที่คาดหวัง:
 
 - request `POST /api/v1/products` สำเร็จ
 - ไม่มี contract error เรื่อง revenue account หรือ stock payload
+- ถ้า payload ส่ง `pos_category: MEMBERSHIP` แต่ `product_type` ไม่ใช่ `MEMBERSHIP` ระบบต้อง reject ทันที
 
 ### Step 4: Edit Product In POS
 
@@ -209,10 +219,29 @@ npm run test:browser:smoke:real-account
 - เปิด `/members`
 - ยืนยันว่า member ที่เกิดจาก membership checkout ปรากฏใน list หลัง reload/refetch
 
+ข้อกำหนด regression ใหม่:
+
+- อย่างน้อย 1 รอบ ต้องใช้ membership product ที่เพิ่งสร้างใหม่ใน Step 3 ไม่ใช่ใช้แต่ membership product จาก seed
+- member record ที่เกิดขึ้นต้องโผล่ใน `/members` ได้ทันทีหลัง reload โดยไม่ต้องแก้ SKU หรือแก้ row ในฐานข้อมูลเอง
+
 ผลที่คาดหวัง:
 
 - request `GET /api/v1/members` ได้ `200`
 - เห็น member code และ membership period ตรงกับสินค้าที่ขาย
+
+## 7A. Legacy Contract Audit
+
+ก่อนจะสรุปว่าระบบพร้อม production-safe ให้รัน:
+
+```powershell
+npm run db:audit:membership-product-contract
+```
+
+สิ่งที่ต้องดูจากผลลัพธ์:
+
+- `displayMembershipButWrongType` ควรเป็น `0`
+- `membershipTypeMissingMetadata` ควรเป็น `0` หรือมี remediation plan ที่ผ่านอนุมัติแล้ว
+- ถ้าพบ `skuSuggestsMembershipButWrongType` ให้ใช้เป็น evidence list สำหรับ cleanup แยก phase ห้าม mutate production ทันทีจาก script นี้
 
 ### Step 7: Close Shift
 

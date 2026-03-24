@@ -427,6 +427,7 @@ const mocked = vi.hoisted(() => {
       { id: "p4", isActive: true, price: 6500, revenueAccountId: "coa_rev_pt", sku: "PT-20", productType: "SERVICE", trackStock: false, stockOnHand: null, membershipDurationDays: 60, membershipPeriod: null },
       { id: "p5", isActive: true, price: 4500, revenueAccountId: "coa_rev_pt", sku: "PT-MONTH", productType: "SERVICE", trackStock: false, stockOnHand: null, membershipDurationDays: 30, membershipPeriod: null },
       { id: "p6", isActive: true, price: 2200, revenueAccountId: null, sku: "MBR-MONTH", productType: "MEMBERSHIP", trackStock: false, stockOnHand: null, membershipDurationDays: 30, membershipPeriod: "MONTHLY" },
+      { id: "p7", isActive: true, price: 5400, revenueAccountId: null, sku: "CUSTOM-MEM-90", productType: "MEMBERSHIP", trackStock: false, stockOnHand: null, membershipDurationDays: 90, membershipPeriod: "QUARTERLY" },
     ];
     state.trainers = [{ id: "trainer_1", isActive: true }];
     state.chartOfAccounts = [
@@ -641,5 +642,22 @@ describe("A-3 operations services", () => {
     expect(result.status).toBe("COMPLETED");
     expect(mocked.state.orders).toHaveLength(1);
     expect(mocked.state.shifts[0]?.expectedCash).toBe(2700);
+  });
+
+  it("creates member subscription for explicit membership metadata without relying on legacy SKU inference", async () => {
+    const result = await createOrderWithJournal("u1", {
+      shift_id: "shift_1",
+      items: [{ product_id: "p7", quantity: 1 }],
+      payment_method: "CASH",
+      customer_info: { name: "Quarterly Member" },
+    });
+
+    expect(result.status).toBe("COMPLETED");
+    expect(mocked.state.memberSubscriptions).toHaveLength(1);
+    expect(mocked.state.memberSubscriptions[0]).toMatchObject({
+      membershipProductId: "p7",
+      fullName: "Quarterly Member",
+    });
+    expect(mocked.state.shifts[0]?.expectedCash).toBe(5900);
   });
 });

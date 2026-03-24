@@ -19,7 +19,8 @@
     "db:seed:users": "node prisma/seed-users.mjs",
     "db:seed:real-mode": "node --env-file=.env scripts/seed-real-mode.mjs",
     "db:sync:pos-catalog": "node --env-file=.env scripts/sync-pos-catalog.mjs",
-    "db:verify:pos-products": "node --env-file=.env scripts/verify-pos-products.mjs"
+    "db:verify:pos-products": "node --env-file=.env scripts/verify-pos-products.mjs",
+    "db:audit:membership-product-contract": "node --env-file=.env scripts/audit-membership-product-contract.mjs"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.4.2",
